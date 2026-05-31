@@ -45,3 +45,119 @@ body {
   font-size: 10px;
   opacity: 0.5;
 }
+
+/* Markdown body styles for ReactMarkdown output in the report viewer. */
+.markdown-body {
+  --md-text: #1f2937;
+  --md-muted: #6b7280;
+  --md-border: #e5e7eb;
+  --md-accent: #1d4ed8;
+  --md-code-bg: #f3f4f6;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  color: #111827;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.markdown-body h1 {
+  font-size: 1.5rem;
+  border-bottom: 1px solid var(--md-border);
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h2 {
+  font-size: 1.25rem;
+}
+
+.markdown-body h3 {
+  font-size: 1.05rem;
+}
+
+.markdown-body p {
+  margin: 0.6em 0;
+}
+
+.markdown-body a {
+  color: var(--md-accent);
+  text-decoration: underline;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.6em 0 0.6em 1.2em;
+  list-style-position: outside;
+}
+
+.markdown-body ul {
+  list-style-type: disc;
+}
+
+.markdown-body ol {
+  list-style-type: decimal;
+}
+
+.markdown-body li {
+  margin: 0.25em 0;
+}
+
+.markdown-body code {
+  background: var(--md-code-bg);
+  border-radius: 4px;
+  padding: 0.15em 0.35em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.markdown-body pre {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 0.9em 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--md-accent);
+  padding-left: 0.9em;
+  margin: 0.8em 0;
+  color: var(--md-muted);
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  font-size: 0.875em;
+  width: 100%;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--md-border);
+  padding: 0.45em 0.6em;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--md-border);
+  margin: 1.2em 0;
+}
