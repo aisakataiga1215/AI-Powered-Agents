@@ -9,14 +9,10 @@ export const metadata: Metadata = {
     'AI-powered competitive analysis multi-agent system. Collect public information, extract structured knowledge, and generate cited reports.',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full">
-      <body className="min-h-full bg-gray-50 text-gray-900 antialiased">
+    <html lang="en" className="h-full" suppressHydrationWarning>
+      <body className="min-h-full bg-gray-50 text-gray-900 antialiased" suppressHydrationWarning>
         <ClientProviders>
           <div className="flex min-h-screen flex-col">
             <header className="border-b border-gray-200 bg-white">
@@ -37,10 +33,7 @@ export default function RootLayout({
                   </span>
                 </div>
                 <nav className="flex items-center gap-5 text-sm text-gray-600">
-                  <Link
-                    href="/projects"
-                    className="transition-colors hover:text-gray-900"
-                  >
+                  <Link href="/projects" className="transition-colors hover:text-gray-900">
                     Projects
                   </Link>
                   <Link
@@ -52,14 +45,11 @@ export default function RootLayout({
                 </nav>
               </div>
             </header>
-            <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
-              {children}
-            </main>
+            <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
             <footer className="border-t border-gray-200 bg-white">
               <div className="mx-auto max-w-6xl px-6 py-4 text-xs text-gray-500">
-                AgentInsight MVP — multi-agent competitive analysis with
-                source-traceable claims. Verify cited evidence before sharing
-                generated reports externally.
+                AgentInsight MVP — multi-agent competitive analysis with source-traceable claims.
+                Verify cited evidence before sharing generated reports externally.
               </div>
             </footer>
           </div>
