@@ -227,7 +227,7 @@ function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: S
   // Replace [src_xxxxxxxx] patterns with a markdown link: [[N]](cite:src_xxxxxxxx)
   const processedMarkdown = useMemo(() => {
     if (!markdown) return ''
-    return markdown.replace(/\[src_[0-9a-f]{8}\]/g, (match) => {
+    return markdown.replace(/\[src_[0-9a-f]+\]/g, (match) => {
       const id = match.slice(1, -1)
       const num = sourceIndex.get(id)
       return num !== undefined ? `[[${num}]](cite:${id})` : match

@@ -29,7 +29,7 @@ class Reliability(str, Enum):
 
 
 class SourceEvidence(BaseModel):
-    source_id: str = Field(default_factory=lambda: f"src_{uuid.uuid4().hex[:8]}")
+    source_id: str = Field(default_factory=lambda: f"src_{uuid.uuid4().hex[:12]}")
     project_id: str = ""
     competitor_id: str = ""
     competitor_name: str
