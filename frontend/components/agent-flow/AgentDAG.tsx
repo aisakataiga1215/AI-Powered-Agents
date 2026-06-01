@@ -97,32 +97,48 @@ function AgentNode({ data }: NodeProps) {
 }
 
 // ── Custom rework edge — explicit cubic Bézier below the node row ─────────────
+// `data.active` controls whether the edge is highlighted (orange) or dormant (gray).
 
-function ReworkEdge({ sourceX, sourceY, targetX, targetY, label }: EdgeProps) {
-  // Both handles are at the bottom of their nodes (~same Y).
-  // Arc 110 px below to keep clear of the node row.
+function ReworkEdge({ sourceX, sourceY, targetX, targetY, data }: EdgeProps) {
+  const active = (data as { active?: boolean } | undefined)?.active ?? false
   const arcY = Math.max(sourceY, targetY) + 110
   const path = `M${sourceX},${sourceY} C${sourceX},${arcY} ${targetX},${arcY} ${targetX},${targetY}`
   const midX = (sourceX + targetX) / 2
   const midY = arcY + 6
 
+  const stroke = active ? '#fb923c' : '#d1d5db'
+  const labelFill = active ? '#c2410c' : '#9ca3af'
+  const bgFill = active ? '#fff7ed' : '#f9fafb'
+  const bgStroke = active ? '#fed7aa' : '#e5e7eb'
+
   return (
-    <g>
-      <path d={path} stroke="#fb923c" strokeWidth={1.5} strokeDasharray="5 4" fill="none" />
-      {/* label pill */}
-      <rect
-        x={midX - 25}
-        y={midY - 10}
-        width={50}
-        height={18}
-        rx={5}
-        fill="#fff7ed"
-        stroke="#fed7aa"
-        strokeWidth={1}
-      />
-      <text x={midX} y={midY + 4} textAnchor="middle" fill="#c2410c" fontSize={11} fontWeight={500}>
-        {typeof label === 'string' ? label : 'rework'}
-      </text>
+    <g style={{ opacity: active ? 1 : 0.5 }}>
+      <path d={path} stroke={stroke} strokeWidth={1.5} strokeDasharray="5 4" fill="none" />
+      {/* show label pill only when active */}
+      {active && (
+        <>
+          <rect
+            x={midX - 25}
+            y={midY - 10}
+            width={50}
+            height={18}
+            rx={5}
+            fill={bgFill}
+            stroke={bgStroke}
+            strokeWidth={1}
+          />
+          <text
+            x={midX}
+            y={midY + 4}
+            textAnchor="middle"
+            fill={labelFill}
+            fontSize={11}
+            fontWeight={500}
+          >
+            rework
+          </text>
+        </>
+      )}
     </g>
   )
 }
@@ -136,6 +152,30 @@ const edgeTypes = { rework: ReworkEdge }
 
 export function AgentDAG({ traces }: { traces: AgentRun[] }) {
   const { nodes, edges } = useMemo(() => {
+    // Derive which rework targets were actually triggered
+    const reworkTargets = new Set<string>()
+    traces.forEach((t) => {
+      if (t.agent_name.includes('QA') && t.status === 'success') {
+        const out = t.output as { passed?: boolean; issues?: { target_agent?: string }[] }
+        if (out.passed === false) {
+          out.issues?.forEach((issue) => {
+            const tgt = (issue.target_agent ?? '').toLowerCase()
+            if (tgt.includes('collector')) reworkTargets.add('collector')
+            if (tgt.includes('analyst')) reworkTargets.add('analyst')
+            if (tgt.includes('writer')) reworkTargets.add('writer')
+          })
+        }
+      }
+    })
+
+    // Did QA pass at least once?
+    const qaPassed = traces.some(
+      (t) =>
+        t.agent_name.includes('QA') &&
+        t.status === 'success' &&
+        (t.output as { passed?: boolean }).passed === true
+    )
+
     const nodes: Node[] = SLOTS.map((slot) => ({
       id: slot.id,
       type: 'agent',
@@ -147,7 +187,7 @@ export function AgentDAG({ traces }: { traces: AgentRun[] }) {
     }))
 
     const edges: Edge[] = [
-      // ── forward flow (top row, right→left handles) ──────────────────────
+      // ── forward flow ──────────────────────────────────────────────────────
       {
         id: 'c-a',
         source: 'collector',
@@ -175,6 +215,7 @@ export function AgentDAG({ traces }: { traces: AgentRun[] }) {
         type: 'smoothstep',
         style: { stroke: '#94a3b8', strokeWidth: 1.5 },
       },
+      // QA → END: show "pass" label only when QA actually passed
       {
         id: 'q-e',
         source: 'qa',
@@ -182,14 +223,18 @@ export function AgentDAG({ traces }: { traces: AgentRun[] }) {
         target: 'end',
         targetHandle: 'left',
         type: 'smoothstep',
-        label: 'pass',
-        labelStyle: { fontSize: 11, fontWeight: 600, fill: '#16a34a' },
-        labelBgStyle: { fill: '#f0fdf4' },
-        labelBgPadding: [5, 3] as [number, number],
-        labelBgBorderRadius: 4,
-        style: { stroke: '#22c55e', strokeWidth: 1.5 },
+        ...(qaPassed
+          ? {
+              label: 'pass',
+              labelStyle: { fontSize: 11, fontWeight: 600, fill: '#16a34a' },
+              labelBgStyle: { fill: '#f0fdf4' },
+              labelBgPadding: [5, 3] as [number, number],
+              labelBgBorderRadius: 4,
+              style: { stroke: '#22c55e', strokeWidth: 1.5 },
+            }
+          : { style: { stroke: '#94a3b8', strokeWidth: 1.5 } }),
       },
-      // ── rework arcs (bottom handles → arc below node row) ───────────────
+      // ── rework arcs — always structurally present, highlighted only when triggered ──
       {
         id: 'q-w',
         source: 'qa',
@@ -197,7 +242,7 @@ export function AgentDAG({ traces }: { traces: AgentRun[] }) {
         target: 'writer',
         targetHandle: 'bot-tgt',
         type: 'rework',
-        label: 'rework',
+        data: { active: reworkTargets.has('writer') },
       },
       {
         id: 'q-a',
@@ -206,7 +251,7 @@ export function AgentDAG({ traces }: { traces: AgentRun[] }) {
         target: 'analyst',
         targetHandle: 'bot-tgt',
         type: 'rework',
-        label: 'rework',
+        data: { active: reworkTargets.has('analyst') },
       },
       {
         id: 'q-c',
@@ -215,7 +260,7 @@ export function AgentDAG({ traces }: { traces: AgentRun[] }) {
         target: 'collector',
         targetHandle: 'bot-tgt',
         type: 'rework',
-        label: 'rework',
+        data: { active: reworkTargets.has('collector') },
       },
     ]
 
