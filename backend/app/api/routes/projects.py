@@ -41,6 +41,7 @@ def _to_response(project) -> ProjectResponse:
         industry=project.industry,
         goals=project_service.deserialize_goals(project),
         status=ProjectStatus(project.status),
+        output_language=project.output_language,
         created_at=_iso(project.created_at),
         updated_at=_iso(project.updated_at),
     )
@@ -91,6 +92,7 @@ def run_project(
             competitors_payload,
             goals_payload,
             settings.database_url,
+            project.output_language,
         )
     else:
         logger.warning(

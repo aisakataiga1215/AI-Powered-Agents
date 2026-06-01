@@ -24,7 +24,7 @@ class ProjectCreate(BaseModel):
     industry: str
     competitors: list[CompetitorInput]
     goals: list[str] = Field(default_factory=list)
-    output_language: str = "zh"
+    output_language: str = "en"
     report_depth: str = "standard"
 
 
@@ -33,5 +33,6 @@ class ProjectResponse(BaseModel):
     industry: str
     goals: list[str]
     status: ProjectStatus
+    output_language: str
     created_at: str
     updated_at: str
