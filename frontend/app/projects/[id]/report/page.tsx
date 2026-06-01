@@ -21,10 +21,11 @@ import remarkGfm from 'remark-gfm'
 import { api } from '@/lib/api'
 import type { AgentRun, QAResult, SourceEvidence } from '@/lib/types'
 import { useSourcePanel } from '@/lib/store'
+import { formatDateTime } from '@/lib/formatDateTime'
 
 import { ClaimList } from '@/components/report-viewer/ClaimList'
-import { ComparisonCards } from '@/components/report-viewer/ComparisonCards'
 import { FeatureComparisonTable } from '@/components/report-viewer/FeatureComparisonTable'
+import { PricingComparisonTable } from '@/components/report-viewer/PricingComparisonTable'
 import { SWOTView } from '@/components/report-viewer/SWOTView'
 import { TabsBar, type TabItem } from '@/components/report-viewer/TabsBar'
 import { QAResultBanner } from '@/components/qa/QAResultBanner'
@@ -153,7 +154,7 @@ export default function ReportPage({ params }: PageProps) {
           />
         )}
         {activeTab === 'pricing' && (
-          <ComparisonCards
+          <PricingComparisonTable
             data={normalizeStringMap(report.pricing_comparison)}
             emptyMessage="No pricing data."
           />
@@ -355,21 +356,4 @@ function normalizeStringMap(input: unknown): Record<string, string> {
     }
   }
   return out
-}
-
-function formatDateTime(iso: string): string {
-  if (!iso) return '—'
-  try {
-    const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
 }

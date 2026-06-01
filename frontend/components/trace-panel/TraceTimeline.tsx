@@ -1,5 +1,6 @@
 import type { AgentRun } from '@/lib/types'
 import { AgentRunCard } from '@/components/trace-panel/AgentRunCard'
+import { formatTime } from '@/lib/formatDateTime'
 
 interface TraceTimelineProps {
   traces: AgentRun[]
@@ -21,23 +22,19 @@ export function TraceTimeline({ traces }: TraceTimelineProps) {
     )
   }
 
-  const sorted = [...traces].sort((a, b) =>
-    a.created_at.localeCompare(b.created_at)
-  )
+  const sorted = [...traces].sort((a, b) => a.created_at.localeCompare(b.created_at))
 
   return (
     <ol className="relative space-y-4 border-l-2 border-gray-200 pl-6">
       {sorted.map((run) => (
         <li key={run.agent_run_id} className="relative">
           <span
-            className={`absolute -left-[31px] top-3 flex h-3 w-3 items-center justify-center rounded-full border-2 border-white ${dotColor(run.status)}`}
+            className={`absolute top-3 -left-[31px] flex h-3 w-3 items-center justify-center rounded-full border-2 border-white ${dotColor(run.status)}`}
             aria-hidden
           />
           <div className="mb-1 flex items-center gap-2 text-xs text-gray-500">
             <time dateTime={run.created_at}>{formatTime(run.created_at)}</time>
-            <span className="font-mono text-[10px] text-gray-400">
-              {run.agent_run_id}
-            </span>
+            <span className="font-mono text-[10px] text-gray-400">{run.agent_run_id}</span>
           </div>
           <AgentRunCard run={run} />
         </li>
@@ -58,20 +55,5 @@ function dotColor(status: string): string {
       return 'bg-gray-300'
     default:
       return 'bg-gray-400'
-  }
-}
-
-function formatTime(iso: string): string {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-  } catch {
-    return iso
   }
 }

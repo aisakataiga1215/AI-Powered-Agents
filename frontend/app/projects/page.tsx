@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { ProjectResponse, ProjectStatus } from '@/lib/types'
 import { cn } from '@/lib/cn'
+import { formatDate } from '@/lib/formatDateTime'
 
 interface StatusStyle {
   bg: string
@@ -62,22 +63,6 @@ function StatusBadge({ status }: { status: ProjectStatus }) {
   )
 }
 
-function formatDate(iso: string): string {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
-}
-
 export default function ProjectsListPage() {
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['projects'],
@@ -89,12 +74,8 @@ export default function ProjectsListPage() {
     <div>
       <header className="mb-6 flex items-end justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-blue-700">
-            Workspace
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold text-gray-900">
-            Projects
-          </h1>
+          <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">Workspace</p>
+          <h1 className="mt-1 text-3xl font-semibold text-gray-900">Projects</h1>
           <p className="mt-1 text-sm text-gray-600">
             All competitive analysis runs created in this workspace.
           </p>
@@ -130,18 +111,13 @@ export default function ProjectsListPage() {
 
       {isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Failed to load projects.{' '}
-          {error instanceof Error ? error.message : 'Unknown error.'}
+          Failed to load projects. {error instanceof Error ? error.message : 'Unknown error.'}
         </div>
       )}
 
-      {!isLoading && !isError && data && data.length === 0 && (
-        <EmptyState />
-      )}
+      {!isLoading && !isError && data && data.length === 0 && <EmptyState />}
 
-      {!isLoading && !isError && data && data.length > 0 && (
-        <ProjectsTable projects={data} />
-      )}
+      {!isLoading && !isError && data && data.length > 0 && <ProjectsTable projects={data} />}
     </div>
   )
 }
@@ -166,12 +142,9 @@ function EmptyState() {
           />
         </svg>
       </div>
-      <h2 className="mb-1 text-lg font-semibold text-gray-900">
-        No projects yet
-      </h2>
+      <h2 className="mb-1 text-lg font-semibold text-gray-900">No projects yet</h2>
       <p className="mb-4 max-w-sm text-sm text-gray-600">
-        Create your first competitive analysis project to see the agent
-        workflow in action.
+        Create your first competitive analysis project to see the agent workflow in action.
       </p>
       <Link
         href="/"
@@ -189,19 +162,19 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
               Industry
             </th>
-            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
               Status
             </th>
-            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
               Goals
             </th>
-            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
               Created
             </th>
-            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-3 text-right text-xs font-medium tracking-wider text-gray-500 uppercase">
               <span className="sr-only">Open</span>
             </th>
           </tr>
@@ -213,18 +186,14 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
                 <div className="text-sm font-medium text-gray-900">
                   {project.industry || 'Untitled'}
                 </div>
-                <div className="font-mono text-xs text-gray-400">
-                  {project.project_id}
-                </div>
+                <div className="font-mono text-xs text-gray-400">{project.project_id}</div>
               </td>
               <td className="px-4 py-3">
                 <StatusBadge status={project.status} />
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-1">
-                  {project.goals.length === 0 && (
-                    <span className="text-xs text-gray-400">—</span>
-                  )}
+                  {project.goals.length === 0 && <span className="text-xs text-gray-400">—</span>}
                   {project.goals.map((g) => (
                     <span
                       key={g}
@@ -235,9 +204,7 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
                   ))}
                 </div>
               </td>
-              <td className="px-4 py-3 text-sm text-gray-600">
-                {formatDate(project.created_at)}
-              </td>
+              <td className="px-4 py-3 text-sm text-gray-600">{formatDate(project.created_at)}</td>
               <td className="px-4 py-3 text-right">
                 <Link
                   href={`/projects/${project.project_id}`}

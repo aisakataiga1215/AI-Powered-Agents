@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
+import { formatDateTime } from '@/lib/formatDateTime'
 import type { AgentRun, ProjectStatus } from '@/lib/types'
 import { AgentDAG } from '@/components/agent-flow/AgentDAG'
 
@@ -38,8 +39,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
   const projectQuery = useQuery({
     queryKey: ['project', id],
     queryFn: () => api.getProject(id),
-    refetchInterval: (query) =>
-      query.state.data?.status === 'running' ? POLL_INTERVAL_MS : false,
+    refetchInterval: (query) => (query.state.data?.status === 'running' ? POLL_INTERVAL_MS : false),
   })
 
   const isRunning = projectQuery.data?.status === 'running'
@@ -59,13 +59,9 @@ export default function ProjectExecutionPage({ params }: PageProps) {
     },
   })
 
-  const traces: AgentRun[] = useMemo(
-    () => tracesQuery.data?.traces ?? [],
-    [tracesQuery.data]
-  )
+  const traces: AgentRun[] = useMemo(() => tracesQuery.data?.traces ?? [], [tracesQuery.data])
   const reportAvailable =
-    projectQuery.data?.status === 'completed' ||
-    projectQuery.data?.status === 'qa_failed'
+    projectQuery.data?.status === 'completed' || projectQuery.data?.status === 'qa_failed'
 
   const latestPerAgent = useMemo(() => {
     const map = new Map<string, AgentRun>()
@@ -88,9 +84,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
       {projectQuery.isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Failed to load project.{' '}
-          {projectQuery.error instanceof Error
-            ? projectQuery.error.message
-            : 'Unknown error.'}
+          {projectQuery.error instanceof Error ? projectQuery.error.message : 'Unknown error.'}
         </div>
       )}
 
@@ -98,9 +92,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
         <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-blue-700">
-                Project
-              </p>
+              <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">Project</p>
               <h1 className="mt-1 text-2xl font-semibold text-gray-900">
                 {projectQuery.data.industry}
               </h1>
@@ -118,10 +110,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
                   {projectQuery.data.status.replace('_', ' ')}
                 </span>
                 {projectQuery.data.goals.map((g) => (
-                  <span
-                    key={g}
-                    className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
-                  >
+                  <span key={g} className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
                     {g}
                   </span>
                 ))}
@@ -135,13 +124,10 @@ export default function ProjectExecutionPage({ params }: PageProps) {
               <button
                 type="button"
                 onClick={() => runMutation.mutate()}
-                disabled={
-                  projectQuery.data.status !== 'created' || runMutation.isPending
-                }
+                disabled={projectQuery.data.status !== 'created' || runMutation.isPending}
                 className={cn(
                   'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors',
-                  projectQuery.data.status === 'created' &&
-                    !runMutation.isPending
+                  projectQuery.data.status === 'created' && !runMutation.isPending
                     ? 'bg-blue-600 hover:bg-blue-700'
                     : 'cursor-not-allowed bg-gray-300'
                 )}
@@ -173,23 +159,18 @@ export default function ProjectExecutionPage({ params }: PageProps) {
 
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-700">
+          <h2 className="text-sm font-semibold tracking-wider text-gray-700 uppercase">
             Agent workflow
           </h2>
           {isRunning && (
-            <span className="text-xs text-blue-700">
-              Workflow running... polling every 3s
-            </span>
+            <span className="text-xs text-blue-700">Workflow running... polling every 3s</span>
           )}
         </div>
         <AgentDAG traces={traces} />
         {latestPerAgent.length > 0 && (
           <ul className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600 sm:grid-cols-4">
             {latestPerAgent.map((r) => (
-              <li
-                key={r.agent_run_id}
-                className="rounded border border-gray-200 bg-white p-2"
-              >
+              <li key={r.agent_run_id} className="rounded border border-gray-200 bg-white p-2">
                 <div className="font-medium text-gray-800">{r.agent_name}</div>
                 <div className="text-gray-500">
                   {r.status} · {r.latency_ms}ms
@@ -206,9 +187,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
         >
           <span className="text-blue-600">Trace timeline</span>
-          <span className="text-gray-400">
-            Inspect inputs, outputs, latency, and retries
-          </span>
+          <span className="text-gray-400">Inspect inputs, outputs, latency, and retries</span>
         </Link>
         {reportAvailable ? (
           <Link
@@ -251,20 +230,4 @@ function ProjectSkeleton() {
       <div className="h-64 animate-pulse rounded-xl border border-gray-200 bg-white" />
     </div>
   )
-}
-
-function formatDateTime(iso: string): string {
-  if (!iso) return '—'
-  try {
-    const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
 }
