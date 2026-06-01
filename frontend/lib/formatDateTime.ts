@@ -11,14 +11,7 @@
  * local timezone.
  */
 
-const DISPLAY_TZ = (() => {
-  try {
-    Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai' })
-    return 'Asia/Shanghai'
-  } catch {
-    return undefined // browser local
-  }
-})()
+const TZ = 'Asia/Shanghai'
 
 function toDate(iso: string): Date | null {
   if (!iso) return null
@@ -26,42 +19,46 @@ function toDate(iso: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-/** Full date + time with short timezone label, e.g. "Jun 1, 2026, 10:30 AM CST" */
+/** Full date + time in 24-hour UTC+8, e.g. "Jun 1, 2026, 19:39 UTC+8" */
 export function formatDateTime(iso: string): string {
   const d = toDate(iso)
   if (!d) return iso || '—'
-  return d.toLocaleString('en-US', {
-    timeZone: DISPLAY_TZ,
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  })
+  return (
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: TZ,
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d) + ' UTC+8'
+  )
 }
 
-/** Time only with timezone label, e.g. "10:30:05 AM CST" */
+/** Time only in 24-hour UTC+8, e.g. "19:39:05 UTC+8" */
 export function formatTime(iso: string): string {
   const d = toDate(iso)
   if (!d) return iso || '—'
-  return d.toLocaleString('en-US', {
-    timeZone: DISPLAY_TZ,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZoneName: 'short',
-  })
+  return (
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: TZ,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(d) + ' UTC+8'
+  )
 }
 
 /** Date only (no time, no TZ label), e.g. "Jun 1, 2026" */
 export function formatDate(iso: string): string {
   const d = toDate(iso)
   if (!d) return iso || '—'
-  return d.toLocaleString('en-US', {
-    timeZone: DISPLAY_TZ,
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  })
+  }).format(d)
 }
