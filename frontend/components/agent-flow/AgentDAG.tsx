@@ -1,206 +1,237 @@
 'use client'
 
-/**
- * AgentDAG — visualizes the LangGraph workflow as a static DAG.
- *
- * Node fill color is derived from the latest AgentRun status for each
- * agent. The "rework" edges from QA back to upstream agents are dashed
- * to signal that they only fire when QA fails.
- */
-
 import { useMemo } from 'react'
 import ReactFlow, {
   Background,
+  Handle,
+  Position,
   type Edge,
   type Node,
   type NodeProps,
+  type EdgeProps,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
 import type { AgentRun } from '@/lib/types'
 
-interface AgentDAGProps {
-  traces: AgentRun[]
-}
+// ── Layout constants ──────────────────────────────────────────────────────────
+
+const GAP = 210 // horizontal center-to-center distance
+const NODE_Y = 70 // top-left y of each node
+
+// ── Slot definitions ──────────────────────────────────────────────────────────
 
 interface AgentSlot {
-  id: 'collector' | 'analyst' | 'writer' | 'qa' | 'end'
+  id: string
   label: string
   x: number
   matcher: string | null
 }
 
 const SLOTS: AgentSlot[] = [
-  { id: 'collector', label: 'Collector', x: 30, matcher: 'Collector' },
-  { id: 'analyst', label: 'Analyst', x: 200, matcher: 'Analyst' },
-  { id: 'writer', label: 'Writer', x: 370, matcher: 'Writer' },
-  { id: 'qa', label: 'QA', x: 540, matcher: 'QA' },
-  { id: 'end', label: 'END', x: 710, matcher: null },
+  { id: 'collector', label: 'Collector', x: 0, matcher: 'Collector' },
+  { id: 'analyst', label: 'Analyst', x: GAP * 1, matcher: 'Analyst' },
+  { id: 'writer', label: 'Writer', x: GAP * 2, matcher: 'Writer' },
+  { id: 'qa', label: 'QA', x: GAP * 3, matcher: 'QA' },
+  { id: 'end', label: 'END', x: GAP * 4, matcher: null },
 ]
 
+// ── Node colour by status ─────────────────────────────────────────────────────
+
 interface SlotStyle {
-  background: string
+  bg: string
   border: string
-  textColor: string
+  color: string
 }
 
 const STATUS_STYLE: Record<string, SlotStyle> = {
-  success: {
-    background: '#dcfce7',
-    border: '1px solid #4ade80',
-    textColor: '#166534',
-  },
-  failed: {
-    background: '#fee2e2',
-    border: '1px solid #f87171',
-    textColor: '#991b1b',
-  },
-  running: {
-    background: '#dbeafe',
-    border: '1px solid #60a5fa',
-    textColor: '#1e3a8a',
-  },
-  skipped: {
-    background: '#f3f4f6',
-    border: '1px solid #d1d5db',
-    textColor: '#374151',
-  },
-  idle: {
-    background: '#f3f4f6',
-    border: '1px solid #d1d5db',
-    textColor: '#6b7280',
-  },
+  success: { bg: '#dcfce7', border: '#4ade80', color: '#166534' },
+  failed: { bg: '#fee2e2', border: '#f87171', color: '#991b1b' },
+  running: { bg: '#dbeafe', border: '#60a5fa', color: '#1e3a8a' },
+  idle: { bg: '#f9fafb', border: '#d1d5db', color: '#9ca3af' },
 }
 
-function findStatus(slot: AgentSlot, traces: AgentRun[]): SlotStyle {
-  if (slot.matcher === null) {
-    // END node lights up green once we see a passing QA run.
-    const qaPassed = traces.some(
+function findStyle(slot: AgentSlot, traces: AgentRun[]): SlotStyle {
+  if (!slot.matcher) {
+    const passed = traces.some(
       (t) =>
         t.agent_name.includes('QA') &&
         t.status === 'success' &&
-        (t.output as { passed?: boolean })?.passed === true
+        (t.output as { passed?: boolean }).passed === true
     )
-    return qaPassed ? STATUS_STYLE.success : STATUS_STYLE.idle
+    return passed ? STATUS_STYLE.success : STATUS_STYLE.idle
   }
-  const matched = traces
-    .filter((t) => t.agent_name.includes(slot.matcher!))
-    .slice()
-    .reverse() // newest last in the timeline; reverse to inspect newest first
-  if (matched.length === 0) return STATUS_STYLE.idle
-  const latest = matched[0]
-  return STATUS_STYLE[latest.status] ?? STATUS_STYLE.idle
+  const latest = [...traces].reverse().find((t) => t.agent_name.includes(slot.matcher!))
+  return STATUS_STYLE[latest?.status ?? 'idle'] ?? STATUS_STYLE.idle
 }
 
-export function AgentDAG({ traces }: AgentDAGProps) {
-  const { nodes, edges } = useMemo(() => {
-    const built: Node[] = SLOTS.map((slot) => {
-      const style = findStatus(slot, traces)
-      return {
-        id: slot.id,
-        type: 'default',
-        data: { label: slot.label },
-        position: { x: slot.x, y: 80 },
-        sourcePosition: 'right' as NodeProps['sourcePosition'],
-        targetPosition: 'left' as NodeProps['targetPosition'],
-        style: {
-          background: style.background,
-          border: style.border,
-          color: style.textColor,
-          padding: '8px 12px',
-          minWidth: 100,
-          fontWeight: 500,
-          textAlign: 'center' as const,
-        },
-        draggable: false,
-        connectable: false,
-        selectable: false,
-      }
-    })
+// ── Custom node — exposes bottom handles for rework arcs ──────────────────────
 
-    const builtEdges: Edge[] = [
+function AgentNode({ data }: NodeProps) {
+  const { label, slotStyle: s } = data as { label: string; slotStyle: SlotStyle }
+  return (
+    <div
+      style={{
+        background: s.bg,
+        border: `1.5px solid ${s.border}`,
+        borderRadius: 8,
+        padding: '9px 20px',
+        minWidth: 110,
+        textAlign: 'center',
+        fontWeight: 600,
+        fontSize: 13,
+        color: s.color,
+        userSelect: 'none',
+        boxShadow: '0 1px 3px rgba(0,0,0,.07)',
+      }}
+    >
+      {/* forward-flow handles */}
+      <Handle type="target" position={Position.Left} id="left" style={{ opacity: 0 }} />
+      <Handle type="source" position={Position.Right} id="right" style={{ opacity: 0 }} />
+      {/* rework handles — bottom edge */}
+      <Handle type="source" position={Position.Bottom} id="bot-src" style={{ opacity: 0 }} />
+      <Handle type="target" position={Position.Bottom} id="bot-tgt" style={{ opacity: 0 }} />
+      {label}
+    </div>
+  )
+}
+
+// ── Custom rework edge — explicit cubic Bézier below the node row ─────────────
+
+function ReworkEdge({ sourceX, sourceY, targetX, targetY, label }: EdgeProps) {
+  // Both handles are at the bottom of their nodes (~same Y).
+  // Arc 110 px below to keep clear of the node row.
+  const arcY = Math.max(sourceY, targetY) + 110
+  const path = `M${sourceX},${sourceY} C${sourceX},${arcY} ${targetX},${arcY} ${targetX},${targetY}`
+  const midX = (sourceX + targetX) / 2
+  const midY = arcY + 6
+
+  return (
+    <g>
+      <path d={path} stroke="#fb923c" strokeWidth={1.5} strokeDasharray="5 4" fill="none" />
+      {/* label pill */}
+      <rect
+        x={midX - 25}
+        y={midY - 10}
+        width={50}
+        height={18}
+        rx={5}
+        fill="#fff7ed"
+        stroke="#fed7aa"
+        strokeWidth={1}
+      />
+      <text x={midX} y={midY + 4} textAnchor="middle" fill="#c2410c" fontSize={11} fontWeight={500}>
+        {typeof label === 'string' ? label : 'rework'}
+      </text>
+    </g>
+  )
+}
+
+// ── React Flow type registries ────────────────────────────────────────────────
+
+const nodeTypes = { agent: AgentNode }
+const edgeTypes = { rework: ReworkEdge }
+
+// ── AgentDAG ──────────────────────────────────────────────────────────────────
+
+export function AgentDAG({ traces }: { traces: AgentRun[] }) {
+  const { nodes, edges } = useMemo(() => {
+    const nodes: Node[] = SLOTS.map((slot) => ({
+      id: slot.id,
+      type: 'agent',
+      position: { x: slot.x, y: NODE_Y },
+      data: { label: slot.label, slotStyle: findStyle(slot, traces) },
+      draggable: false,
+      selectable: false,
+      connectable: false,
+    }))
+
+    const edges: Edge[] = [
+      // ── forward flow (top row, right→left handles) ──────────────────────
       {
-        id: 'collector-analyst',
+        id: 'c-a',
         source: 'collector',
+        sourceHandle: 'right',
         target: 'analyst',
-        animated: false,
-        type: 'default',
-        style: { stroke: '#94a3b8' },
+        targetHandle: 'left',
+        type: 'smoothstep',
+        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
       },
       {
-        id: 'analyst-writer',
+        id: 'a-w',
         source: 'analyst',
+        sourceHandle: 'right',
         target: 'writer',
-        type: 'default',
-        style: { stroke: '#94a3b8' },
+        targetHandle: 'left',
+        type: 'smoothstep',
+        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
       },
       {
-        id: 'writer-qa',
+        id: 'w-q',
         source: 'writer',
+        sourceHandle: 'right',
         target: 'qa',
-        type: 'default',
-        style: { stroke: '#94a3b8' },
+        targetHandle: 'left',
+        type: 'smoothstep',
+        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
       },
       {
-        id: 'qa-end',
+        id: 'q-e',
         source: 'qa',
+        sourceHandle: 'right',
         target: 'end',
+        targetHandle: 'left',
+        type: 'smoothstep',
         label: 'pass',
-        labelStyle: { fontSize: 11, fill: '#16a34a' },
-        labelBgPadding: [4, 2],
+        labelStyle: { fontSize: 11, fontWeight: 600, fill: '#16a34a' },
         labelBgStyle: { fill: '#f0fdf4' },
-        type: 'default',
-        style: { stroke: '#22c55e' },
+        labelBgPadding: [5, 3] as [number, number],
+        labelBgBorderRadius: 4,
+        style: { stroke: '#22c55e', strokeWidth: 1.5 },
       },
+      // ── rework arcs (bottom handles → arc below node row) ───────────────
       {
-        id: 'qa-collector',
+        id: 'q-w',
         source: 'qa',
-        target: 'collector',
-        label: 'rework',
-        labelStyle: { fontSize: 11, fill: '#c2410c' },
-        labelBgPadding: [4, 2],
-        labelBgStyle: { fill: '#fff7ed' },
-        type: 'default',
-        animated: false,
-        style: { strokeDasharray: '5,5', stroke: '#fb923c' },
-      },
-      {
-        id: 'qa-analyst',
-        source: 'qa',
-        target: 'analyst',
-        label: 'rework',
-        labelStyle: { fontSize: 11, fill: '#c2410c' },
-        labelBgPadding: [4, 2],
-        labelBgStyle: { fill: '#fff7ed' },
-        type: 'default',
-        animated: false,
-        style: { strokeDasharray: '5,5', stroke: '#fb923c' },
-      },
-      {
-        id: 'qa-writer',
-        source: 'qa',
+        sourceHandle: 'bot-src',
         target: 'writer',
+        targetHandle: 'bot-tgt',
+        type: 'rework',
         label: 'rework',
-        labelStyle: { fontSize: 11, fill: '#c2410c' },
-        labelBgPadding: [4, 2],
-        labelBgStyle: { fill: '#fff7ed' },
-        type: 'default',
-        animated: false,
-        style: { strokeDasharray: '5,5', stroke: '#fb923c' },
+      },
+      {
+        id: 'q-a',
+        source: 'qa',
+        sourceHandle: 'bot-src',
+        target: 'analyst',
+        targetHandle: 'bot-tgt',
+        type: 'rework',
+        label: 'rework',
+      },
+      {
+        id: 'q-c',
+        source: 'qa',
+        sourceHandle: 'bot-src',
+        target: 'collector',
+        targetHandle: 'bot-tgt',
+        type: 'rework',
+        label: 'rework',
       },
     ]
 
-    return { nodes: built, edges: builtEdges }
+    return { nodes, edges }
   }, [traces])
 
   return (
     <div
-      style={{ height: 260 }}
-      className="rounded-lg border border-gray-200 bg-white"
+      style={{ height: 340 }}
+      className="overflow-hidden rounded-lg border border-gray-200 bg-white"
     >
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.25 }}
         nodesDraggable={false}
@@ -212,7 +243,7 @@ export function AgentDAG({ traces }: AgentDAGProps) {
         zoomOnDoubleClick={false}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={16} color="#f1f5f9" />
+        <Background gap={20} color="#f1f5f9" />
       </ReactFlow>
     </div>
   )
