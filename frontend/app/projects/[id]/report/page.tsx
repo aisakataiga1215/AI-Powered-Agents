@@ -19,10 +19,12 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { api } from '@/lib/api'
-import type { AgentRun, QAResult } from '@/lib/types'
+import type { AgentRun, QAResult, SourceEvidence } from '@/lib/types'
+import { useSourcePanel } from '@/lib/store'
 
 import { ClaimList } from '@/components/report-viewer/ClaimList'
 import { ComparisonCards } from '@/components/report-viewer/ComparisonCards'
+import { FeatureComparisonTable } from '@/components/report-viewer/FeatureComparisonTable'
 import { SWOTView } from '@/components/report-viewer/SWOTView'
 import { TabsBar, type TabItem } from '@/components/report-viewer/TabsBar'
 import { QAResultBanner } from '@/components/qa/QAResultBanner'
@@ -32,14 +34,7 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-type TabValue =
-  | 'summary'
-  | 'pricing'
-  | 'features'
-  | 'swot'
-  | 'recommendations'
-  | 'markdown'
-  | 'qa'
+type TabValue = 'summary' | 'pricing' | 'features' | 'swot' | 'recommendations' | 'markdown' | 'qa'
 
 export default function ReportPage({ params }: PageProps) {
   const { id } = use(params)
@@ -55,10 +50,7 @@ export default function ReportPage({ params }: PageProps) {
     queryFn: () => api.getTraces(id),
   })
 
-  const traces = useMemo(
-    () => tracesQuery.data?.traces ?? [],
-    [tracesQuery.data]
-  )
+  const traces = useMemo(() => tracesQuery.data?.traces ?? [], [tracesQuery.data])
 
   const isFallback = useMemo(
     () =>
@@ -70,10 +62,7 @@ export default function ReportPage({ params }: PageProps) {
     [traces]
   )
 
-  const qaResult = useMemo<QAResult | undefined>(
-    () => extractLatestQA(traces),
-    [traces]
-  )
+  const qaResult = useMemo<QAResult | undefined>(() => extractLatestQA(traces), [traces])
 
   const tabs: TabItem[] = useMemo(() => {
     const issuesCount = qaResult?.issues?.length ?? 0
@@ -111,10 +100,8 @@ export default function ReportPage({ params }: PageProps) {
         <Breadcrumb id={id} />
         <div className="rounded-md border border-red-200 bg-red-50 p-6 text-sm text-red-700">
           Failed to load report.{' '}
-          {reportQuery.error instanceof Error
-            ? reportQuery.error.message
-            : 'Unknown error.'}{' '}
-          The workflow may not have produced one yet.
+          {reportQuery.error instanceof Error ? reportQuery.error.message : 'Unknown error.'} The
+          workflow may not have produced one yet.
         </div>
         <Link
           href={`/projects/${id}`}
@@ -135,18 +122,16 @@ export default function ReportPage({ params }: PageProps) {
       {isFallback && (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
           <span className="font-semibold">⚠ Fallback mode: </span>
-          Report generated without a successful LLM call. Executive summary
-          and strategic recommendations may be incomplete or generic.
+          Report generated without a successful LLM call. Executive summary and strategic
+          recommendations may be incomplete or generic.
         </div>
       )}
 
       <header className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-medium uppercase tracking-wider text-blue-700">
+        <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">
           Competitive analysis
         </p>
-        <h1 className="mt-1 text-2xl font-semibold text-gray-900">
-          {report.title}
-        </h1>
+        <h1 className="mt-1 text-2xl font-semibold text-gray-900">{report.title}</h1>
         <p className="mt-2 text-xs text-gray-500">
           Generated {formatDateTime(report.created_at)} · Project {report.project_id}
         </p>
@@ -173,7 +158,7 @@ export default function ReportPage({ params }: PageProps) {
           />
         )}
         {activeTab === 'features' && (
-          <ComparisonCards
+          <FeatureComparisonTable
             data={normalizeStringMap(report.feature_comparison)}
             emptyMessage="No feature data."
           />
@@ -191,10 +176,7 @@ export default function ReportPage({ params }: PageProps) {
           />
         )}
         {activeTab === 'markdown' && (
-          <MarkdownTab
-            markdown={report.markdown_content}
-            sourceList={report.source_list}
-          />
+          <MarkdownTab markdown={report.markdown_content} sourceList={report.source_list} />
         )}
         {activeTab === 'qa' && (
           <>
@@ -230,18 +212,54 @@ export default function ReportPage({ params }: PageProps) {
   )
 }
 
-function MarkdownTab({
-  markdown,
-  sourceList,
-}: {
-  markdown: string
-  sourceList: import('@/lib/types').SourceEvidence[]
-}) {
+function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: SourceEvidence[] }) {
+  const { openSource } = useSourcePanel()
+
+  // Build source_id → 1-based index map for citation numbering
+  const sourceIndex = useMemo(
+    () => new Map(sourceList.map((s, i) => [s.source_id, i + 1])),
+    [sourceList]
+  )
+
+  // Replace [src_xxxxxxxx] patterns with a markdown link: [[N]](cite:src_xxxxxxxx)
+  const processedMarkdown = useMemo(() => {
+    if (!markdown) return ''
+    return markdown.replace(/\[src_[0-9a-f]{8}\]/g, (match) => {
+      const id = match.slice(1, -1)
+      const num = sourceIndex.get(id)
+      return num !== undefined ? `[[${num}]](cite:${id})` : match
+    })
+  }, [markdown, sourceIndex])
+
   return (
     <article className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
       <div className="markdown-body text-sm leading-relaxed text-gray-800">
-        {markdown ? (
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+        {processedMarkdown ? (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a({ href, children }) {
+                if (href?.startsWith('cite:')) {
+                  const sourceId = href.slice(5)
+                  return (
+                    <button
+                      onClick={() => openSource(sourceId)}
+                      className="mx-0.5 inline-flex cursor-pointer items-center rounded border border-blue-200 bg-blue-50 px-1 py-0.5 font-mono text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      {children}
+                    </button>
+                  )
+                }
+                return (
+                  <a href={href} target="_blank" rel="noopener noreferrer">
+                    {children}
+                  </a>
+                )
+              },
+            }}
+          >
+            {processedMarkdown}
+          </ReactMarkdown>
         ) : (
           <p className="text-sm text-gray-500">No markdown content.</p>
         )}
@@ -266,8 +284,7 @@ function MarkdownTab({
                   {s.title || s.url}
                 </a>
                 <div className="text-xs text-gray-500">
-                  {s.competitor_name} · {s.source_type} · retrieved{' '}
-                  {formatDateTime(s.retrieved_at)}
+                  {s.competitor_name} · {s.source_type} · retrieved {formatDateTime(s.retrieved_at)}
                 </div>
               </div>
             </li>
@@ -308,9 +325,7 @@ function ReportSkeleton({ id }: { id: string }) {
 }
 
 function extractLatestQA(traces: AgentRun[]): QAResult | undefined {
-  const qaRun = [...traces]
-    .reverse()
-    .find((t) => t.agent_name.includes('QA'))
+  const qaRun = [...traces].reverse().find((t) => t.agent_name.includes('QA'))
   if (!qaRun) return undefined
   const out = qaRun.output as Partial<QAResult>
   if (typeof out?.passed !== 'boolean' || typeof out?.score !== 'number') {
