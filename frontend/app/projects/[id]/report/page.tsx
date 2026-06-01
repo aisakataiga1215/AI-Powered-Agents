@@ -230,7 +230,7 @@ function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: S
     return markdown.replace(/\[src_[0-9a-f]+\]/g, (match) => {
       const id = match.slice(1, -1)
       const num = sourceIndex.get(id)
-      return num !== undefined ? `[[${num}]](#cite-${id})` : match
+      return `[[${num ?? '?'}]](#cite-${id})`
     })
   }, [markdown, sourceIndex])
 
