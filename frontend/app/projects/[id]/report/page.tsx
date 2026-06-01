@@ -230,7 +230,7 @@ function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: S
     return markdown.replace(/\[src_[0-9a-f]+\]/g, (match) => {
       const id = match.slice(1, -1)
       const num = sourceIndex.get(id)
-      return num !== undefined ? `[[${num}]](cite:${id})` : match
+      return num !== undefined ? `[[${num}]](#cite-${id})` : match
     })
   }, [markdown, sourceIndex])
 
@@ -242,11 +242,12 @@ function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: S
             remarkPlugins={[remarkGfm]}
             components={{
               a({ href, children }) {
-                if (href?.startsWith('cite:')) {
-                  const sourceId = href.slice(5)
+                if (href?.startsWith('#cite-')) {
+                  const sourceId = href.slice(6)
                   return (
                     <button
-                      onClick={() => openSource(sourceId)}
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); openSource(sourceId) }}
                       className="mx-0.5 inline-flex cursor-pointer items-center rounded border border-blue-200 bg-blue-50 px-1 py-0.5 font-mono text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
                     >
                       {children}

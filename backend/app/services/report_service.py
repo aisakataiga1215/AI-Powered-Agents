@@ -29,7 +29,7 @@ def save_report(
         project_id=project_id,
         markdown_content=report.markdown_content,
         json_content=json.dumps(json_payload, ensure_ascii=False),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.add(record)
     db.commit()

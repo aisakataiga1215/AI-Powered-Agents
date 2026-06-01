@@ -15,7 +15,10 @@ const TZ = 'Asia/Shanghai'
 
 function toDate(iso: string): Date | null {
   if (!iso) return null
-  const d = new Date(iso)
+  // SQLite returns naive datetimes (no tz suffix). Treat them as UTC.
+  let s = iso.trim().replace(' ', 'T')
+  if (!/[Zz]|[+-]\d{2}/.test(s.slice(-6))) s += 'Z'
+  const d = new Date(s)
   return Number.isNaN(d.getTime()) ? null : d
 }
 

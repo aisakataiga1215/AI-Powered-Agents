@@ -166,7 +166,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
             <span className="text-xs text-blue-700">Workflow running... polling every 3s</span>
           )}
         </div>
-        <AgentDAG traces={traces} />
+        <AgentDAG traces={traces} projectStatus={projectQuery.data?.status} />
         {latestPerAgent.length > 0 && (
           <ul className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600 sm:grid-cols-4">
             {latestPerAgent.map((r) => (

@@ -12,7 +12,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
-import type { AgentRun } from '@/lib/types'
+import type { AgentRun, ProjectStatus } from '@/lib/types'
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ const STATUS_STYLE: Record<string, SlotStyle> = {
   idle: { bg: '#f9fafb', border: '#d1d5db', color: '#9ca3af' },
 }
 
-function findStyle(slot: AgentSlot, traces: AgentRun[]): SlotStyle {
+function findStyle(slot: AgentSlot, traces: AgentRun[], isTerminal: boolean): SlotStyle {
   if (!slot.matcher) {
     const passed = traces.some(
       (t) =>
@@ -62,7 +62,10 @@ function findStyle(slot: AgentSlot, traces: AgentRun[]): SlotStyle {
     return passed ? STATUS_STYLE.success : STATUS_STYLE.idle
   }
   const latest = [...traces].reverse().find((t) => t.agent_name.includes(slot.matcher!))
-  return STATUS_STYLE[latest?.status ?? 'idle'] ?? STATUS_STYLE.idle
+  const status = latest?.status ?? 'idle'
+  // When the workflow has finished, a trace stuck in 'running' is stale — show success.
+  if (isTerminal && status === 'running') return STATUS_STYLE.success
+  return STATUS_STYLE[status] ?? STATUS_STYLE.idle
 }
 
 // ── Custom node — exposes bottom handles for rework arcs ──────────────────────
@@ -150,7 +153,8 @@ const edgeTypes = { rework: ReworkEdge }
 
 // ── AgentDAG ──────────────────────────────────────────────────────────────────
 
-export function AgentDAG({ traces }: { traces: AgentRun[] }) {
+export function AgentDAG({ traces, projectStatus }: { traces: AgentRun[]; projectStatus?: ProjectStatus }) {
+  const isTerminal = projectStatus === 'completed' || projectStatus === 'qa_failed' || projectStatus === 'failed'
   const { nodes, edges } = useMemo(() => {
     // Derive which rework targets were actually triggered
     const reworkTargets = new Set<string>()
@@ -180,7 +184,7 @@ export function AgentDAG({ traces }: { traces: AgentRun[] }) {
       id: slot.id,
       type: 'agent',
       position: { x: slot.x, y: NODE_Y },
-      data: { label: slot.label, slotStyle: findStyle(slot, traces) },
+      data: { label: slot.label, slotStyle: findStyle(slot, traces, isTerminal) },
       draggable: false,
       selectable: false,
       connectable: false,
@@ -265,7 +269,7 @@ export function AgentDAG({ traces }: { traces: AgentRun[] }) {
     ]
 
     return { nodes, edges }
-  }, [traces])
+  }, [traces, isTerminal])
 
   return (
     <div
