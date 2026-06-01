@@ -55,7 +55,10 @@ export default function ReportPage({ params }: PageProps) {
     queryFn: () => api.getTraces(id),
   })
 
-  const traces = tracesQuery.data?.traces ?? []
+  const traces = useMemo(
+    () => tracesQuery.data?.traces ?? [],
+    [tracesQuery.data]
+  )
 
   const isFallback = useMemo(
     () =>

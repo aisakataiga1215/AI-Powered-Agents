@@ -59,7 +59,10 @@ export default function ProjectExecutionPage({ params }: PageProps) {
     },
   })
 
-  const traces: AgentRun[] = tracesQuery.data?.traces ?? []
+  const traces: AgentRun[] = useMemo(
+    () => tracesQuery.data?.traces ?? [],
+    [tracesQuery.data]
+  )
   const reportAvailable =
     projectQuery.data?.status === 'completed' ||
     projectQuery.data?.status === 'qa_failed'
