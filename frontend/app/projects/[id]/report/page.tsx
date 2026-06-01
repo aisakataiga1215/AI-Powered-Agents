@@ -148,6 +148,7 @@ export default function ReportPage({ params }: PageProps) {
         {activeTab === 'summary' && (
           <ClaimList
             claims={report.executive_summary}
+            sourceList={report.source_list}
             emptyMessage="No executive summary available."
           />
         )}
@@ -172,6 +173,7 @@ export default function ReportPage({ params }: PageProps) {
         {activeTab === 'recommendations' && (
           <ClaimList
             claims={report.strategic_recommendations}
+            sourceList={report.source_list}
             emptyMessage="No strategic recommendations available."
           />
         )}
