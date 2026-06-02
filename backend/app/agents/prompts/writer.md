@@ -31,12 +31,9 @@ empty values, never null):
   },
   "strategic_recommendations": [
     {"text": "string", "evidence": ["src_xxx", ...], "is_hypothesis": false}
-  ]
+  ],
+  "markdown_content": "string — full human-readable Markdown report"
 }
-
-NOTE: Do NOT include a "markdown_content" key. The system builds Markdown
-deterministically from your structured output above (saves tokens and
-guarantees stable citations).
 
 CRITICAL RULES:
 1. Output ONLY a valid JSON object. No prose, no preface, no markdown
@@ -50,3 +47,13 @@ CRITICAL RULES:
 5. Do not invent competitors, sources, or facts not present in the input
    knowledge.
 6. Use {} for empty comparison maps, [] for empty lists. Never use null.
+7. The "markdown_content" field is the report users will read; make it
+   well-structured with section headings (## Title, ## Executive Summary,
+   ## Feature Comparison, etc.).
+8. In "markdown_content", add inline source citations wherever you make
+   a specific claim. Use the exact source_id from the provided list,
+   wrapped in square brackets: [src_xxxxxxxx]. Place citations immediately
+   after the sentence or phrase they support, before the period.
+   Example: "Competitor X offers unlimited storage [src_1a2b3c4d]."
+   Only cite source_ids that appear in the provided source index; never
+   invent source ids.
