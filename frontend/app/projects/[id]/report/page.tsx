@@ -118,7 +118,10 @@ export default function ReportPage({ params }: PageProps) {
 
   return (
     <div className="space-y-5">
-      <Breadcrumb id={id} title={report.title} />
+      {/* Breadcrumb hidden in print */}
+      <div className="print:hidden">
+        <Breadcrumb id={id} title={report.title} />
+      </div>
 
       {isFallback && (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
@@ -129,7 +132,7 @@ export default function ReportPage({ params }: PageProps) {
       )}
 
       <header className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">
+        <p className="text-xs font-medium tracking-wider text-blue-700 uppercase print:hidden">
           Competitive analysis
         </p>
         <h1 className="mt-1 text-2xl font-semibold text-gray-900">{report.title}</h1>
@@ -143,58 +146,67 @@ export default function ReportPage({ params }: PageProps) {
         </div>
       </header>
 
-      <TabsBar items={tabs} value={activeTab} onChange={(v) => setActiveTab(v as TabValue)} />
+      {/* Tabbed interface — hidden when printing */}
+      <div className="print:hidden">
+        <TabsBar items={tabs} value={activeTab} onChange={(v) => setActiveTab(v as TabValue)} />
 
-      <section role="tabpanel" className="pt-2">
-        {activeTab === 'summary' && (
-          <ClaimList
-            claims={report.executive_summary}
-            sourceList={report.source_list}
-            emptyMessage="No executive summary available."
-          />
-        )}
-        {activeTab === 'pricing' && (
-          <PricingComparisonTable
-            data={normalizeStringMap(report.pricing_comparison)}
-            emptyMessage="No pricing data."
-          />
-        )}
-        {activeTab === 'features' && (
-          <FeatureComparisonTable
-            data={normalizeStringMap(report.feature_comparison)}
-            emptyMessage="No feature data."
-          />
-        )}
-        {activeTab === 'swot' && (
-          <SWOTView
-            swotComparison={report.swot_comparison ?? {}}
-            competitorOverview={report.competitor_overview ?? []}
-          />
-        )}
-        {activeTab === 'recommendations' && (
-          <ClaimList
-            claims={report.strategic_recommendations}
-            sourceList={report.source_list}
-            emptyMessage="No strategic recommendations available."
-          />
-        )}
-        {activeTab === 'markdown' && (
-          <MarkdownTab markdown={report.markdown_content} sourceList={report.source_list} />
-        )}
-        {activeTab === 'qa' && (
-          <>
-            {qaResult ? (
-              <QAResultBanner result={qaResult} />
-            ) : (
-              <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">
-                QA result not available yet.
-              </p>
-            )}
-          </>
-        )}
-      </section>
+        <section role="tabpanel" className="pt-2">
+          {activeTab === 'summary' && (
+            <ClaimList
+              claims={report.executive_summary}
+              sourceList={report.source_list}
+              emptyMessage="No executive summary available."
+            />
+          )}
+          {activeTab === 'pricing' && (
+            <PricingComparisonTable
+              data={normalizeStringMap(report.pricing_comparison)}
+              emptyMessage="No pricing data."
+            />
+          )}
+          {activeTab === 'features' && (
+            <FeatureComparisonTable
+              data={normalizeStringMap(report.feature_comparison)}
+              emptyMessage="No feature data."
+            />
+          )}
+          {activeTab === 'swot' && (
+            <SWOTView
+              swotComparison={report.swot_comparison ?? {}}
+              competitorOverview={report.competitor_overview ?? []}
+            />
+          )}
+          {activeTab === 'recommendations' && (
+            <ClaimList
+              claims={report.strategic_recommendations}
+              sourceList={report.source_list}
+              emptyMessage="No strategic recommendations available."
+            />
+          )}
+          {activeTab === 'markdown' && (
+            <MarkdownTab markdown={report.markdown_content} sourceList={report.source_list} />
+          )}
+          {activeTab === 'qa' && (
+            <>
+              {qaResult ? (
+                <QAResultBanner result={qaResult} />
+              ) : (
+                <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">
+                  QA result not available yet.
+                </p>
+              )}
+            </>
+          )}
+        </section>
+      </div>
 
-      <div className="flex flex-wrap gap-3 pt-3">
+      {/* Full report printed when Export PDF is clicked — hidden on screen */}
+      <div className="hidden print:block space-y-8">
+        <PrintView report={report} qaResult={qaResult} />
+      </div>
+
+      {/* Action buttons — hidden when printing */}
+      <div className="flex flex-wrap gap-3 pt-3 print:hidden">
         <Link
           href={`/projects/${id}`}
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
@@ -225,6 +237,156 @@ export default function ReportPage({ params }: PageProps) {
 
       {/* Mounted at the page root so it overlays everything. */}
       <SourcePanel />
+    </div>
+  )
+}
+
+import type { CompetitiveReport } from '@/lib/types'
+
+function PrintView({ report, qaResult }: { report: CompetitiveReport; qaResult: QAResult | undefined }) {
+  return (
+    <div className="space-y-8 text-sm text-gray-800">
+      {/* Executive Summary */}
+      {report.executive_summary?.length > 0 && (
+        <section>
+          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
+            Executive Summary
+          </h2>
+          <ol className="space-y-2">
+            {report.executive_summary.map((claim, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="shrink-0 font-mono text-xs text-gray-400">[{i + 1}]</span>
+                <span>{claim.text}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {/* Pricing Comparison */}
+      {Object.keys(report.pricing_comparison ?? {}).length > 0 && (
+        <section>
+          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
+            Pricing Comparison
+          </h2>
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="border border-gray-200 px-3 py-2 text-left">Competitor</th>
+                <th className="border border-gray-200 px-3 py-2 text-left">Pricing</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(report.pricing_comparison).map(([comp, pricing]) => (
+                <tr key={comp}>
+                  <td className="border border-gray-200 px-3 py-2 font-medium">{comp}</td>
+                  <td className="border border-gray-200 px-3 py-2">{pricing}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {/* Feature Comparison */}
+      {Object.keys(report.feature_comparison ?? {}).length > 0 && (
+        <section>
+          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
+            Feature Comparison
+          </h2>
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="border border-gray-200 px-3 py-2 text-left">Competitor</th>
+                <th className="border border-gray-200 px-3 py-2 text-left">Features</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(report.feature_comparison).map(([comp, features]) => (
+                <tr key={comp}>
+                  <td className="border border-gray-200 px-3 py-2 font-medium">{comp}</td>
+                  <td className="border border-gray-200 px-3 py-2">{features}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {/* SWOT */}
+      {report.competitor_overview?.some((ck) => (ck as { swot?: unknown }).swot) && (
+        <section>
+          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
+            SWOT Analysis
+          </h2>
+          <SWOTView
+            swotComparison={report.swot_comparison ?? {}}
+            competitorOverview={report.competitor_overview ?? []}
+          />
+        </section>
+      )}
+
+      {/* Strategic Recommendations */}
+      {report.strategic_recommendations?.length > 0 && (
+        <section>
+          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
+            Strategic Recommendations
+          </h2>
+          <ol className="space-y-2">
+            {report.strategic_recommendations.map((claim, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="shrink-0 font-mono text-xs text-gray-400">[{i + 1}]</span>
+                <span>{claim.text}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {/* Full Markdown narrative */}
+      {report.markdown_content && (
+        <section>
+          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
+            Full Report
+          </h2>
+          <div className="markdown-body leading-relaxed">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {report.markdown_content}
+            </ReactMarkdown>
+          </div>
+        </section>
+      )}
+
+      {/* QA Result */}
+      {qaResult && (
+        <section>
+          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
+            QA Result
+          </h2>
+          <QAResultBanner result={qaResult} />
+        </section>
+      )}
+
+      {/* Sources */}
+      {report.source_list?.length > 0 && (
+        <section>
+          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
+            Sources
+          </h2>
+          <ol className="space-y-1 text-xs">
+            {report.source_list.map((s, i) => (
+              <li key={s.source_id} className="flex gap-2">
+                <span className="shrink-0 text-gray-400">[{i + 1}]</span>
+                <span>
+                  <span className="font-medium">{s.title || s.url}</span>
+                  {' — '}
+                  <span className="text-gray-500">{s.url}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </div>
   )
 }
