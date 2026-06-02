@@ -161,3 +161,34 @@ body {
   border-top: 1px solid var(--md-border);
   margin: 1.2em 0;
 }
+
+/* Print styles for PDF export via window.print() */
+@media print {
+  nav,
+  header,
+  [role="tablist"],
+  .flex.flex-wrap.gap-3.pt-3 {
+    display: none !important;
+  }
+
+  [role="tabpanel"] {
+    display: block !important;
+  }
+
+  body {
+    background: #fff;
+    color: #111;
+    font-size: 12pt;
+  }
+
+  .markdown-body {
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #555;
+  }
+}

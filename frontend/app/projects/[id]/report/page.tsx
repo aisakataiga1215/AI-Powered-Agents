@@ -207,6 +207,20 @@ export default function ReportPage({ params }: PageProps) {
         >
           View Agent traces
         </Link>
+        <button
+          type="button"
+          onClick={() => exportMarkdown(report.markdown_content, report.title)}
+          className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          Export MD
+        </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          Export PDF
+        </button>
       </div>
 
       {/* Mounted at the page root so it overlays everything. */}
@@ -326,6 +340,20 @@ function ReportSkeleton({ id }: { id: string }) {
       <div className="h-60 animate-pulse rounded-xl border border-gray-200 bg-white" />
     </div>
   )
+}
+
+function exportMarkdown(content: string, title: string) {
+  const filename = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'report'
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filename}.md`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function extractLatestQA(traces: AgentRun[]): QAResult | undefined {

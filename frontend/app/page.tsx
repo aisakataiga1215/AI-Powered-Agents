@@ -61,8 +61,6 @@ export default function NewProjectPage() {
   const [goals, setGoals] = useState<string[]>(
     GOAL_OPTIONS.map((g) => g.value)
   )
-  const [outputLanguage, setOutputLanguage] = useState<'en' | 'zh'>('en')
-
   const createMutation = useMutation({
     mutationFn: (payload: ProjectCreate) => api.createProject(payload),
     onSuccess: (result) => {
@@ -103,7 +101,7 @@ export default function NewProjectPage() {
       industry: industry.trim(),
       competitors: cleanedCompetitors,
       goals,
-      output_language: outputLanguage,
+      output_language: 'en',
       report_depth: 'standard',
     }
     createMutation.mutate(payload)
@@ -231,36 +229,6 @@ export default function NewProjectPage() {
               )
             })}
           </div>
-        </section>
-
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-gray-900">Report language</h2>
-          <div className="flex gap-3">
-            {(['en', 'zh'] as const).map((lang) => (
-              <label
-                key={lang}
-                className={cn(
-                  'flex cursor-pointer items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors',
-                  outputLanguage === lang
-                    ? 'border-blue-300 bg-blue-50 text-blue-800'
-                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                )}
-              >
-                <input
-                  type="radio"
-                  name="outputLanguage"
-                  value={lang}
-                  checked={outputLanguage === lang}
-                  onChange={() => setOutputLanguage(lang)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                />
-                {lang === 'en' ? 'English' : '中文'}
-              </label>
-            ))}
-          </div>
-          <p className="text-xs text-gray-500">
-            Language for executive summary, recommendations, and the markdown report.
-          </p>
         </section>
 
         {createMutation.isError && (
