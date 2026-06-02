@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — Deterministic Markdown Renderer + output_language
+
+### Added
+
+- **`backend/app/services/markdown_renderer.py`**: Deterministic markdown renderer that builds `markdown_content` entirely from structured Pydantic fields (no LLM text). Produces stable `[^src_xxx]` footnote citations and language-aware headings (EN/ZH).
+- **5 renderer tests** in `backend/tests/test_markdown_renderer.py`:
+  - `test_markdown_renderer_citations_are_stable` — idempotent output; only real source_ids cited
+  - `test_markdown_renderer_zh_headings` — Chinese headings when `output_language="zh"`
+  - `test_output_language_zh_reaches_writer_agent` — propagation through `_bind_report_fields`
+  - `test_markdown_sources_section_contains_all_used_sources` — every cited id has a footnote definition
+  - `test_markdown_does_not_use_llm_freeform_citation_format` — no old `[src_xxx]` format in output
+- **`docs/demo_script.md`**: 8-minute Chinese competition walkthrough script
+
+### Changed
+
+- **WriterAgent `_bind_report_fields`**: now calls `render_report_markdown()` instead of injecting a pricing-only table; `markdown_content` is fully deterministic from the renderer
+- **`writer.md` prompt**: removed `markdown_content` from the required JSON shape; added NOTE instructing the LLM to omit it (saves tokens)
+- **MarkdownTab pre-processing**: handles both new `[^src_xxx]` and legacy `[src_xxx]` citation formats; strips `## Sources / ## 数据来源` section (rendered separately below)
+- **`output_language` default**: changed from `"zh"` to `"en"` in project schema
+- **Report language selector**: English/中文 radio buttons on project creation form
+- **WriterAgent system prompt**: appends Chinese language directive when `output_language="zh"`
+
+### Fixed
+
+- Citation instability: LLM-invented source IDs no longer appear in markdown (renderer only uses real source_ids from structured evidence lists)
+- Chinese language not applied to markdown: system prompt now carries the language directive (highest priority)
+- AgentDAG shows stale `running` state on completed projects (terminal state detection added)
+- Source citation links in Markdown tab redirect incorrectly (`cite:` scheme → `#cite-` hash)
+- Backend `datetime.utcnow()` deprecation warnings in `report_service` and `knowledge.py`
+- Frontend timestamps parsed as local time instead of UTC (naive SQLite datetimes now appended with `Z`)
+
+### Tests
+
+- 142 → 152 tests, all passing
+
+---
+
 ## [Unreleased] — Frontend MVP
 
 ### Added

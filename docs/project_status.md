@@ -1,8 +1,8 @@
 # Project Status
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-02
 
-## Current Status: Frontend MVP Complete
+## Current Status: Deterministic Markdown Renderer Complete
 
 ---
 
@@ -73,10 +73,9 @@
 | SQLite database | ✅ Complete |
 | CollectorAgent (demo fixtures) | ✅ Complete |
 | AnalystAgent (two-stage extraction) | ✅ Complete |
-| WriterAgent (deterministic pricing + features) | ✅ Complete |
-| QAAgent (rule-based, rework routing) | ✅ Complete |
-| LangGraph workflow with rework loop | ✅ Complete |
-| 142 passing tests | ✅ Complete |
+| WriterAgent (deterministic markdown renderer, stable [^src_xxx] citations) | ✅ Complete |
+| output_language wired EN/ZH through full stack | ✅ Complete |
+| 152 passing tests | ✅ Complete |
 | Real DeepSeek LLM workflow end-to-end | ✅ Complete |
 | Token usage tracking | ✅ Complete |
 | Next.js frontend (4 pages) | ✅ Complete |

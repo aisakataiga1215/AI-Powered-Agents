@@ -224,14 +224,28 @@ function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: S
     [sourceList]
   )
 
-  // Replace [src_xxxxxxxx] patterns with a markdown link: [[N]](cite:src_xxxxxxxx)
+  // Replace [^src_xxx] footnote refs and old [src_xxx] refs with badge links.
+  // Strip the Sources/数据来源 section — it's rendered separately below.
   const processedMarkdown = useMemo(() => {
     if (!markdown) return ''
-    return markdown.replace(/\[src_[0-9a-f]+\]/g, (match) => {
+
+    // Strip sources section (rendered in the Sources list below)
+    let md = markdown.replace(/\n\n## (?:Sources|数据来源)[\s\S]*$/, '')
+
+    // New format: [^src_xxx] → [[N]](#cite-src_xxx)
+    md = md.replace(/\[\^(src_[0-9a-f]+)\]/g, (_match, id: string) => {
+      const num = sourceIndex.get(id)
+      return `[[${num ?? '?'}]](#cite-${id})`
+    })
+
+    // Old format (backward compat): [src_xxx] → [[N]](#cite-src_xxx)
+    md = md.replace(/\[src_[0-9a-f]+\]/g, (match) => {
       const id = match.slice(1, -1)
       const num = sourceIndex.get(id)
       return `[[${num ?? '?'}]](#cite-${id})`
     })
+
+    return md
   }, [markdown, sourceIndex])
 
   return (

@@ -19,7 +19,6 @@ dying mid-graph.
 """
 
 import json
-import re
 import time
 import uuid
 from pathlib import Path
@@ -31,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.services.markdown_renderer import render_report_markdown
 from app.schemas.knowledge import CompetitorKnowledge
 from app.schemas.report import CompetitiveReport
 from app.schemas.source import SourceEvidence
@@ -491,32 +491,20 @@ def _bind_report_fields(
     report.source_list = list(sources)
 
     # Overwrite pricing_comparison with deterministic values from structured data.
-    # This prevents the LLM from inventing or mis-summarising prices.
     det_pricing = _build_pricing_comparison(competitor_knowledge)
     if det_pricing:
         report.pricing_comparison = det_pricing
 
     # Overwrite feature_comparison with deterministic values from feature_tree.
-    # Prevents the LLM from contradicting the analyst's structured availability data
-    # (e.g. marking a feature 'none' that the analyst recorded as 'available').
     det_features = _build_feature_comparison(competitor_knowledge)
     if det_features:
         report.feature_comparison = det_features
 
-    # Inject deterministic pricing table into markdown (replace or append).
-    pricing_md = _build_pricing_markdown(competitor_knowledge, output_language)
-    if pricing_md:
-        if "## Pricing" in report.markdown_content or "## 定价" in report.markdown_content:
-            report.markdown_content = re.sub(
-                r"## (?:Pricing|定价).*?(?=\n## |\Z)",
-                pricing_md + "\n\n",
-                report.markdown_content,
-                flags=re.DOTALL,
-            )
-        else:
-            report.markdown_content = (
-                report.markdown_content.rstrip() + "\n\n" + pricing_md
-            )
+    # Replace LLM-generated markdown with deterministic renderer output.
+    # Guarantees stable [^src_xxx] citations and correct language headings.
+    report.markdown_content = render_report_markdown(
+        report, sources, output_language=output_language
+    )
     return report
 
 
