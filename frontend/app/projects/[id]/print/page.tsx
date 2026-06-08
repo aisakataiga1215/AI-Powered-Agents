@@ -497,7 +497,7 @@ function PrintInsufficientDataSection({
         <h3 className="mb-1.5 text-sm font-semibold text-amber-900">Suggested next steps</h3>
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-amber-800">
           {dataMode === 'demo' && (
-            <li>Switch to "Live crawl with fallback" for non-SaaS competitors.</li>
+            <li>Switch to &ldquo;Live crawl with fallback&rdquo; for non-SaaS competitors.</li>
           )}
           {dataMode === 'live_with_fallback' && (
             <li>Check that competitor websites are publicly accessible.</li>
