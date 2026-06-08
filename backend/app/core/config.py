@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Search / Data
     enable_live_search: bool = False
     enable_demo_fixtures: bool = True
+    tavily_api_key: str = ""
     # ``demo_scenario`` lets the demo deliberately exercise the QA rework
     # loop. ``happy_path`` (default) loads every fixture as-is. Set to
     # ``missing_pricing_source`` to have the CollectorAgent initially

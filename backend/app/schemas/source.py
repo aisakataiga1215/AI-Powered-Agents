@@ -46,4 +46,4 @@ class SourceEvidence(BaseModel):
     content: str = ""
     retrieved_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     reliability: Reliability = Reliability.medium
-    data_source: Literal["live", "demo"] = "demo"
+    data_source: Literal["live", "demo", "search"] = "demo"

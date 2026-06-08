@@ -1,8 +1,8 @@
 # Project Status
 
-**Last updated:** 2026-06-08
+**Last updated:** 2026-06-09
 
-## Current Status: M13B Complete — PM-Style Report Structure
+## Current Status: M14 Complete — Search-Plus-Crawl (Tavily)
 
 ---
 
@@ -106,6 +106,20 @@
 - [x] **Industry type selector in frontend**: 4-option radio card group; default `'general'`; submitted with project payload.
 - [x] **Print page `isInsufficientData` gate**: `PrintInsufficientDataSection` rendered instead of full report when data is insufficient.
 - [x] 280 backend tests passing (+21 new); clean TypeScript build.
+
+### Milestone 14: Search-Plus-Crawl (Tavily) ✅ COMPLETE
+
+- [x] `backend/app/services/search_provider.py` (NEW) — `SearchResult` Pydantic model, `SearchProvider` Protocol, `TavilySearchProvider` (wraps Tavily SDK), `NullSearchProvider` (no-op), `create_search_provider()` factory
+- [x] `backend/app/services/search_service.py` (NEW) — industry-keyed query templates, `_is_crawlable` URL filter (`_BLOCKED_DOMAINS`: youtube/twitter/reddit/linkedin etc.; `_UNSUPPORTED_EXTENSIONS`), `_normalize_url`, `SearchService.discover_urls` capped at `_SEARCH_MAX_URLS=5`
+- [x] `SourceEvidence.data_source` extended with `"search"` value (discovery channel only; not reliability)
+- [x] `Settings.tavily_api_key` config field; `TAVILY_API_KEY` added to `.env.example`; `tavily-python>=0.3.0` added to `pyproject.toml`
+- [x] `source_discovery.get_industry_max_pages()` public helper exposed for the collector
+- [x] `CollectorAgent._normalize_url()` (strips `utm_*`, `fbclid`, `gclid` via `_TRACKING_PARAMS`) + `_deduplicate_urls()`; `_collect_live()` accepts `search_service` param; `run()` accepts `_search_service` injection param; combined cap = `industry_max + 5`
+- [x] Activation gated on `ENABLE_LIVE_SEARCH=true` AND `TAVILY_API_KEY` set; default `NullSearchProvider` preserves pre-M14 behavior
+- [x] Demo mode never triggers search; Tavily errors caught per-query and globally — workflow continues with known-path URLs only
+- [x] Frontend: `data_source` union extended with `'search'`; teal Search badge in `SourcePanel`; `SourceCountChip` counts search-discovered sources
+- [x] `backend/tests/test_search_service.py` (NEW) — 12 new tests
+- [x] **316 backend tests passing** (+12 new); clean TypeScript build
 
 ### Milestone 13B: PM-Style Report Structure ✅ COMPLETE
 
@@ -225,12 +239,17 @@
 | MarketBackground.tsx + FeatureInsights.tsx + OperationMonetization.tsx | ✅ Complete (Milestone 13B) |
 | Report viewer "Market & Ops" tab | ✅ Complete (Milestone 13B) |
 | Print page PM-framework sections | ✅ Complete (Milestone 13B) |
+| `SearchProvider` protocol + `TavilySearchProvider` + `NullSearchProvider` | ✅ Complete (Milestone 14) |
+| `SearchService` (query templates, `_is_crawlable` URL filter, `_SEARCH_MAX_URLS=5`) | ✅ Complete (Milestone 14) |
+| `CollectorAgent._normalize_url()` (tracking param stripping) + `_deduplicate_urls()` | ✅ Complete (Milestone 14) |
+| `source_discovery.get_industry_max_pages()` public helper | ✅ Complete (Milestone 14) |
+| `data_source="search"` badge + `SourceCountChip` search count (frontend) | ✅ Complete (Milestone 14) |
 
 ---
 
 ## Current Focus
 
-All planned milestones through Milestone 13B are complete. Next steps below.
+All planned milestones through Milestone 14 are complete. Next steps below.
 
 ## Next Steps
 

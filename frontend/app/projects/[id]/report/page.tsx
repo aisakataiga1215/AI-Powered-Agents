@@ -363,13 +363,18 @@ export default function ReportPage({ params }: PageProps) {
 function SourceCountChip({ sourceList }: { sourceList: SourceEvidence[] }) {
   const total = sourceList.length
   const liveCount = sourceList.filter((s) => s.data_source === 'live').length
+  const searchCount = sourceList.filter((s) => s.data_source === 'search').length
   const demoCount = sourceList.filter((s) => s.data_source === 'demo').length
-  const hasDataSource = liveCount > 0 || demoCount > 0
+  const hasDataSource = liveCount > 0 || demoCount > 0 || searchCount > 0
 
   if (!hasDataSource) return <span>{total} sources cited</span>
-  if (liveCount === 0) return <span>{total} sources cited (demo)</span>
-  if (demoCount === 0) return <span>{total} sources cited · {liveCount} live</span>
-  return <span>{total} sources cited · {liveCount} live · {demoCount} demo</span>
+  if (liveCount === 0 && searchCount === 0) return <span>{total} sources cited (demo)</span>
+
+  const parts: string[] = []
+  if (liveCount > 0) parts.push(`${liveCount} live`)
+  if (searchCount > 0) parts.push(`${searchCount} search`)
+  if (demoCount > 0) parts.push(`${demoCount} demo`)
+  return <span>{total} sources cited · {parts.join(' · ')}</span>
 }
 
 function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: SourceEvidence[] }) {

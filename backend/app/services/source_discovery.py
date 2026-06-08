@@ -132,3 +132,8 @@ def discover_pages(
         if len(result) >= effective_max:
             break
     return result
+
+
+def get_industry_max_pages(industry_type: str) -> int:
+    """Return the crawl-page cap for the given industry type."""
+    return _INDUSTRY_MAX_PAGES.get(industry_type, _DEFAULT_MAX_PAGES)

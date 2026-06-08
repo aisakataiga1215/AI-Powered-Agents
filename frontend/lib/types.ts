@@ -277,7 +277,7 @@ export interface SourceEvidence {
   content: string
   retrieved_at: string
   reliability: Reliability | string
-  data_source?: 'live' | 'demo'
+  data_source?: 'live' | 'demo' | 'search'
 }
 
 /**

@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## M14 — Search-Plus-Crawl (Tavily)
+
+### Backend
+- New `backend/app/services/search_provider.py`: `SearchResult` Pydantic model, `SearchProvider` Protocol, `TavilySearchProvider` (wraps Tavily SDK), `NullSearchProvider` (no-op), `create_search_provider()` factory. Active when `ENABLE_LIVE_SEARCH=true` and `TAVILY_API_KEY` is set; otherwise degrades to `NullSearchProvider`.
+- New `backend/app/services/search_service.py`: industry-keyed web search query templates, `_is_crawlable()` URL filter (`_BLOCKED_DOMAINS` covers youtube/twitter/reddit/linkedin etc., `_UNSUPPORTED_EXTENSIONS` blocks binary/non-HTML), `_normalize_url()`, `SearchService.discover_urls()` capped at `_SEARCH_MAX_URLS=5`.
+- `backend/app/schemas/source.py`: extended `data_source` `Literal` to include `"search"`. Indicates discovery channel only (not reliability) — every URL is still crawled and classified by `SourceClassifier`.
+- `backend/app/core/config.py`: added `tavily_api_key: str = ""`.
+- `backend/pyproject.toml`: added `tavily-python>=0.3.0` dependency.
+- `.env.example`: added `TAVILY_API_KEY=`.
+- `backend/app/services/source_discovery.py`: added public helper `get_industry_max_pages(industry_type)` so collector can query the industry-specific path cap.
+- `backend/app/agents/collector_agent.py`: added `_normalize_url()` (strips tracking params `utm_*`, `fbclid`, `gclid` via `_TRACKING_PARAMS`), added `_deduplicate_urls()` to merge results across discovery channels, extended `_collect_live()` with `search_service` param and extended `run()` with `_search_service` injection param. Search-discovered URLs are tagged `data_source="search"`; combined per-competitor cap is `industry_max + 5`.
+
+### Frontend
+- `frontend/lib/types.ts`: added `'search'` to the `data_source` union.
+- `frontend/components/source-viewer/SourcePanel.tsx`: new teal Search badge alongside Live/Demo badges.
+- `frontend/app/projects/[id]/report/page.tsx`: `SourceCountChip` now also counts search-discovered sources.
+
+### Behavior
+- **Activation**: requires both `ENABLE_LIVE_SEARCH=true` **and** `TAVILY_API_KEY` set.
+- **Default**: `ENABLE_LIVE_SEARCH=false` → `NullSearchProvider` → pre-M14 behavior (no regressions).
+- **Demo mode**: search is never triggered.
+- **Tavily errors**: caught per-query and globally; workflow continues with known-path URLs only.
+- **Discovery channels**: search runs alongside `source_discovery` (path probing) as a second URL-discovery channel; both feed into `CollectorAgent._collect_live()`.
+
+### Tests
+- New `backend/tests/test_search_service.py`: 12 new tests (query templates, `_is_crawlable` filter, blocked domains/extensions, URL normalization, cap enforcement, error handling).
+- Total: **316 backend tests passing** (+12 new).
+
+---
+
 ## M13B — PM-Style Report Structure
 
 ### Backend

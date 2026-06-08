@@ -17,7 +17,7 @@ trace timeline can replay the execution.
 import time
 import uuid
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse, urlencode, parse_qsl
 
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,9 @@ from app.services import (
     trace_service,
 )
 from app.services.coverage_evaluator import WEAK_THRESHOLD
+from app.services.search_provider import create_search_provider
+from app.services.search_service import SearchService, _SEARCH_MAX_URLS
+from app.services.source_discovery import get_industry_max_pages
 
 logger = get_logger(__name__)
 
@@ -45,6 +48,43 @@ _OFFICIAL_TYPES = {
     SourceType.security,
     SourceType.privacy,
 }
+
+_TRACKING_PARAMS: frozenset[str] = frozenset({
+    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+    "fbclid", "gclid",
+})
+
+
+def _normalize_url(url: str) -> str:
+    """Canonical URL form for deduplication.
+
+    Lowercases scheme/host, strips trailing slash from path, removes known
+    tracking query params (utm_*, fbclid, gclid), preserves all others.
+    """
+    parsed = urlparse(url)
+    filtered_qs = urlencode(
+        [(k, v) for k, v in parse_qsl(parsed.query) if k not in _TRACKING_PARAMS]
+    )
+    return urlunparse((
+        parsed.scheme.lower(),
+        parsed.netloc.lower(),
+        parsed.path.rstrip("/"),
+        parsed.params,
+        filtered_qs,
+        "",  # drop fragment
+    ))
+
+
+def _deduplicate_urls(urls: list[str]) -> list[str]:
+    """Preserve insertion order, remove semantically duplicate URLs."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for url in urls:
+        norm = _normalize_url(url)
+        if norm not in seen:
+            seen.add(norm)
+            result.append(url)
+    return result
 
 
 @dataclass
@@ -128,6 +168,7 @@ def _collect_live(
     project_id: str,
     competitor_id: str,
     industry_type: str = "general",
+    search_service: SearchService | None = None,
 ) -> _CollectionResult:
     """Crawl a competitor's website using industry-specific paths.
 
@@ -138,13 +179,29 @@ def _collect_live(
     competitor_domain = urlparse(website).netloc
     candidate_urls = source_discovery.discover_pages(website, industry_type=industry_type)
 
+    search_urls: list[str] = []
+    if search_service is not None:
+        try:
+            search_urls = search_service.discover_urls(competitor_name, website, industry_type)
+        except Exception as exc:
+            logger.warning(
+                "CollectorAgent: SearchService failed for '%s': %s — continuing without search URLs",
+                competitor_name,
+                exc,
+            )
+
+    industry_max = get_industry_max_pages(industry_type)
+    combined_cap = industry_max + _SEARCH_MAX_URLS
+    all_candidates = _deduplicate_urls(candidate_urls + search_urls)[:combined_cap]
+    search_url_norms = {_normalize_url(u) for u in search_urls}
+
     live_sources: list[SourceEvidence] = []
     failed_urls: list[str] = []
 
-    if not candidate_urls:
+    if not all_candidates:
         failed_urls.append(website)
     else:
-        for url in candidate_urls:
+        for url in all_candidates:
             page = crawler_service.crawl_page(url)
             if page is None:
                 failed_urls.append(url)
@@ -153,6 +210,7 @@ def _collect_live(
             source_domain = urlparse(page.url).netloc
             s_type = source_classifier.classify(page.url, page.title, page.content)
             reliability = _assign_reliability(s_type, source_domain, competitor_domain)
+            data_source = "search" if _normalize_url(url) in search_url_norms else "live"
 
             live_sources.append(
                 SourceEvidence(
@@ -165,12 +223,12 @@ def _collect_live(
                     snippet=page.snippet,
                     content=page.content,
                     reliability=reliability,
-                    data_source="live",
+                    data_source=data_source,  # type: ignore[arg-type]
                 )
             )
 
     cov = coverage_evaluator.evaluate(live_sources)
-    fallback_attempted = cov.score < WEAK_THRESHOLD or not candidate_urls
+    fallback_attempted = cov.score < WEAK_THRESHOLD or not all_candidates
 
     # Side-effect-free check — only reads file presence.
     fallback_available = crawler_service.fixture_exists(competitor_name)
@@ -210,7 +268,7 @@ def _collect_live(
     return _CollectionResult(
         sources=all_sources,
         failed_urls=failed_urls,
-        attempted_urls=candidate_urls,
+        attempted_urls=all_candidates,
         live_source_count=len(live_sources),
         fallback_attempted=fallback_attempted,
         fallback_used=fallback_used,
@@ -227,6 +285,7 @@ def run(
     rework_hints: list[str] | None = None,
     data_mode: str = "demo",
     industry_type: str = "general",
+    _search_service: SearchService | None = None,
 ) -> list[SourceEvidence]:
     """Load source evidence for all competitors and persist them.
 
@@ -238,6 +297,8 @@ def run(
         rework_hints: Optional QA hints from a previous failed run.
         data_mode: ``"demo"`` or ``"live_with_fallback"``.
         industry_type: Industry context for source discovery path selection.
+        _search_service: Optional SearchService for test injection; created
+            from config when None and conditions are met.
 
     Returns:
         List of :class:`SourceEvidence` ready for downstream agents.
@@ -262,6 +323,11 @@ def run(
     trace_service.save_agent_run(db, agent_run)
 
     try:
+        search_svc: SearchService | None = _search_service
+        if search_svc is None and data_mode == "live_with_fallback" and settings.enable_live_search:
+            provider = create_search_provider(settings.tavily_api_key, enabled=True)
+            search_svc = SearchService(provider)
+
         all_sources: list[SourceEvidence] = []
         withheld_competitors: list[str] = []
         collection_stats: dict[str, dict] = {}
@@ -281,7 +347,8 @@ def run(
                 website = comp.get("url", "") if isinstance(comp, dict) else ""
                 competitor_id = name.strip().lower().replace(" ", "_")
                 result = _collect_live(
-                    name, website, project_id, competitor_id, industry_type
+                    name, website, project_id, competitor_id, industry_type,
+                    search_service=search_svc,
                 )
                 all_failed_urls.extend(result.failed_urls)
                 attempted_urls_by_competitor[name] = result.attempted_urls
