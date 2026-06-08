@@ -190,7 +190,7 @@ def test_rework_cycle_collector_repairs_missing_pricing(rework_db, monkeypatch):
     # --- Collector fake -----------------------------------------------------
     collector_calls: list[dict] = []
 
-    def fake_collector(db, project_id, competitors, goals, rework_hints=None):
+    def fake_collector(db, project_id, competitors, goals, rework_hints=None, data_mode="demo", industry_type="general"):
         call = {
             "attempt": len(collector_calls) + 1,
             "rework_hints": list(rework_hints or []),
@@ -204,7 +204,7 @@ def test_rework_cycle_collector_repairs_missing_pricing(rework_db, monkeypatch):
     # --- Analyst fake -------------------------------------------------------
     analyst_calls: list[dict] = []
 
-    def fake_analyst(db, project_id, sources, goals, rework_hints=None):
+    def fake_analyst(db, project_id, sources, goals, rework_hints=None, **kwargs):
         analyst_calls.append({"source_count": len(sources)})
         has_pricing_source = any(
             s.source_type is SourceType.pricing_page for s in sources
@@ -223,6 +223,7 @@ def test_rework_cycle_collector_repairs_missing_pricing(rework_db, monkeypatch):
         goals,
         rework_hints=None,
         output_language="en",
+        **kwargs,
     ):
         writer_calls.append({"source_count": len(sources)})
         knowledge = competitor_knowledge[0]
@@ -235,7 +236,7 @@ def test_rework_cycle_collector_repairs_missing_pricing(rework_db, monkeypatch):
     # --- QA fake ------------------------------------------------------------
     qa_calls: list[dict] = []
 
-    def fake_qa(db, project_id, report, knowledge, sources, goals):
+    def fake_qa(db, project_id, report, knowledge, sources, goals, **kwargs):
         attempt = len(qa_calls) + 1
         has_pricing_source = any(
             s.source_type is SourceType.pricing_page for s in sources
@@ -376,10 +377,10 @@ def test_rework_budget_exhaustion_marks_project_qa_failed(
 
     home_src = _make_source("src_home_01", SourceType.official_website)
 
-    def fake_collector(db, project_id, competitors, goals, rework_hints=None):
+    def fake_collector(db, project_id, competitors, goals, rework_hints=None, data_mode="demo", industry_type="general"):
         return [home_src]
 
-    def fake_analyst(db, project_id, sources, goals, rework_hints=None):
+    def fake_analyst(db, project_id, sources, goals, rework_hints=None, **kwargs):
         ids = [s.source_id for s in sources]
         return [_make_knowledge(ids, pricing=False)]
 
@@ -391,12 +392,13 @@ def test_rework_budget_exhaustion_marks_project_qa_failed(
         goals,
         rework_hints=None,
         output_language="en",
+        **kwargs,
     ):
         return _make_report(competitor_knowledge[0], sources, {})
 
     qa_attempts: list[int] = []
 
-    def fake_qa(db, project_id, report, knowledge, sources, goals):
+    def fake_qa(db, project_id, report, knowledge, sources, goals, **kwargs):
         qa_attempts.append(len(qa_attempts) + 1)
         return QAResult(
             project_id=project_id,

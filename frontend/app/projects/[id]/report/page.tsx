@@ -19,15 +19,24 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { api } from '@/lib/api'
-import type { AgentRun, QAResult, SourceEvidence } from '@/lib/types'
+import type { AgentRun, CompetitorInProject, CompetitiveReport, QAResult, QATraceOutput, SourceEvidence } from '@/lib/types'
 import { useSourcePanel } from '@/lib/store'
 import { formatDateTime } from '@/lib/formatDateTime'
 
 import { ClaimList } from '@/components/report-viewer/ClaimList'
+import { DroppedCompetitorsList } from '@/components/report-viewer/DroppedCompetitorsList'
+import type { DroppedCompetitor } from '@/components/report-viewer/DroppedCompetitorsList'
 import { FeatureComparisonTable } from '@/components/report-viewer/FeatureComparisonTable'
+import { InsufficientDataView } from '@/components/report-viewer/InsufficientDataView'
 import { PricingComparisonTable } from '@/components/report-viewer/PricingComparisonTable'
+import PurposeSections from '@/components/report-viewer/PurposeSections'
+import ScoringMatrix from '@/components/report-viewer/ScoringMatrix'
+import MarketBackground from '@/components/report-viewer/MarketBackground'
+import FeatureInsights from '@/components/report-viewer/FeatureInsights'
+import OperationMonetization from '@/components/report-viewer/OperationMonetization'
 import { SWOTView } from '@/components/report-viewer/SWOTView'
 import { TabsBar, type TabItem } from '@/components/report-viewer/TabsBar'
+import { QaStatusBanner } from '@/components/qa/QaStatusBanner'
 import { QAResultBanner } from '@/components/qa/QAResultBanner'
 import { SourcePanel } from '@/components/source-viewer/SourcePanel'
 
@@ -35,7 +44,7 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-type TabValue = 'summary' | 'pricing' | 'features' | 'swot' | 'recommendations' | 'markdown' | 'qa'
+type TabValue = 'summary' | 'pricing' | 'features' | 'market' | 'swot' | 'recommendations' | 'markdown' | 'qa' | 'purpose'
 
 export default function ReportPage({ params }: PageProps) {
   const { id } = use(params)
@@ -51,7 +60,14 @@ export default function ReportPage({ params }: PageProps) {
     queryFn: () => api.getTraces(id),
   })
 
+  const projectQuery = useQuery({
+    queryKey: ['project', id],
+    queryFn: () => api.getProject(id),
+  })
+
   const traces = useMemo(() => tracesQuery.data?.traces ?? [], [tracesQuery.data])
+  const projectStatus = projectQuery.data?.status
+  const requestedCompetitors = projectQuery.data?.competitors ?? []
 
   const isFallback = useMemo(
     () =>
@@ -65,12 +81,32 @@ export default function ReportPage({ params }: PageProps) {
 
   const qaResult = useMemo<QAResult | undefined>(() => extractLatestQA(traces), [traces])
 
+  const droppedCompetitors = useMemo<DroppedCompetitor[]>(
+    () => computeDroppedCompetitors(requestedCompetitors, reportQuery.data, traces),
+    [requestedCompetitors, reportQuery.data, traces]
+  )
+
+  const analysedCount = useMemo(() => {
+    const collectorTrace = traces.find((t) => t.agent_name.includes('Collector'))
+    const out = (collectorTrace?.output ?? {}) as Record<string, unknown>
+    const collected = out.sufficiently_collected_competitors as string[] | undefined
+    return collected?.length ?? reportQuery.data?.competitor_overview?.length ?? 0
+  }, [traces, reportQuery.data])
+
   const tabs: TabItem[] = useMemo(() => {
-    const issuesCount = qaResult?.issues?.length ?? 0
-    return [
+    const allIssues = qaResult?.issues ?? []
+    const blockingCount = allIssues.filter((i) => i.severity !== 'low').length
+    const advisoryCount = allIssues.filter((i) => i.severity === 'low').length
+    const purpose = reportQuery.data?.analysis_purpose
+    const purposeTab: TabItem | null =
+      purpose && purpose !== 'general'
+        ? { value: 'purpose', label: purpose === 'build_product' ? 'Build Insights' : 'Decision Guide' }
+        : null
+    const baseTabs: TabItem[] = [
       { value: 'summary', label: 'Summary' },
       { value: 'pricing', label: 'Pricing' },
       { value: 'features', label: 'Features' },
+      { value: 'market', label: 'Market & Ops' },
       { value: 'swot', label: 'SWOT' },
       { value: 'recommendations', label: 'Recommendations' },
       { value: 'markdown', label: 'Markdown' },
@@ -80,7 +116,11 @@ export default function ReportPage({ params }: PageProps) {
         badge:
           qaResult && !qaResult.passed ? (
             <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
-              {issuesCount}
+              {blockingCount}
+            </span>
+          ) : qaResult?.passed && advisoryCount > 0 ? (
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+              {advisoryCount} adv
             </span>
           ) : qaResult?.passed ? (
             <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
@@ -89,7 +129,9 @@ export default function ReportPage({ params }: PageProps) {
           ) : null,
       },
     ]
-  }, [qaResult])
+    if (purposeTab) baseTabs.splice(6, 0, purposeTab)
+    return baseTabs
+  }, [qaResult, reportQuery.data?.analysis_purpose])
 
   if (reportQuery.isLoading) {
     return <ReportSkeleton id={id} />
@@ -116,6 +158,12 @@ export default function ReportPage({ params }: PageProps) {
 
   const report = reportQuery.data!
 
+  const qaScore = qaResult?.score ?? 0
+  const citedSources = report.source_list?.length ?? 0
+  const summaryLen = report.executive_summary?.length ?? 0
+  const isInsufficientData =
+    citedSources === 0 || summaryLen === 0 || qaScore < 30 || analysedCount < 2
+
   return (
     <div className="space-y-5">
       {/* Breadcrumb hidden in print */}
@@ -131,6 +179,10 @@ export default function ReportPage({ params }: PageProps) {
         </div>
       )}
 
+      {projectStatus && projectStatus !== 'completed' && projectStatus !== 'running' && projectStatus !== 'created' && (
+        <QaStatusBanner status={projectStatus} droppedCount={droppedCompetitors.length} />
+      )}
+
       <header className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <p className="text-xs font-medium tracking-wider text-blue-700 uppercase print:hidden">
           Competitive analysis
@@ -140,23 +192,57 @@ export default function ReportPage({ params }: PageProps) {
           Generated {formatDateTime(report.created_at)} · Project {report.project_id}
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-600">
-          <span>{report.competitor_overview?.length ?? 0} competitors</span>
-          <span>{report.source_list?.length ?? 0} sources cited</span>
+          {droppedCompetitors.length > 0 ? (
+            <span className="text-orange-600">
+              {report.competitor_overview?.length ?? 0} of {requestedCompetitors.length} analysed
+              ({droppedCompetitors.length} dropped)
+            </span>
+          ) : (
+            <span>{report.competitor_overview?.length ?? 0} competitors</span>
+          )}
+          <SourceCountChip sourceList={report.source_list ?? []} />
           <span>{report.executive_summary?.length ?? 0} summary claims</span>
         </div>
       </header>
 
       {/* Tabbed interface — hidden when printing */}
       <div className="print:hidden">
-        <TabsBar items={tabs} value={activeTab} onChange={(v) => setActiveTab(v as TabValue)} />
+        {isInsufficientData ? (
+          <InsufficientDataView
+            report={report}
+            qaResult={qaResult}
+            traces={traces}
+            requestedCompetitors={requestedCompetitors}
+            qaScore={qaScore}
+            citedSources={citedSources}
+          />
+        ) : (
+          <>
+            <TabsBar items={tabs} value={activeTab} onChange={(v) => setActiveTab(v as TabValue)} />
 
         <section role="tabpanel" className="pt-2">
           {activeTab === 'summary' && (
-            <ClaimList
-              claims={report.executive_summary}
-              sourceList={report.source_list}
-              emptyMessage="No executive summary available."
-            />
+            <>
+              {(report.analysis_objective || (report.competitor_selection_rationale && Object.keys(report.competitor_selection_rationale).length > 0)) && (
+                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
+                  {report.analysis_objective && (
+                    <p className="text-blue-900 font-medium">{report.analysis_objective}</p>
+                  )}
+                  {report.competitor_selection_rationale && Object.keys(report.competitor_selection_rationale).length > 0 && (
+                    <ul className="mt-2 space-y-0.5 text-blue-800 text-xs">
+                      {Object.entries(report.competitor_selection_rationale).map(([name, rationale]) => (
+                        <li key={name}><span className="font-medium">{name}:</span> {rationale}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              <ClaimList
+                claims={report.executive_summary}
+                sourceList={report.source_list}
+                emptyMessage="No executive summary available."
+              />
+            </>
           )}
           {activeTab === 'pricing' && (
             <PricingComparisonTable
@@ -169,6 +255,22 @@ export default function ReportPage({ params }: PageProps) {
               data={normalizeStringMap(report.feature_comparison)}
               emptyMessage="No feature data."
             />
+          )}
+          {activeTab === 'market' && (
+            <div className="space-y-8">
+              {report.market_background && (
+                <MarketBackground data={report.market_background} />
+              )}
+              {report.feature_insights && (
+                <FeatureInsights data={report.feature_insights} />
+              )}
+              {report.operation_monetization && (
+                <OperationMonetization data={report.operation_monetization} />
+              )}
+              {!report.market_background && !report.feature_insights && !report.operation_monetization && (
+                <p className="text-sm text-gray-400 italic">PM-framework sections not available for this report.</p>
+              )}
+            </div>
           )}
           {activeTab === 'swot' && (
             <SWOTView
@@ -195,14 +297,30 @@ export default function ReportPage({ params }: PageProps) {
                   QA result not available yet.
                 </p>
               )}
+              {droppedCompetitors.length > 0 && (
+                <DroppedCompetitorsList dropped={droppedCompetitors} className="mt-4" />
+              )}
             </>
           )}
+          {activeTab === 'purpose' && report.analysis_purpose && report.analysis_purpose !== 'general' && (
+            <div className="space-y-8">
+              <ScoringMatrix
+                analysisPurpose={report.analysis_purpose}
+                competitorScores={report.competitor_scores}
+                opportunityScore={report.opportunity_score}
+              />
+              <PurposeSections
+                analysisPurpose={report.analysis_purpose}
+                purposeSections={report.purpose_sections ?? {}}
+              />
+              {report.custom_dimension_analysis && Object.keys(report.custom_dimension_analysis).length > 0 && (
+                <CustomDimensionTable analysis={report.custom_dimension_analysis} />
+              )}
+            </div>
+          )}
         </section>
-      </div>
-
-      {/* Full report printed when Export PDF is clicked — hidden on screen */}
-      <div className="hidden print:block space-y-8">
-        <PrintView report={report} qaResult={qaResult} />
+          </>
+        )}
       </div>
 
       {/* Action buttons — hidden when printing */}
@@ -221,18 +339,19 @@ export default function ReportPage({ params }: PageProps) {
         </Link>
         <button
           type="button"
-          onClick={() => exportMarkdown(report.markdown_content, report.title)}
+          onClick={() => exportMarkdown(report.markdown_content, report.title, report.source_list ?? [])}
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
           Export MD
         </button>
-        <button
-          type="button"
-          onClick={() => window.print()}
+        <Link
+          href={`/projects/${id}/print`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
-          Export PDF
-        </button>
+          {projectStatus === 'qa_failed' ? 'Export Partial PDF' : 'Export PDF'}
+        </Link>
       </div>
 
       {/* Mounted at the page root so it overlays everything. */}
@@ -241,154 +360,16 @@ export default function ReportPage({ params }: PageProps) {
   )
 }
 
-import type { CompetitiveReport } from '@/lib/types'
+function SourceCountChip({ sourceList }: { sourceList: SourceEvidence[] }) {
+  const total = sourceList.length
+  const liveCount = sourceList.filter((s) => s.data_source === 'live').length
+  const demoCount = sourceList.filter((s) => s.data_source === 'demo').length
+  const hasDataSource = liveCount > 0 || demoCount > 0
 
-function PrintView({ report, qaResult }: { report: CompetitiveReport; qaResult: QAResult | undefined }) {
-  return (
-    <div className="space-y-8 text-sm text-gray-800">
-      {/* Executive Summary */}
-      {report.executive_summary?.length > 0 && (
-        <section>
-          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
-            Executive Summary
-          </h2>
-          <ol className="space-y-2">
-            {report.executive_summary.map((claim, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="shrink-0 font-mono text-xs text-gray-400">[{i + 1}]</span>
-                <span>{claim.text}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-
-      {/* Pricing Comparison */}
-      {Object.keys(report.pricing_comparison ?? {}).length > 0 && (
-        <section>
-          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
-            Pricing Comparison
-          </h2>
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="border border-gray-200 px-3 py-2 text-left">Competitor</th>
-                <th className="border border-gray-200 px-3 py-2 text-left">Pricing</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(report.pricing_comparison).map(([comp, pricing]) => (
-                <tr key={comp}>
-                  <td className="border border-gray-200 px-3 py-2 font-medium">{comp}</td>
-                  <td className="border border-gray-200 px-3 py-2">{pricing}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {/* Feature Comparison */}
-      {Object.keys(report.feature_comparison ?? {}).length > 0 && (
-        <section>
-          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
-            Feature Comparison
-          </h2>
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="border border-gray-200 px-3 py-2 text-left">Competitor</th>
-                <th className="border border-gray-200 px-3 py-2 text-left">Features</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(report.feature_comparison).map(([comp, features]) => (
-                <tr key={comp}>
-                  <td className="border border-gray-200 px-3 py-2 font-medium">{comp}</td>
-                  <td className="border border-gray-200 px-3 py-2">{features}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {/* SWOT */}
-      {report.competitor_overview?.some((ck) => (ck as { swot?: unknown }).swot) && (
-        <section>
-          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
-            SWOT Analysis
-          </h2>
-          <SWOTView
-            swotComparison={report.swot_comparison ?? {}}
-            competitorOverview={report.competitor_overview ?? []}
-          />
-        </section>
-      )}
-
-      {/* Strategic Recommendations */}
-      {report.strategic_recommendations?.length > 0 && (
-        <section>
-          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
-            Strategic Recommendations
-          </h2>
-          <ol className="space-y-2">
-            {report.strategic_recommendations.map((claim, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="shrink-0 font-mono text-xs text-gray-400">[{i + 1}]</span>
-                <span>{claim.text}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-
-      {/* Full Markdown narrative */}
-      {report.markdown_content && (
-        <section>
-          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
-            Full Report
-          </h2>
-          <div className="markdown-body leading-relaxed">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {report.markdown_content}
-            </ReactMarkdown>
-          </div>
-        </section>
-      )}
-
-      {/* QA Result */}
-      {qaResult && (
-        <section>
-          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
-            QA Result
-          </h2>
-          <QAResultBanner result={qaResult} />
-        </section>
-      )}
-
-      {/* Sources */}
-      {report.source_list?.length > 0 && (
-        <section>
-          <h2 className="mb-3 border-b border-gray-200 pb-1 text-base font-semibold text-gray-900">
-            Sources
-          </h2>
-          <ol className="space-y-1 text-xs">
-            {report.source_list.map((s, i) => (
-              <li key={s.source_id} className="flex gap-2">
-                <span className="shrink-0 text-gray-400">[{i + 1}]</span>
-                <span>
-                  <span className="font-medium">{s.title || s.url}</span>
-                  {' — '}
-                  <span className="text-gray-500">{s.url}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-    </div>
-  )
+  if (!hasDataSource) return <span>{total} sources cited</span>
+  if (liveCount === 0) return <span>{total} sources cited (demo)</span>
+  if (demoCount === 0) return <span>{total} sources cited · {liveCount} live</span>
+  return <span>{total} sources cited · {liveCount} live · {demoCount} demo</span>
 }
 
 function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: SourceEvidence[] }) {
@@ -504,12 +485,64 @@ function ReportSkeleton({ id }: { id: string }) {
   )
 }
 
-function exportMarkdown(content: string, title: string) {
+function CustomDimensionTable({ analysis }: { analysis: Record<string, Record<string, unknown>> }) {
+  return (
+    <div className="space-y-4">
+      <h3 className="text-base font-semibold text-gray-900">Custom Dimension Analysis</h3>
+      {Object.entries(analysis).map(([dim, compData]) => (
+        <div key={dim} className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 capitalize">
+            {dim.replace(/_/g, ' ')}
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="px-3 py-2 text-left font-medium text-gray-500">Competitor</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-500">Score</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-500">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(compData).map(([name, val]) => {
+                const cell = val as { score?: number | string; rationale?: string } | undefined
+                return (
+                  <tr key={name} className="border-b border-gray-100 last:border-0">
+                    <td className="px-3 py-2 font-medium text-gray-700">{name}</td>
+                    <td className="px-3 py-2 text-center text-gray-600">{cell?.score ?? '—'}</td>
+                    <td className="px-3 py-2 text-gray-600">{cell?.rationale ?? ''}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function exportMarkdown(content: string, title: string, sourceList: SourceEvidence[]) {
   const filename = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || 'report'
-  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+
+  const sourceIndex = new Map(sourceList.map((s, i) => [s.source_id, i + 1]))
+  const cleaned = content.replace(/\[src_[0-9a-f]+\]/g, (match) => {
+    const id = match.slice(1, -1)
+    const num = sourceIndex.get(id)
+    return `[${num ?? '?'}]`
+  })
+
+  const sourceSection =
+    sourceList.length > 0
+      ? '\n\n## Sources\n\n' +
+        sourceList
+          .map((s, i) => `${i + 1}. ${s.title || s.url} — ${s.url}`)
+          .join('\n')
+      : ''
+
+  const blob = new Blob([cleaned + sourceSection], { type: 'text/markdown;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -521,7 +554,7 @@ function exportMarkdown(content: string, title: string) {
 function extractLatestQA(traces: AgentRun[]): QAResult | undefined {
   const qaRun = [...traces].reverse().find((t) => t.agent_name.includes('QA'))
   if (!qaRun) return undefined
-  const out = qaRun.output as Partial<QAResult>
+  const out = qaRun.output as Partial<QATraceOutput>
   if (typeof out?.passed !== 'boolean' || typeof out?.score !== 'number') {
     return undefined
   }
@@ -547,4 +580,54 @@ function normalizeStringMap(input: unknown): Record<string, string> {
     }
   }
   return out
+}
+
+function computeDroppedCompetitors(
+  requested: CompetitorInProject[],
+  report: CompetitiveReport | undefined,
+  traces: AgentRun[],
+): DroppedCompetitor[] {
+  if (!report || requested.length === 0) return []
+  const analysedNames = new Set(
+    (report.competitor_overview ?? []).map((c) => c.competitor_name.toLowerCase())
+  )
+  const dropped = requested.filter((c) => !analysedNames.has(c.name.toLowerCase()))
+  if (dropped.length === 0) return []
+
+  const collectorTrace = traces.find((t) => t.agent_name.includes('Collector'))
+  const collectorOutput = (collectorTrace?.output ?? {}) as Record<string, unknown>
+  const failedUrls = (collectorOutput.failed_urls as string[] | undefined) ?? []
+  const coverageMap = (collectorOutput.source_coverage_by_competitor as
+    Record<string, { score: number }> | undefined) ?? {}
+  const dataMode = (collectorOutput.data_mode as string | undefined) ?? 'demo'
+
+  return dropped.map((comp) => ({
+    name: comp.name,
+    url: comp.url,
+    reason: inferDropReason(comp.name, comp.url, failedUrls, coverageMap, dataMode),
+  }))
+}
+
+function inferDropReason(
+  name: string,
+  url: string,
+  failedUrls: string[],
+  coverageMap: Record<string, { score: number }>,
+  dataMode: string,
+): string {
+  try {
+    const hostname = new URL(url).hostname
+    if (failedUrls.some((u) => u.includes(hostname))) return 'Homepage failed or unreachable'
+  } catch {
+    // ignore invalid URL
+  }
+
+  const cov = coverageMap[name]
+  if (cov !== undefined) {
+    if (cov.score === 0) return 'No usable sources collected'
+    if (cov.score < 40) return `Weak coverage (score ${cov.score}/100)`
+  }
+
+  if (dataMode === 'demo') return 'No demo fixture found'
+  return 'Insufficient sources for analysis'
 }

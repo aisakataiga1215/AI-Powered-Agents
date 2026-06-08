@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full bg-gray-50 text-gray-900 antialiased" suppressHydrationWarning>
         <ClientProviders>
           <div className="flex min-h-screen flex-col">
-            <header className="border-b border-gray-200 bg-white">
+            <header className="border-b border-gray-200 bg-white print:hidden">
               <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
                 <div className="flex items-center gap-3">
                   <Link
@@ -46,7 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </header>
             <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
-            <footer className="border-t border-gray-200 bg-white">
+            <footer className="border-t border-gray-200 bg-white print:hidden">
               <div className="mx-auto max-w-6xl px-6 py-4 text-xs text-gray-500">
                 AgentInsight MVP — multi-agent competitive analysis with source-traceable claims.
                 Verify cited evidence before sharing generated reports externally.

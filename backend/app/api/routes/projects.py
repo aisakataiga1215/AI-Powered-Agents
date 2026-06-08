@@ -5,6 +5,7 @@ GET /api/projects/{id}. Workflow execution is delegated to the
 LangGraph workflow when available.
 """
 
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
@@ -16,6 +17,7 @@ from app.core.errors import NotFoundError
 from app.core.logging import get_logger
 from app.schemas.competitor import CompetitorInput
 from app.schemas.project import (
+    CompetitorInProject,
     ProjectCreate,
     ProjectResponse,
     ProjectStatus,
@@ -39,11 +41,19 @@ def _to_response(project) -> ProjectResponse:
     return ProjectResponse(
         project_id=project.id,
         industry=project.industry,
+        industry_type=getattr(project, "industry_type", "general") or "general",
+        analysis_purpose=getattr(project, "analysis_purpose", "general") or "general",
+        custom_dimensions=json.loads(getattr(project, "custom_dimensions", "[]") or "[]"),
         goals=project_service.deserialize_goals(project),
         status=ProjectStatus(project.status),
         output_language=project.output_language,
         created_at=_iso(project.created_at),
         updated_at=_iso(project.updated_at),
+        data_mode=getattr(project, "data_mode", "demo") or "demo",
+        competitors=[
+            CompetitorInProject(name=c.name, url=c.url)
+            for c in (project.competitors or [])
+        ],
     )
 
 
@@ -80,7 +90,11 @@ def run_project(
     project_service.update_project_status(db, project_id, ProjectStatus.running)
 
     competitors_payload: list[dict] = [
-        CompetitorInput(name=c.name, url=c.url).model_dump()
+        {
+            "name": c.name,
+            "url": c.url,
+            "role": getattr(c, "role", "direct_competitor") or "direct_competitor",
+        }
         for c in project_service.get_project_competitors(db, project_id)
     ]
     goals_payload = project_service.deserialize_goals(project)
@@ -93,6 +107,10 @@ def run_project(
             goals_payload,
             settings.database_url,
             project.output_language,
+            getattr(project, "data_mode", "demo") or "demo",
+            getattr(project, "industry_type", "general") or "general",
+            getattr(project, "analysis_purpose", "general") or "general",
+            json.loads(getattr(project, "custom_dimensions", "[]") or "[]"),
         )
     else:
         logger.warning(

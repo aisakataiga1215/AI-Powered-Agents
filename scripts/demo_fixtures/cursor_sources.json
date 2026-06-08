@@ -1,0 +1,54 @@
+[
+  {
+    "source_id": "src_cursor_001",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Cursor",
+    "source_type": "official_website",
+    "url": "https://cursor.com",
+    "title": "Cursor - The AI Code Editor",
+    "snippet": "Cursor is the AI code editor built to make you extraordinarily productive. Cursor is a fork of VS Code, redesigned from the ground up around AI.",
+    "content": "Cursor is the AI code editor built to make you extraordinarily productive. Built by Anysphere, Cursor is designed to be the best way to code with AI. It's a fork of VS Code, redesigned from the ground up around AI, so you get the familiar editor experience you already know combined with deeply integrated AI capabilities that understand your entire codebase.\n\nCursor's Tab feature predicts your next edit across multiple lines, going far beyond traditional autocomplete. The model learns your coding patterns and suggests multi-line changes that match your style. With Ctrl+K, you can instantly edit or generate code inline using natural language - just describe what you want and Cursor produces the change directly in your editor.\n\nThe Agent mode lets Cursor work across multiple files simultaneously. You can describe a high-level task, and the agent will plan, edit, and verify changes spanning your entire codebase. Codebase-aware @-mentions let you reference specific files, symbols, or documentation, giving the AI precise context for every interaction.\n\nCursor supports the latest frontier models including Claude 3.5 Sonnet, GPT-4o, and Cursor's own custom models. Engineers at companies like Shopify, Stripe, OpenAI, and Perplexity use Cursor every day. Whether you're building a side project or shipping production code at scale, Cursor adapts to how you work. Download Cursor for macOS, Windows, and Linux to start coding faster today.",
+    "retrieved_at": "2025-05-27T10:00:00",
+    "reliability": "high"
+  },
+  {
+    "source_id": "src_cursor_002",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Cursor",
+    "source_type": "pricing_page",
+    "url": "https://cursor.com/pricing",
+    "title": "Cursor Pricing - Plans for Individuals and Teams",
+    "snippet": "Cursor offers a free Hobby plan, a Pro plan at $20/month, and a Business plan at $40/user/month with team management features.",
+    "content": "Cursor offers three pricing tiers designed to fit individual developers, professionals, and teams. The Hobby plan is free and includes Pro features for two weeks as a trial, 2000 completions, and 50 slow premium requests per month. It's a great way to evaluate Cursor before committing to a paid plan.\n\nThe Pro plan costs $20 per month and includes unlimited completions, 500 fast premium requests per month, unlimited slow premium requests, and access to advanced models including Claude 3.5 Sonnet, GPT-4o, and o1-mini. Pro users also get access to longer context windows and priority during peak times. This is the most popular plan among individual professional developers.\n\nThe Business plan costs $40 per user per month and includes everything in Pro plus organization-wide privacy mode, centralized team billing, an admin dashboard with usage analytics, SAML/OIDC SSO integration, and enforced privacy controls. This plan targets engineering teams and enterprises that need governance over how their developers use AI.\n\nAll plans support the same core editor features including Tab completion, Ctrl+K inline editing, codebase chat, and Agent mode. Premium requests use the most capable frontier models such as Claude 3.5 Sonnet and GPT-4o. Slow requests are queued during high demand. Annual billing offers a discount equivalent to two months free. You can upgrade, downgrade, or cancel anytime from your account dashboard.",
+    "retrieved_at": "2025-05-27T10:05:00",
+    "reliability": "high"
+  },
+  {
+    "source_id": "src_cursor_003",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Cursor",
+    "source_type": "docs",
+    "url": "https://docs.cursor.com/features",
+    "title": "Cursor Documentation - Core Features",
+    "snippet": "Cursor's core features include Tab (Copilot++), Ctrl+K inline edit, Agent mode for multi-file changes, and codebase-aware chat with @-mentions.",
+    "content": "Cursor's core feature set is built around four primary capabilities that work together to accelerate coding workflows. The Tab feature, internally called Copilot++, is a custom-trained model that predicts your next edit. Unlike traditional autocomplete that only suggests text following the cursor, Tab can suggest edits anywhere in the current file, including deletions and modifications to existing lines. Press Tab to accept the suggestion.\n\nCtrl+K (Cmd+K on macOS) provides inline editing. Select a block of code, press Ctrl+K, and describe the change you want in natural language. Cursor generates a diff that you can review and apply. Ctrl+K also works on empty lines to generate new code from a prompt. This is the fastest way to make targeted edits without leaving your current context.\n\nAgent mode is Cursor's most powerful feature for complex tasks. Invoked through the chat panel, the agent can read files, run terminal commands, search the codebase, and make edits across multiple files. The agent reasons about the task, proposes a plan, and executes changes with your approval. Agent mode is ideal for refactors, bug fixes that span modules, and feature implementations.\n\nCodebase-aware chat uses @-mentions to reference specific context. Type @ followed by a filename, symbol, or documentation page to inject precise context into your prompt. Cursor also automatically indexes your repository so the AI understands your project structure, naming conventions, and dependencies. You can configure model selection, privacy mode, and ignored paths from the settings panel.",
+    "retrieved_at": "2025-05-27T10:10:00",
+    "reliability": "high"
+  },
+  {
+    "source_id": "src_cursor_004",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Cursor",
+    "source_type": "review",
+    "url": "https://www.reddit.com/r/cursor/comments/community_feedback_2025",
+    "title": "Six months with Cursor - the good, the bad, and the expensive",
+    "snippet": "Users love Cursor's Tab completion and Agent mode but frequently complain that $20/month is steep for solo indie developers compared to free alternatives.",
+    "content": "After six months daily-driving Cursor, here's my honest take. The Tab completion is genuinely the best I've used. It catches refactors I didn't even think to ask for and saves me dozens of keystrokes per file. One user wrote: \"Cursor's Tab is the only AI feature I'd actually pay for - it feels like the editor is reading my mind.\" Agent mode has gotten much better in the last few releases and can now handle multi-file refactors that would have taken me an afternoon.\n\nThe codebase awareness is impressive. When I @-mention a file or symbol, the AI actually understands the context instead of hallucinating. Compared to using Copilot in plain VS Code, the difference is night and day. The Ctrl+K inline edit is also a workflow I miss instantly when I switch back to a regular editor.\n\nThat said, the pricing comes up constantly in the community. $20 a month is fine if you're a working developer, but for indie hackers and students it stings. A common comment: \"I love Cursor but $240 a year for an editor is a lot when Trae gives me Claude for free.\" The 500 fast premium requests limit also feels tight if you're using Agent mode heavily on a big codebase. Slow mode is usable but the queue can get long during US business hours.\n\nOther frequent complaints include occasional indexing issues on very large monorepos, the macOS app feeling a bit heavy on RAM, and some users feeling that the gap between free and Pro is intentionally widened. Overall sentiment is positive among professional developers, more mixed among hobbyists and students who balk at the price tag. The product is clearly winning the early-adopter market but faces real competition on price from Windsurf and Trae.",
+    "retrieved_at": "2025-05-27T10:15:00",
+    "reliability": "medium"
+  }
+]

@@ -1,8 +1,8 @@
 # Project Status
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-08
 
-## Current Status: Frontend MVP Complete
+## Current Status: M13B Complete — PM-Style Report Structure
 
 ---
 
@@ -63,7 +63,108 @@
 - [x] Status `completed`, QA passes first attempt
 - [x] Frontend demo flow: create project → run workflow → view traces → view report → click citations
 
----
+### Milestone 7 (v1): Live Data Collection ✅ COMPLETE
+
+- [x] Per-project `data_mode` (`demo` | `live_with_fallback`) — schema, DB migration, frontend selector
+- [x] `crawler_service.crawl_page()` — httpx + BeautifulSoup, 10s timeout, 1 retry, best-effort robots.txt
+- [x] `source_discovery` — probes well-known paths (`/pricing`, `/features`, `/docs`, `/about`, `/security`, `/privacy`)
+- [x] `source_classifier` — URL-path-first keyword classifier mapping to `SourceType`
+- [x] `coverage_evaluator` — per-competitor scoring with `WEAK_THRESHOLD=40`
+- [x] `CollectorAgent._collect_live()` — per-competitor live path with demo fallback merge
+- [x] `QAAgent.check_source_coverage()` — per-competitor coverage issues (`missing_pricing_source`, `missing_features_source`)
+- [x] Frontend Live/Demo source badges and source-count breakdown in report viewer
+- [x] 226 tests passing (5 new test modules)
+
+### Milestone 8 (v1 Hardening): Source Quality Validation ✅ COMPLETE
+
+- [x] `SourceClassifier` content validation — URL path is hint only; title + content must confirm `SourceType`; empty content trusts URL (backward-compat)
+- [x] Bad-page blocklist in `crawl_page()` — rejects Discord/Cloudflare/captcha/access-denied pages (checks both title and body preview)
+- [x] New QA issue types: `weak_source_quality`, `source_type_content_mismatch`
+- [x] `QAAgent.check_source_quality()` — per-source content mismatch check; high severity for blocked content, medium for weak content
+- [x] Feature taxonomy normalization — `normalize_feature_category()` + `CATEGORY_ALIASES` in `normalization_service.py`, applied in both `_normalize_features()` and `writer_agent._build_feature_comparison()`
+- [x] Tests: 239 passing (+13 new)
+
+### Milestone 11: Partial Report / QA-Failed Visibility ✅ COMPLETE
+
+- [x] **`ProjectResponse.competitors`** — backend now returns all requested competitors (name + url) via `GET /projects/{id}`; no new DB query needed (uses existing ORM relationship).
+- [x] **`QaStatusBanner`** — orange warning for `qa_failed`, red for `failed`; shows dropped-competitor count.
+- [x] **`DroppedCompetitorsList`** — shows each dropped competitor with name, URL, and inferred reason (demo fixture missing, homepage unreachable, weak coverage score, etc.).
+- [x] **Report page** — project query added; banner shown for non-`completed` / non-`running` status; header chip shows "N of M analysed (K dropped)"; QA tab includes dropped-competitors list; PDF button label changes to "Export Partial PDF" for `qa_failed`.
+- [x] **Print page** — same project query; warning banner at top of printed document; "Dropped / Insufficient Competitors" section between QA Result and References.
+- [x] 259 backend tests still passing; clean TypeScript build.
+
+### Milestone 12: v1.5 Robustness Hardening ✅ COMPLETE
+
+- [x] **Industry-specific source discovery**: `_INDUSTRY_PATHS` + `_INDUSTRY_MAX_PAGES` — ecommerce (14 paths, 8 pages), local_services (12 paths, 8 pages), ai_saas (10 paths, 5 pages), general (6 paths, 5 pages). `CANDIDATE_PATHS` backward-compat alias preserved.
+- [x] **`industry_type` field end-to-end**: schema → DB migration → project service → API response → workflow state → collector agent → frontend.
+- [x] **Fixed fallback semantics**: demo mode no longer sets `fallback_*` fields (those are `live_with_fallback`-only). `fixture_exists()` side-effect-free check before `load_demo_fixtures()`.
+- [x] **Coverage-quality "analyzed" gate**: `_is_adequately_covered()` — score ≥ 40 OR (homepage AND (pricing OR features/docs)). `sufficiently_collected_competitors` in trace for observability (does NOT gate AnalystAgent).
+- [x] **`_CollectionResult` dataclass**: typed replacement for bare 4-tuple with `attempted_urls`, per-competitor stats, and explicit fallback semantics fields.
+- [x] **`_infer_drop_reason()`**: human-readable drop reasons per mode ("No demo fallback available", "Crawl failed — no usable sources", etc.).
+- [x] **`attempted_urls_by_competitor` in trace**: logs every URL probed for each competitor.
+- [x] **`InsufficientDataView` component**: amber diagnostic section when `citedSources==0 || summaryLen==0 || qaScore<30 || analysedCount<2`. Receives `qaResult` directly; reads CollectorAgent trace for stats/URLs only.
+- [x] **Industry type selector in frontend**: 4-option radio card group; default `'general'`; submitted with project payload.
+- [x] **Print page `isInsufficientData` gate**: `PrintInsufficientDataSection` rendered instead of full report when data is insufficient.
+- [x] 280 backend tests passing (+21 new); clean TypeScript build.
+
+### Milestone 13B: PM-Style Report Structure ✅ COMPLETE
+
+- [x] `backend/app/schemas/pm_sections.py` (NEW) — MarketTrend, MarketBackground, FeatureInsights, GtmProfile, OperationMonetization
+- [x] `CompetitiveReport` extended with 3 new optional fields: market_background, feature_insights, operation_monetization
+- [x] `IssueType` extended with 3 new values: missing_market_background, missing_feature_insights, missing_operation_monetization
+- [x] WriterAgent: `_PM_SECTIONS_INSTRUCTION` appended to all user messages (always, regardless of analysis_purpose); `_normalize_report_payload` handles all 3 with try/except
+- [x] QAAgent: advisory-only `check_pm_sections()` (3 medium-severity checks, never block pass/fail)
+- [x] `MarketBackground.tsx` (NEW) — market overview prose, market_size_notes badge, trend list, drivers/challenges chip grid
+- [x] `FeatureInsights.tsx` (NEW) — table-stakes chips, differentiator table, gap opportunity cards, cross-competitor patterns list
+- [x] `OperationMonetization.tsx` (NEW) — GTM profile cards, monetization patterns, AARRR funnel table
+- [x] Report viewer: new "Market & Ops" tab (index 3, after Features, before SWOT)
+- [x] Print page: 3 new PrintSections for all PM-framework sections
+- [x] `general` purpose: sections always generated; existing behavior unchanged
+- [x] 304 backend tests passing (+10 new); clean TypeScript build
+
+### Milestone 13A: Minimal Product Analysis Framework ✅ COMPLETE
+
+- [x] `analysis_purpose` field (`general` | `build_product` | `choose_product`) — schema, DB migration, API, workflow state, frontend selector
+- [x] `custom_dimensions: string[]` — user-defined analysis axes; DB migration (JSON TEXT), frontend tag-chip input, injected into analyst + writer prompts
+- [x] `CompetitorRole` (`direct_competitor` | `indirect_competitor` | `inspiration_product` | `benchmark_leader`) — competitor-level annotation; DB migration, frontend per-competitor `<select>`, propagated through workflow
+- [x] `social` added to `IndustryType` — source discovery paths + frontend 5th radio card
+- [x] `backend/app/schemas/scoring.py` (NEW) — `DimensionScore`, `CompetitorScore`, `OpportunityDimension`, `OpportunityScore` with Pydantic field-range validation
+- [x] `CompetitiveReport` extended — 7 new fields: `analysis_purpose`, `analysis_objective`, `competitor_selection_rationale`, `purpose_sections`, `competitor_scores`, `opportunity_score`, `custom_dimension_analysis`
+- [x] `AnalystAgent` — purpose directives and competitor-role cues injected into user message; custom dimension instructions appended
+- [x] `WriterAgent` — purpose-specific JSON output instructions; `_normalize_report_payload()` validates all new fields gracefully; sets `report.analysis_purpose` after bind
+- [x] `QAAgent` — 2 advisory-only medium-severity checks (`check_custom_dimensions`, `check_scoring_rationale`); never affect pass/fail threshold
+- [x] `frontend/components/report-viewer/ScoringMatrix.tsx` (NEW) — choose_product: competitor-column matrix; build_product: single-column opportunity table; color-coded scores + confidence badges
+- [x] `frontend/components/report-viewer/PurposeSections.tsx` (NEW) — choose_product: ranking, best_for, avoid, decision_matrix; build_product: gaps, learn_from, pitfalls, differentiation, mvp_direction
+- [x] Report viewer — dynamic "Build Insights" / "Decision Guide" tab; analysis_objective + competitor_selection_rationale summary card; inline `CustomDimensionTable`
+- [x] Print page — `PrintSection` blocks for scoring matrix + purpose sections; rendered only when `analysis_purpose !== 'general'`
+- [x] `general` purpose default — all existing behavior unchanged; purpose tab hidden; QA advisory checks return no issues
+- [x] ~291 backend tests passing (+11 new: test_scoring_schema.py ×5, test_qa_purpose_checks.py ×7); clean TypeScript build
+
+### Milestone 10: QA Display Fix + Trace Export ✅ COMPLETE
+
+- [x] **QA display mismatch fixed** — `_build_trace_output` now includes full `issues` array +
+  `medium_severity_count`, `low_severity_count`, `blocking_issue_count`, `advisory_count`.
+  UI report page QA tab and PDF print page now show all issues/advisories correctly.
+- [x] **Advisory display** — low-severity issues shown as "advisories" throughout;
+  QA tab badge shows amber "N adv" when passed with advisories, green "ok" when clean,
+  red count when failing; `QAResultBanner` and `PrintQAResult` use separate sub-headings.
+- [x] **`QATraceOutput` TypeScript type** — explicit interface for QAAgent trace output shape.
+- [x] **Trace export** — Export Trace JSON and Export Trace Markdown buttons on
+  `/projects/[id]/traces`; browser-only Blob downloads; no new API endpoints.
+- [x] **5 new backend regression tests** — 259 passing total.
+
+
+
+- [x] QA score invariant enforced via `@model_validator` on `QAResult`
+- [x] Feature taxonomy: CATEGORY_ALIASES extended (Agent Command Center, TRAE SOLO,
+      Agent Requests, Agent Management, Agent Execution → "AI Agents";
+      Cloud Agents / Devin Cloud → "Cloud Agents" separate canonical)
+- [x] Writer `_build_feature_comparison()` merges same-canonical categories (no duplicate rows)
+- [x] `IssueType.brand_mismatch` (low severity, advisory) with `_PRODUCT_BRAND_MAP`
+- [x] Persona fallback descriptions derived from product name + positioning hint
+- [x] 254 tests passing (+15 new)
+
+
 
 ## Component Status
 
@@ -72,41 +173,84 @@
 | FastAPI backend | ✅ Complete |
 | SQLite database | ✅ Complete |
 | CollectorAgent (demo fixtures) | ✅ Complete |
+| CollectorAgent (live + fallback) | ✅ Complete (v1) |
 | AnalystAgent (two-stage extraction) | ✅ Complete |
 | WriterAgent (deterministic pricing + features) | ✅ Complete |
 | QAAgent (rule-based, rework routing) | ✅ Complete |
+| QAAgent source coverage checks | ✅ Complete (v1) |
 | LangGraph workflow with rework loop | ✅ Complete |
-| 142 passing tests | ✅ Complete |
+| SourceDiscoveryService | ✅ Complete (v1) |
+| SourceClassifier | ✅ Complete (v1) |
+| CoverageEvaluator | ✅ Complete (v1) |
+| HTTP crawler (httpx + BeautifulSoup) | ✅ Complete (v1) |
+| 239 passing tests | ✅ Complete (v1 hardening) |
+| QA score invariant (`@model_validator`) | ✅ Complete (Phase 2) |
+| Feature taxonomy merge in writer | ✅ Complete (Phase 2) |
+| Brand mismatch advisory check | ✅ Complete (Phase 2) |
+| Persona fallback descriptions | ✅ Complete (Phase 2) |
+| 254 passing tests | ✅ Complete (Phase 2) |
+| SourceClassifier content validation | ✅ Complete (v1 hardening) |
+| Bad-page blocklist (Discord/captcha/Cloudflare) | ✅ Complete (v1 hardening) |
+| QA source quality checks (`weak_source_quality`) | ✅ Complete (v1 hardening) |
+| Feature taxonomy normalization | ✅ Complete (v1 hardening) |
 | Real DeepSeek LLM workflow end-to-end | ✅ Complete |
 | Token usage tracking | ✅ Complete |
+| Dedicated print/export page (`/print`) | ✅ Complete |
 | Next.js frontend (4 pages) | ✅ Complete |
+| Data mode selector (frontend) | ✅ Complete (v1) |
+| Live/Demo source badges | ✅ Complete (v1) |
 | Report viewer UI (7 tabs) | ✅ Complete |
 | Agent trace timeline UI | ✅ Complete |
 | Source citation side panel | ✅ Complete |
 | AgentDAG visualization (React Flow) | ✅ Complete |
+| QA-failed / partial report visibility | ✅ Complete (Milestone 11) |
+| Industry-type source discovery | ✅ Complete (Milestone 12) |
+| `InsufficientDataView` + insufficient-data gate | ✅ Complete (Milestone 12) |
+| Industry type selector (frontend) | ✅ Complete (Milestone 12) |
+| Fixed fallback semantics (demo vs live_with_fallback) | ✅ Complete (Milestone 12) |
+| Coverage-quality analyzed/dropped gate | ✅ Complete (Milestone 12) |
+| `analysis_purpose` field + workflow propagation | ✅ Complete (Milestone 13A) |
+| `custom_dimensions` + analyst/writer injection | ✅ Complete (Milestone 13A) |
+| `CompetitorRole` annotation end-to-end | ✅ Complete (Milestone 13A) |
+| `social` IndustryType + source discovery paths | ✅ Complete (Milestone 13A) |
+| Scoring schemas (DimensionScore, CompetitorScore, OpportunityScore) | ✅ Complete (Milestone 13A) |
+| WriterAgent purpose-specific sections + scoring | ✅ Complete (Milestone 13A) |
+| QAAgent advisory purpose checks (medium severity) | ✅ Complete (Milestone 13A) |
+| ScoringMatrix.tsx + PurposeSections.tsx (frontend) | ✅ Complete (Milestone 13A) |
+| Report viewer purpose tab ("Build Insights" / "Decision Guide") | ✅ Complete (Milestone 13A) |
+| Print page scoring + purpose sections | ✅ Complete (Milestone 13A) |
+| `pm_sections.py` schema (MarketBackground, FeatureInsights, OperationMonetization) | ✅ Complete (Milestone 13B) |
+| WriterAgent PM-framework section instructions | ✅ Complete (Milestone 13B) |
+| QAAgent advisory PM checks (check_pm_sections) | ✅ Complete (Milestone 13B) |
+| MarketBackground.tsx + FeatureInsights.tsx + OperationMonetization.tsx | ✅ Complete (Milestone 13B) |
+| Report viewer "Market & Ops" tab | ✅ Complete (Milestone 13B) |
+| Print page PM-framework sections | ✅ Complete (Milestone 13B) |
 
 ---
 
 ## Current Focus
 
-v1 polish. The MVP is usable end-to-end; next focus is quality and reliability improvements.
+All planned milestones through Milestone 13B are complete. Next steps below.
 
-## Next Steps (v1)
+## Next Steps
+
+### After M13B (v2)
 
 1. Add frontend automated tests (Playwright E2E for the golden path)
-2. Add real web crawling via CollectorAgent (replace demo fixtures with live data)
-3. Improve `user_personas` (needs/pain_points currently empty when LLM omits them)
-4. Add project title field to creation form (currently shows project_id in listings)
-5. Pagination on projects list page (currently unbounded)
-6. Add PostgreSQL support as an alternative to SQLite
-7. Improve MarkdownTab prose styling (code blocks, tables, lists)
+2. Improve `user_personas` (needs/pain_points currently empty when LLM omits them)
+3. Add project title field to creation form (currently shows project_id in listings)
+4. Pagination on projects list page (currently unbounded)
+5. Add PostgreSQL support as an alternative to SQLite
+6. Improve MarkdownTab prose styling (code blocks, tables, lists)
+7. Expand live crawler beyond well-known paths (sitemap parsing, link following with depth limit)
+8. Persist robots.txt cache and crawl budget per project
 
 ---
 
-## Known Limitations (Not Blocking MVP)
+## Known Limitations (Not Blocking v1)
 
 - `user_personas` needs/pain_points are empty stubs when LLM omits them
-- No real web crawling (demo fixtures only)
+- Live crawler limited to well-known paths on the root domain (no link following, no sitemap parsing)
 - Single-user, no auth
 - SQLite only (no PostgreSQL)
 - No frontend automated tests

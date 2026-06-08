@@ -22,36 +22,32 @@ function toDate(iso: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-/** Full date + time in 24-hour UTC+8, e.g. "Jun 1, 2026, 19:39 UTC+8" */
+/** Full date + time in 24-hour UTC+8, e.g. "Jun 1, 2026, 19:39" */
 export function formatDateTime(iso: string): string {
   const d = toDate(iso)
   if (!d) return iso || '—'
-  return (
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: TZ,
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(d) + ' UTC+8'
-  )
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d)
 }
 
-/** Time only in 24-hour UTC+8, e.g. "19:39:05 UTC+8" */
+/** Time only in 24-hour UTC+8, e.g. "19:39:05" */
 export function formatTime(iso: string): string {
   const d = toDate(iso)
   if (!d) return iso || '—'
-  return (
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: TZ,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    }).format(d) + ' UTC+8'
-  )
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d)
 }
 
 /** Date only (no time, no TZ label), e.g. "Jun 1, 2026" */

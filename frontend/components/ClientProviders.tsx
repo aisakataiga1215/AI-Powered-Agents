@@ -26,7 +26,9 @@ export function ClientProviders({ children }: ClientProvidersProps) {
     <QueryClientProvider client={queryClient}>
       {children}
       {process.env.NODE_ENV !== 'production' && (
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
+        <div className="print:hidden">
+          <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
+        </div>
       )}
     </QueryClientProvider>
   )

@@ -1,0 +1,41 @@
+[
+  {
+    "source_id": "src_trae_001",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Trae",
+    "source_type": "official_website",
+    "url": "https://www.trae.ai",
+    "title": "Trae - The Real AI Engineer",
+    "snippet": "Trae is a free AI-powered IDE from ByteDance that offers Claude 3.5 Sonnet and GPT-4o without requiring an API key, with an integrated Builder Mode for multi-file agentic coding.",
+    "content": "Trae is an AI-powered IDE built by ByteDance designed to be a real AI engineering collaborator rather than just an autocomplete tool. Trae is currently free for all users with no paid tiers, no usage caps, and no API keys required. You sign in, you code, and you get frontier model assistance immediately.\n\nUnlike many AI coding tools that are VS Code forks bolted onto AI features, Trae is built as a standalone IDE from the ground up. The interface borrows the familiar editor patterns developers expect while adding deeply integrated AI panels for chat, planning, and multi-file edits. Trae supports Windows, macOS, and increasingly Linux platforms with native installers.\n\nAt the heart of Trae is the Builder Mode, an agentic editing surface where you describe a feature or change in plain language and Trae produces a plan, edits multiple files, and reports back. Builder Mode is designed for tasks larger than a single function - implementing a new endpoint, refactoring a module, adding a feature across the UI and backend. The IDE includes traditional AI features too: inline completion, chat with codebase context, and quick fixes.\n\nTrae includes built-in access to Claude 3.5 Sonnet and GPT-4o without requiring users to bring their own API keys. This removes a significant friction point for individual developers and students who want to evaluate frontier models without committing to a subscription or signing up for cloud accounts. Trae also supports the MCP protocol, allowing extensions and external tool servers to plug into the agent loop. The product is rapidly iterating with frequent updates and a growing developer community.",
+    "retrieved_at": "2025-05-27T10:20:00",
+    "reliability": "high"
+  },
+  {
+    "source_id": "src_trae_002",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Trae",
+    "source_type": "pricing_page",
+    "url": "https://www.trae.ai/pricing",
+    "title": "Trae Pricing - Free for Everyone",
+    "snippet": "Trae is completely free with no paid plans, offering unlimited access to Claude 3.5 Sonnet and GPT-4o at no cost to all users.",
+    "content": "Trae is completely free. There are no paid tiers, no subscription options, and no usage quotas displayed on the pricing page. Every user gets the same access to the IDE and the integrated AI features, including Builder Mode, codebase chat, inline completion, and direct access to frontier models such as Claude 3.5 Sonnet and GPT-4o.\n\nThe pricing page explicitly states that Trae is free during this period and that ByteDance is funding model usage on behalf of users. There is no requirement to bring your own API key, sign up for cloud credits, or attach a payment method. Account creation only requires an email or a supported single sign-on provider.\n\nByteDance has not publicly committed to a permanent free model. The pricing page includes language suggesting that pricing may evolve as the product matures, but as of the current release no paid tier has been announced and no usage limits are enforced for individual users. Some community speculation expects a future paid tier for teams or organizations, but nothing is confirmed.\n\nFor users coming from Cursor's $20 per month plan or Windsurf's $10 per month plan, the cost difference is significant. Trae's approach is clearly aimed at building user share rapidly by removing pricing friction entirely. The trade-off is that users must accept that the product, its data handling, and its long-term roadmap are controlled by ByteDance. The pricing page also notes that enterprise inquiries should contact the sales team, suggesting a paid enterprise track may emerge later.",
+    "retrieved_at": "2025-05-27T10:25:00",
+    "reliability": "high"
+  },
+  {
+    "source_id": "src_trae_003",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Trae",
+    "source_type": "review",
+    "url": "https://news.ycombinator.com/item?id=trae_discussion_2025",
+    "title": "Trae from ByteDance is surprisingly good, but is your code safe?",
+    "snippet": "Developers praise Trae's free access to Claude 3.5 Sonnet but raise serious concerns about data privacy given ByteDance ownership and unclear data handling policies.",
+    "content": "I've been using Trae for about a month and the technical quality is genuinely impressive. Free access to Claude 3.5 Sonnet and GPT-4o without an API key is hard to beat. One commenter wrote: \"As a student I literally cannot afford Cursor. Trae gives me the same models for free and the IDE is actually decent.\" Builder Mode is comparable to Cursor's Agent mode for many tasks, and the inline completion is solid.\n\nThe IDE itself is more polished than I expected for an early product. The editor feels native rather than feeling like a VS Code mod. Multi-file edits in Builder Mode generally work, though I've seen it get confused on very large codebases. MCP protocol support is a real differentiator - I've connected a few tool servers and they work as expected.\n\nThat said, the elephant in the room is ByteDance. The community has serious questions: where is the code being sent, who can access it, and what is the long-term data policy? A frequently-quoted comment: \"Free is not free when ByteDance is the one funding the inference. My employer would never let me touch this for work code.\" Enterprise developers are essentially shut out for now, regardless of how good the product is technically.\n\nThe privacy concerns are not just paranoia. The pricing page and documentation are light on details about data retention, model training opt-outs, and geographic data residency. Several users have reported that they enjoy Trae for personal projects and learning but switch to Cursor or Copilot for client work. If ByteDance publishes a clear, audited data policy and a privacy mode that satisfies enterprise reviewers, Trae could be a serious threat. Until then, its market is hobbyists, students, and developers in regions where ByteDance is trusted by default.",
+    "retrieved_at": "2025-05-27T10:30:00",
+    "reliability": "medium"
+  }
+]

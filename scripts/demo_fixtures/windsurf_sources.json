@@ -1,0 +1,54 @@
+[
+  {
+    "source_id": "src_windsurf_001",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Windsurf",
+    "source_type": "official_website",
+    "url": "https://codeium.com/windsurf",
+    "title": "Windsurf - The First Agentic IDE by Codeium",
+    "snippet": "Windsurf is Codeium's AI-native IDE featuring Flows, an agentic mode that lets the AI observe your work and act alongside you in real time.",
+    "content": "Windsurf is the first agentic IDE built by Codeium, designed around a new interaction paradigm called Flows. Where traditional AI tools either complete what you type or respond to a chat prompt, Flows lets the AI act as a true copilot - observing your edits, terminal output, and intent, then taking action alongside you in real time. The result is a workflow that feels collaborative rather than transactional.\n\nWindsurf supports the full set of features developers expect from a modern AI editor. Inline completion uses Codeium's Supercomplete model for fast, context-aware suggestions. The chat interface understands the entire codebase and can be invoked at any time with a keyboard shortcut. Multi-file edits are first-class - you can describe a change that spans many files and Windsurf produces a coordinated set of edits with a clear diff preview.\n\nCascade is Windsurf's multi-step agentic editor. You describe a goal, Cascade plans the steps, runs commands, writes code, and verifies results. Cascade integrates terminal access, file operations, and codebase search into a single agent loop. It is suitable for larger tasks such as implementing features, fixing bugs that span modules, and running migrations.\n\nWindsurf is built on top of VS Code's editor core but with substantial customizations to support Flows and Cascade. The product is available for macOS, Windows, and Linux. Codeium, the company behind Windsurf, has been building AI coding tools since 2021 and serves over a million developers across its product line. Windsurf is the company's flagship offering as it shifts focus from plugin-based assistants to full IDE experiences.",
+    "retrieved_at": "2025-05-27T10:35:00",
+    "reliability": "high"
+  },
+  {
+    "source_id": "src_windsurf_002",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Windsurf",
+    "source_type": "pricing_page",
+    "url": "https://codeium.com/windsurf/pricing",
+    "title": "Windsurf Pricing - Free and Pro Plans",
+    "snippet": "Windsurf offers a free tier and a Pro plan at $10 per month, making it roughly half the price of comparable AI editors while including Cascade and Flows.",
+    "content": "Windsurf is offered as a freemium product. The free tier includes the Windsurf editor, Supercomplete inline completion, basic chat, limited Cascade requests, and access to standard models. The free tier is designed to let developers evaluate the full Flows experience before deciding to upgrade.\n\nThe Pro plan costs $10 per month and includes unlimited Supercomplete completions, generous Cascade credits, priority model access including Claude 3.5 Sonnet and GPT-4o, and longer context windows. At $10 per month, the Pro plan is approximately half the price of comparable plans from competing AI editors, which is a deliberate positioning choice by Codeium to compete on value.\n\nThe Pro Ultimate plan costs $40 per month and includes the highest Cascade credit allotments, top priority queue access, and additional power user features. This plan targets developers who use agentic mode heavily and need maximum throughput.\n\nFor teams, Windsurf offers a Teams plan starting at $35 per user per month with centralized billing, admin controls, organization-wide privacy mode, and zero data retention guarantees. An Enterprise tier is also available with custom pricing for organizations that need SSO, audit logging, and dedicated support.\n\nAll paid plans include the same core Flows and Cascade features. The differences across paid tiers are primarily about credit allotments and queue priority rather than feature gating. Annual billing offers a discount equivalent to roughly two months free. The pricing page explicitly compares Windsurf to other AI editors and highlights the lower cost as a key reason developers switch.",
+    "retrieved_at": "2025-05-27T10:40:00",
+    "reliability": "high"
+  },
+  {
+    "source_id": "src_windsurf_003",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Windsurf",
+    "source_type": "docs",
+    "url": "https://docs.codeium.com/windsurf/cascade",
+    "title": "Windsurf Documentation - Flows and Cascade",
+    "snippet": "Cascade is Windsurf's multi-step agentic editor that plans, executes, and verifies changes across files, while Flows enables real-time AI collaboration that observes and acts as you work.",
+    "content": "Flows is the foundational interaction model in Windsurf. Unlike a chat panel that responds only when prompted, a Flow is a persistent collaboration in which the AI observes your edits, your terminal output, and the state of your codebase. The AI can suggest next steps proactively, jump in to make changes when invited, and stay aware of context across long sessions. Flows are designed to support the natural rhythm of development - thinking, coding, testing, debugging - without forcing the user to break context to prompt the AI.\n\nCascade is the multi-step agentic editor that lives inside a Flow. To invoke Cascade, open the Cascade panel and describe a goal in natural language. Cascade then produces a plan, which you can review and edit. Once approved, Cascade executes the plan step by step. Each step may involve reading files, searching the codebase, editing code, running terminal commands, or asking for clarification. After each step, Cascade reports its progress and waits for your input if needed.\n\nCascade supports a wide range of tools out of the box. It can read and write files, run shell commands in the integrated terminal, search the codebase using semantic indexing, and call external services through the MCP protocol. Tool use is transparent - you can see exactly what Cascade is doing at each step and you can stop or redirect it at any time.\n\nFor multi-file edits, Cascade produces a unified diff view that shows all proposed changes together. You can accept the entire diff, reject individual hunks, or refine the request before applying. The documentation recommends starting with smaller, well-scoped tasks to learn how Cascade reasons before tackling large refactors. Configuration options include model selection, terminal command allowlists, and privacy modes that control whether your code is sent to model providers.",
+    "retrieved_at": "2025-05-27T10:45:00",
+    "reliability": "high"
+  },
+  {
+    "source_id": "src_windsurf_004",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Windsurf",
+    "source_type": "review",
+    "url": "https://www.reddit.com/r/programming/comments/windsurf_vs_cursor_2025",
+    "title": "Switched from Cursor to Windsurf - here's what I think after 3 months",
+    "snippet": "Windsurf users frequently cite the $10/month price point and the Flows interaction model as reasons to switch from Cursor, though they note Cursor still has the edge in pure Tab completion speed.",
+    "content": "I switched from Cursor to Windsurf three months ago. Here's a comparison after enough time to form a real opinion. The price was the initial trigger - $10 per month versus $20 per month is a meaningful difference, especially when I was hitting my Cursor premium request limit regularly. One commenter put it simply: \"Why pay double for what feels like the same product?\"\n\nFlows is the feature I didn't know I wanted. Having the AI observe my work and proactively suggest the next step is a different experience from the chat-then-respond loop. It feels less like asking a junior dev for help and more like pair programming. Cascade for multi-file edits is roughly comparable to Cursor's Agent mode. I'd say Cursor's Agent is slightly more polished today but Cascade is catching up fast and the gap is closing with every release.\n\nWhere Cursor still wins is Tab completion. Cursor's Copilot++ feels a touch faster and slightly more accurate on edit prediction in my experience. If your workflow is dominated by Tab completion, this might matter. For me, the Flows experience and the lower price win out. A common community comment: \"Cursor Tab is amazing, but Windsurf Cascade is good enough and the savings add up.\"\n\nOther things I appreciate: Windsurf feels lighter on RAM than Cursor on my older MacBook, the diff preview UI is excellent, and the Cascade credit model is generous enough that I rarely hit limits. Complaints: occasional Cascade plan steps that get stuck and need to be restarted, the indexing on first open of a large repo takes longer than Cursor, and some VS Code extensions I rely on are not yet fully compatible. Overall I'm staying on Windsurf. For developers who care about price and want a real agentic experience, it's hard to beat.",
+    "retrieved_at": "2025-05-27T10:50:00",
+    "reliability": "medium"
+  }
+]

@@ -162,6 +162,11 @@ body {
   margin: 1.2em 0;
 }
 
+@page {
+  margin: 20mm 15mm;
+  size: A4 portrait;
+}
+
 @media print {
   body {
     background: #fff;
@@ -169,8 +174,35 @@ body {
     font-size: 12pt;
   }
 
+  /* Hide dev-mode overlays (Next.js fast-refresh indicator, etc.) */
+  nextjs-portal,
+  #__next-build-watcher,
+  [data-nextjs-dialog-overlay],
+  [data-nextjs-toast] {
+    display: none !important;
+  }
+
   .markdown-body {
     font-size: 11pt;
     line-height: 1.6;
+  }
+
+  /* Prevent awkward splits across pages */
+  table,
+  .print-card {
+    break-inside: avoid;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+
+  h2 {
+    break-after: avoid;
+  }
+
+  /* Major section page breaks */
+  .print-break {
+    break-before: page;
   }
 }

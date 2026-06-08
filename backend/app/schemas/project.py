@@ -6,10 +6,14 @@ retrieval. These map to the REST endpoints documented in
 """
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from app.schemas.competitor import CompetitorInput
+
+IndustryType = Literal["ai_saas", "ecommerce", "local_services", "social", "general"]
+AnalysisPurpose = Literal["general", "build_product", "choose_product"]
 
 
 class ProjectStatus(str, Enum):
@@ -20,19 +24,33 @@ class ProjectStatus(str, Enum):
     failed = "failed"
 
 
+class CompetitorInProject(BaseModel):
+    name: str
+    url: str
+
+
 class ProjectCreate(BaseModel):
     industry: str
+    industry_type: IndustryType = "general"
+    analysis_purpose: AnalysisPurpose = "general"
+    custom_dimensions: list[str] = Field(default_factory=list)
     competitors: list[CompetitorInput]
     goals: list[str] = Field(default_factory=list)
     output_language: str = "en"
     report_depth: str = "standard"
+    data_mode: Literal["demo", "live_with_fallback"] = "demo"
 
 
 class ProjectResponse(BaseModel):
     project_id: str
     industry: str
+    industry_type: str = "general"
+    analysis_purpose: str = "general"
+    custom_dimensions: list[str] = []
     goals: list[str]
     status: ProjectStatus
     output_language: str
     created_at: str
     updated_at: str
+    data_mode: str = "demo"
+    competitors: list[CompetitorInProject] = []

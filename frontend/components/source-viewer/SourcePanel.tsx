@@ -128,6 +128,17 @@ export function SourcePanel() {
                 >
                   reliability: {sourceQuery.data.reliability}
                 </Badge>
+                {sourceQuery.data.data_source && (
+                  <Badge
+                    className={
+                      sourceQuery.data.data_source === 'live'
+                        ? 'border-green-200 bg-green-100 text-green-800'
+                        : 'border-gray-200 bg-gray-100 text-gray-500'
+                    }
+                  >
+                    {sourceQuery.data.data_source === 'live' ? 'Live' : 'Demo'}
+                  </Badge>
+                )}
               </div>
 
               {sourceQuery.data.url && (

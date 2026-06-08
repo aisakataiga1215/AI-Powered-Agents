@@ -24,26 +24,128 @@ export type ProjectStatus =
   | 'qa_failed'
   | 'failed'
 
+export type IndustryType = 'ai_saas' | 'ecommerce' | 'local_services' | 'social' | 'general'
+
+export type AnalysisPurpose = 'general' | 'build_product' | 'choose_product'
+
+export type CompetitorRole =
+  | 'direct_competitor'
+  | 'indirect_competitor'
+  | 'inspiration_product'
+  | 'benchmark_leader'
+
+export type SourceConfidence = 'high' | 'medium' | 'low' | 'unknown'
+
+export interface DimensionScore {
+  dimension_name: string
+  score: number
+  rationale: string
+  evidence: string[]
+  source_confidence: SourceConfidence
+}
+
+export interface CompetitorScore {
+  competitor_name: string
+  overall_score: number
+  dimensions: DimensionScore[]
+  scoring_note?: string
+}
+
+export interface OpportunityDimension {
+  dimension_name: string
+  score: number
+  rationale: string
+  evidence: string[]
+  source_confidence: SourceConfidence
+}
+
+export interface OpportunityScore {
+  overall_score: number
+  dimensions: OpportunityDimension[]
+  scoring_note?: string
+}
+
+export interface MarketTrend {
+  trend: string
+  evidence: string[]
+}
+
+export interface MarketBackground {
+  market_overview: string
+  market_size_notes: string
+  trends: MarketTrend[]
+  key_drivers: string[]
+  key_challenges: string[]
+}
+
+export interface FeatureInsights {
+  table_stakes: string[]
+  differentiators: Array<{ feature: string; competitors: string[] }>
+  gaps: string[]
+  cross_competitor_patterns: string[]
+}
+
+export interface GtmProfile {
+  competitor_name: string
+  motion: string
+  acquisition_channels: string[]
+  pricing_strategy: string
+  expansion_model: string
+  evidence: string[]
+}
+
+export interface OperationMonetization {
+  gtm_profiles: GtmProfile[]
+  monetization_patterns: string[]
+  aarrr_notes: Record<string, Record<string, string>>
+}
+
 export interface CompetitorInput {
+  name: string
+  url: string
+  role?: CompetitorRole
+}
+
+export interface CompetitorInProject {
   name: string
   url: string
 }
 
 export interface ProjectCreate {
   industry: string
+  industry_type?: IndustryType
+  analysis_purpose?: AnalysisPurpose
+  custom_dimensions?: string[]
   competitors: CompetitorInput[]
   goals: string[]
   output_language?: string
   report_depth?: string
+  data_mode?: 'demo' | 'live_with_fallback'
 }
 
 export interface ProjectResponse {
   project_id: string
   industry: string
+  industry_type?: string
+  analysis_purpose?: string
+  custom_dimensions?: string[]
   goals: string[]
   status: ProjectStatus
   created_at: string
   updated_at: string
+  data_mode?: string
+  competitors?: CompetitorInProject[]
+}
+
+export interface CompetitorCollectionStats {
+  source_count: number
+  live_source_count?: number
+  demo_source_count?: number
+  fallback_attempted?: boolean
+  fallback_used?: boolean
+  fallback_available?: boolean
+  fallback_source_count?: number
+  attempted_urls?: string[]
 }
 
 export interface TokenUsage {
@@ -152,10 +254,14 @@ export type SourceType =
   | 'official_website'
   | 'pricing_page'
   | 'docs'
+  | 'features_page'
+  | 'security'
+  | 'privacy'
   | 'blog'
   | 'review'
   | 'news'
   | 'manual_input'
+  | 'unknown'
 
 export type Reliability = 'high' | 'medium' | 'low'
 
@@ -171,6 +277,7 @@ export interface SourceEvidence {
   content: string
   retrieved_at: string
   reliability: Reliability | string
+  data_source?: 'live' | 'demo'
 }
 
 /**
@@ -194,6 +301,17 @@ export interface CompetitiveReport {
   source_list: SourceEvidence[]
   markdown_content: string
   created_at: string
+  analysis_purpose?: string
+  analysis_objective?: string
+  competitor_selection_rationale?: Record<string, string>
+  purpose_sections?: Record<string, unknown>
+  competitor_scores?: Record<string, CompetitorScore>
+  opportunity_score?: OpportunityScore | null
+  custom_dimension_analysis?: Record<string, Record<string, unknown>>
+  // M13B: PM-framework sections
+  market_background?: MarketBackground | null
+  feature_insights?: FeatureInsights | null
+  operation_monetization?: OperationMonetization | null
 }
 
 /**
@@ -219,4 +337,21 @@ export interface QAResult {
   score: number
   issues: QAIssue[]
   created_at?: string
+}
+
+/**
+ * Shape of the QAAgent trace output stored in AgentRun.output.
+ * Extends QAResult fields with pre-computed severity breakdown counts.
+ */
+export interface QATraceOutput {
+  qa_result_id?: string
+  passed: boolean
+  score: number
+  issues: QAIssue[]
+  issue_count: number
+  high_severity_count: number
+  medium_severity_count: number
+  low_severity_count: number
+  blocking_issue_count: number
+  advisory_count: number
 }

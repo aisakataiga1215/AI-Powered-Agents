@@ -40,7 +40,7 @@ app = FastAPI(title="Competitive Analysis API", lifespan=lifespan)
 # UI can connect from any port; tighten this for production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

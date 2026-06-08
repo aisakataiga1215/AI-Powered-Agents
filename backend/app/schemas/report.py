@@ -11,14 +11,13 @@ from pydantic import BaseModel, Field
 
 from app.schemas.claim import Claim
 from app.schemas.knowledge import CompetitorKnowledge
+from app.schemas.pm_sections import FeatureInsights, MarketBackground, OperationMonetization
+from app.schemas.scoring import CompetitorScore, OpportunityScore
 from app.schemas.source import SourceEvidence
 
 
 class CompetitiveReport(BaseModel):
     report_id: str = Field(default_factory=lambda: f"rpt_{uuid.uuid4().hex[:8]}")
-    # ``project_id`` is bound by the WriterAgent after generation. Leaving
-    # it as a required field caused some OpenAI-compatible providers to
-    # silently fail structured-output validation when the LLM omitted it.
     project_id: str = ""
     title: str = "Competitive Analysis Report"
     executive_summary: list[Claim] = Field(default_factory=list)
@@ -30,4 +29,16 @@ class CompetitiveReport(BaseModel):
     strategic_recommendations: list[Claim] = Field(default_factory=list)
     source_list: list[SourceEvidence] = Field(default_factory=list)
     markdown_content: str = ""
+    # M13A: purpose-aware analysis fields
+    analysis_purpose: str = "general"
+    analysis_objective: str = ""
+    competitor_selection_rationale: dict = Field(default_factory=dict)
+    purpose_sections: dict = Field(default_factory=dict)
+    competitor_scores: dict[str, CompetitorScore] = Field(default_factory=dict)
+    opportunity_score: OpportunityScore | None = None
+    custom_dimension_analysis: dict = Field(default_factory=dict)
+    # M13B: PM-framework sections (always generated)
+    market_background: MarketBackground | None = None
+    feature_insights: FeatureInsights | None = None
+    operation_monetization: OperationMonetization | None = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

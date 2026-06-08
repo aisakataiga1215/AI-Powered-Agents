@@ -6,13 +6,22 @@ when creating a project.
 """
 
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+CompetitorRole = Literal[
+    "direct_competitor",
+    "indirect_competitor",
+    "inspiration_product",
+    "benchmark_leader",
+]
 
 
 class CompetitorInput(BaseModel):
     name: str
     url: str
+    role: CompetitorRole = "direct_competitor"
 
 
 class Competitor(BaseModel):
