@@ -1,8 +1,8 @@
 # Project Status
 
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-10
 
-## Current Status: M14 Complete — Search-Plus-Crawl (Tavily)
+## Current Status: M16.2 Complete — Search and Discovery Quality Recovery
 
 ---
 
@@ -120,6 +120,63 @@
 - [x] Frontend: `data_source` union extended with `'search'`; teal Search badge in `SourcePanel`; `SourceCountChip` counts search-discovered sources
 - [x] `backend/tests/test_search_service.py` (NEW) — 12 new tests
 - [x] **316 backend tests passing** (+12 new); clean TypeScript build
+
+### Milestone 15A: Interactive Source Search ✅ COMPLETE
+
+- [x] `backend/app/schemas/search.py` (NEW) — `CandidateSource` (10 fields: `candidate_id`, `competitor_name`, `url`, `title`, `snippet` [display-only], `suggested_source_type`, `discovery_query`, `provider`, `confidence`, `reason`, `selected_by_default`). **Not evidence** — becomes evidence only after user selection + CrawlerService crawl.
+- [x] `CompetitorInput.extra_urls: list[str]` — user-selected URLs propagated to live collection.
+- [x] `search_provider.create_provider_from_settings()` factory.
+- [x] `SearchService.search_sources()` method alongside `discover_urls()`; new constants (`_GOAL_QUERY_TEMPLATES`, `_DEFAULT_SOURCE_QUERIES`, `_SOURCE_TYPE_PRIORITY`) + helpers (`_infer_source_confidence`, `_infer_source_reason`).
+- [x] `POST /api/search/sources` endpoint (`backend/app/api/routes/search.py`); router registered in `backend/app/main.py`.
+- [x] `CollectorAgent._collect_live()` accepts `extra_urls` param; trace output adds `selected_extra_urls`, `silent_search_urls`, `rejected_extra_urls`.
+- [x] Frontend: `CandidateSource` interface + `searchSources()` client; new `CandidateSourcePanel.tsx` per-competitor search panel; `app/page.tsx` integration with stable keys and `extra_urls` in submit.
+- [x] Activation reuses M14 flags (`ENABLE_LIVE_SEARCH=true` + `TAVILY_API_KEY`); shows disabled state with message when unavailable.
+- [x] Tavily snippets are display-only; never stored as `SourceEvidence.content`. M14 silent background search unchanged.
+- [x] **332 backend tests passing** (+16 new); clean TypeScript build.
+
+### Milestone 15B: Competitor Discovery ✅ COMPLETE
+
+- [x] `backend/app/schemas/discovery.py` (NEW) — `CandidateCompetitor` with provenance (`raw_title`, `source_url`, `domain`) and quality signals (`relevance_score` 0–100, `relevance_reason`, `role_confidence`). Suggested role defaults to `direct_competitor`.
+- [x] `SearchService.discover_competitors()` method; constants `_DISCOVERY_BLOCKED_DOMAINS` (aggregators/listings/news excluded), `_LISTICLE_TITLE_RE` (filters "Top 10…" titles), `_DISCOVERY_TEMPLATES` (per industry type including `ai_saas`/`social`); helpers `_extract_company_name()`, `_score_competitor_relevance()`.
+- [x] `POST /api/search/competitors` endpoint — accepts `{ industry, industry_type }`, returns `list[CandidateCompetitor]`.
+- [x] Frontend: `CandidateCompetitor` interface + `discoverCompetitors()` client; new `CompetitorDiscoveryPanel.tsx` with "Discover competitors" trigger, relevance badges, suggested-role label, "Add N selected" action; mounted in the Competitors section header on `app/page.tsx`.
+- [x] No DB changes — candidates are selection input only; once accepted they enter the form as ordinary `CompetitorInput` rows.
+- [x] Activation reuses M14 flags (`ENABLE_LIVE_SEARCH=true` + `TAVILY_API_KEY`).
+- [x] +11 new tests — 8 service (`test_search_service.py`) + 3 API (`test_search_api.py`).
+- Note: Real Tavily tests showed noisy false-positive competitors (Zapier, DigitalOcean blog pages, Gartner, DevGenius Blog, Axify articles).
+
+### Milestone 16: QA Severity Semantics Refactor ✅ COMPLETE
+
+- [x] QA severity semantics tightened: `high` = blocking (forces failure), `medium` = warning (deducts score, can still pass), `low` = advisory (no deduction).
+- [x] `blocking_issue_count` now counts only `high` severity (previously high + medium). `medium_severity_count` surfaces as the "warnings" count for UI/PDF.
+- [x] `backend/app/agents/qa_agent.py`: severity bookkeeping in `_build_trace_output` updated.
+- [x] `frontend/lib/types.ts`: typing comments updated.
+- [x] `frontend/components/qa/QAResultBanner.tsx`, `frontend/app/projects/[id]/{report,traces,print}/page.tsx`: banner / tab badge / PDF copy render the new categories (e.g. `QA Passed · Score 95/100 · 1 warning · 2 advisories`, `QA Failed · Score 55/100 · 2 blocking issues · 3 warnings`).
+- [x] `backend/tests/test_qa_trace_output.py`: regression tests updated for the new counting rules.
+
+### Milestone 16.1: Discovery Quality Recovery ✅ COMPLETE
+
+- [x] `_ARTICLE_PATH_RE`: caps relevance_score at 30 for blog/article/guide/review/resource/content URL paths
+- [x] `_BLOG_DOMAIN_RE`: scores `.blog` TLD and ghost.io domains at 5; `blog.*` subdomains are also suppressed
+- [x] Extended `_LISTICLE_TITLE_RE` and `_LISTICLE_TITLE_END_RE`: covers guide, complete guide, how to, I tested, full comparison, market reports, statistics, and root-level listicle slugs
+- [x] Expanded `_DISCOVERY_BLOCKED_DOMAINS`: aggregators, analyst/research firms, app stores, publisher/media domains, and developer blogging platforms
+- [x] `_DISCOVERY_MIN_SCORE = 60`: discover_competitors() only returns candidates with relevance_score >= 60
+- [x] Homepage depth bonus (+15 for root path) to push product homepages reliably above min score
+- [x] DigitalOcean/Zapier NOT globally blocked — only their blog/article paths are penalized
+- [x] Frontend (`frontend/app/page.tsx`): deduplicate discovered competitors by normalized domain and name before appending
+- [x] Regression tests: Gartner blocked, article path <= 30, product homepage >= min score, all results >= min score, sorted by score
+- [x] Cross-category robustness tests for ecommerce, local_services, social, and general discovery false positives plus positive homepages
+
+### Milestone 16.2: Search and Discovery Quality Recovery ✅ COMPLETE
+
+- [x] Tavily provider accepts Tavily-specific optional parameters (`search_depth`, `topic`, `include_domains`, `exclude_domains`, `exact_match`) while preserving the generic provider abstraction
+- [x] Source search uses official-domain first pass with product aliases, then falls back to general web search only if no official-domain sources are found
+- [x] Windsurf, Cursor, Trae, Codeium, Claude Code, Devin, Tabnine, Replit, Qodo, and related aliases are recognized for source search
+- [x] AI SaaS discovery boosts known AI coding products and extracts known product names from listicle snippets without returning the listicle domain as a competitor
+- [x] Ambiguous brand/topic handling caps non-tech Windsurf-like results and avoids boosting deep GitHub repository paths as products
+- [x] Third-party docs/hosting domains are not classified as official websites or high-confidence official sources
+- [x] Social discovery uses dating templates only for dating-related user queries
+- [x] Manual live category QA covered ai_saas, ecommerce, local_services, social, and general discovery
 
 ### Milestone 13B: PM-Style Report Structure ✅ COMPLETE
 
@@ -244,12 +301,20 @@
 | `CollectorAgent._normalize_url()` (tracking param stripping) + `_deduplicate_urls()` | ✅ Complete (Milestone 14) |
 | `source_discovery.get_industry_max_pages()` public helper | ✅ Complete (Milestone 14) |
 | `data_source="search"` badge + `SourceCountChip` search count (frontend) | ✅ Complete (Milestone 14) |
+| `CandidateSource` schema (display-only candidates, not evidence) | ✅ Complete (Milestone 15A) |
+| `POST /api/search/sources` endpoint | ✅ Complete (Milestone 15A) |
+| `CandidateSourcePanel.tsx` per-competitor search picker (frontend) | ✅ Complete (Milestone 15A) |
+| `CompetitorInput.extra_urls` end-to-end (frontend → API → CollectorAgent) | ✅ Complete (Milestone 15A) |
+| `CandidateCompetitor` schema (competitor discovery candidates) | ✅ Complete (Milestone 15B) |
+| `POST /api/search/competitors` endpoint | ✅ Complete (Milestone 15B) |
+| `CompetitorDiscoveryPanel.tsx` industry-driven competitor picker (frontend) | ✅ Complete (Milestone 15B) |
+| QA severity refactor (high=blocking, medium=warning, low=advisory) | ✅ Complete (Milestone 16) |
 
 ---
 
 ## Current Focus
 
-All planned milestones through Milestone 14 are complete. Next steps below.
+Fix M15B competitor discovery quality before starting M17.
 
 ## Next Steps
 

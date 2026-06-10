@@ -67,7 +67,7 @@ export default function ReportPage({ params }: PageProps) {
 
   const traces = useMemo(() => tracesQuery.data?.traces ?? [], [tracesQuery.data])
   const projectStatus = projectQuery.data?.status
-  const requestedCompetitors = projectQuery.data?.competitors ?? []
+  const requestedCompetitors = useMemo(() => projectQuery.data?.competitors ?? [], [projectQuery.data])
 
   const isFallback = useMemo(
     () =>
@@ -95,8 +95,9 @@ export default function ReportPage({ params }: PageProps) {
 
   const tabs: TabItem[] = useMemo(() => {
     const allIssues = qaResult?.issues ?? []
-    const blockingCount = allIssues.filter((i) => i.severity !== 'low').length
-    const advisoryCount = allIssues.filter((i) => i.severity === 'low').length
+    const highCount   = allIssues.filter((i) => i.severity === 'high').length
+    const mediumCount = allIssues.filter((i) => i.severity === 'medium').length
+    const lowCount    = allIssues.filter((i) => i.severity === 'low').length
     const purpose = reportQuery.data?.analysis_purpose
     const purposeTab: TabItem | null =
       purpose && purpose !== 'general'
@@ -116,11 +117,15 @@ export default function ReportPage({ params }: PageProps) {
         badge:
           qaResult && !qaResult.passed ? (
             <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
-              {blockingCount}
+              {highCount} blocking
             </span>
-          ) : qaResult?.passed && advisoryCount > 0 ? (
+          ) : qaResult?.passed && mediumCount > 0 ? (
+            <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
+              {mediumCount} warn
+            </span>
+          ) : qaResult?.passed && lowCount > 0 ? (
             <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-              {advisoryCount} adv
+              {lowCount} adv
             </span>
           ) : qaResult?.passed ? (
             <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">

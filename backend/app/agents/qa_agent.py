@@ -708,9 +708,7 @@ def _build_trace_output(result: QAResult, issues: list[QAIssue]) -> dict:
             1 for i in issues if i.severity == IssueSeverity.low
         ),
         "blocking_issue_count": sum(
-            1
-            for i in issues
-            if i.severity in (IssueSeverity.high, IssueSeverity.medium)
+            1 for i in issues if i.severity == IssueSeverity.high
         ),
         "advisory_count": sum(
             1 for i in issues if i.severity == IssueSeverity.low

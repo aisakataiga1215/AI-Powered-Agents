@@ -10,12 +10,14 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, type FormEvent } from 'react'
+import { useState, useCallback, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import type { AnalysisPurpose, CompetitorInput, CompetitorRole, IndustryType, ProjectCreate } from '@/lib/types'
+import CandidateSourcePanel from '@/components/search/CandidateSourcePanel'
+import CompetitorDiscoveryPanel from '@/components/competitor/CompetitorDiscoveryPanel'
 
 interface GoalOption {
   value: string
@@ -88,7 +90,7 @@ const DEFAULT_COMPETITORS: CompetitorInput[] = [
 export default function NewProjectPage() {
   const router = useRouter()
   const [industry, setIndustry] = useState('AI Coding Tools')
-  const [industryType, setIndustryType] = useState<IndustryType>('general')
+  const [industryType, setIndustryType] = useState<IndustryType>('ai_saas')
   const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose>('general')
   const [customDimensions, setCustomDimensions] = useState<string[]>([])
   const [dimInput, setDimInput] = useState('')
@@ -99,6 +101,8 @@ export default function NewProjectPage() {
     GOAL_OPTIONS.map((g) => g.value)
   )
   const [dataMode, setDataMode] = useState<'demo' | 'live_with_fallback'>('demo')
+  const [extraUrlsByKey, setExtraUrlsByKey] = useState<Record<string, string[]>>({})
+  const competitorKey = useCallback((c: CompetitorInput) => `${c.name}::${c.url}`, [])
   const createMutation = useMutation({
     mutationFn: (payload: ProjectCreate) => api.createProject(payload),
     onSuccess: (result) => {
@@ -111,9 +115,21 @@ export default function NewProjectPage() {
     field: keyof CompetitorInput,
     value: string
   ) => {
-    setCompetitors((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
-    )
+    setCompetitors((prev) => {
+      const updated = prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+      if (field === 'name' || field === 'url') {
+        const oldKey = competitorKey(prev[index])
+        const newKey = competitorKey(updated[index])
+        if (oldKey !== newKey) {
+          setExtraUrlsByKey((prevKeys) => {
+            const next = { ...prevKeys }
+            delete next[oldKey]
+            return next
+          })
+        }
+      }
+      return updated
+    })
   }
 
   const handleAddCompetitor = () => {
@@ -133,8 +149,30 @@ export default function NewProjectPage() {
   }
 
   const handleRemoveCompetitor = (index: number) => {
+    setExtraUrlsByKey((prev) => {
+      const next = { ...prev }
+      delete next[competitorKey(competitors[index])]
+      return next
+    })
     setCompetitors((prev) => prev.filter((_, i) => i !== index))
   }
+
+  const handleAddFromDiscovery = useCallback((newComps: CompetitorInput[]) => {
+    setCompetitors((prev) => {
+      const normDomain = (url: string) => {
+        try { return new URL(url).hostname.replace(/^www\./, '') }
+        catch { return url.toLowerCase().trim() }
+      }
+      const existingDomains = new Set(prev.map((c) => normDomain(c.url)))
+      const existingNames = new Set(prev.map((c) => c.name.toLowerCase().trim()))
+      const unique = newComps.filter(
+        (nc) =>
+          !existingDomains.has(normDomain(nc.url)) &&
+          !existingNames.has(nc.name.toLowerCase().trim())
+      )
+      return [...prev, ...unique]
+    })
+  }, [])
 
   const handleToggleGoal = (value: string) => {
     setGoals((prev) =>
@@ -145,7 +183,12 @@ export default function NewProjectPage() {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const cleanedCompetitors = competitors
-      .map((c) => ({ name: c.name.trim(), url: c.url.trim(), role: c.role ?? 'direct_competitor' }))
+      .map((c) => ({
+        name: c.name.trim(),
+        url: c.url.trim(),
+        role: c.role ?? 'direct_competitor',
+        extra_urls: extraUrlsByKey[competitorKey(c)] ?? [],
+      }))
       .filter((c) => c.name.length > 0 && c.url.length > 0)
     const payload: ProjectCreate = {
       industry: industry.trim(),
@@ -274,6 +317,9 @@ export default function NewProjectPage() {
           <h2 className="text-sm font-medium text-gray-900">Custom dimensions <span className="text-gray-400 font-normal">(optional)</span></h2>
           <div className="flex gap-2">
             <input
+              id="custom-dimension-input"
+              name="custom-dimension"
+              aria-label="Add custom dimension"
               value={dimInput}
               onChange={(e) => setDimInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDimension() } }}
@@ -316,54 +362,80 @@ export default function NewProjectPage() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-gray-900">Competitors</h2>
-            <button
-              type="button"
-              onClick={handleAddCompetitor}
-              className="text-xs font-medium text-blue-700 hover:text-blue-800"
-            >
-              + Add competitor
-            </button>
+            <div className="flex items-center gap-3">
+              <CompetitorDiscoveryPanel
+                industry={industry}
+                industryType={industryType}
+                onAdd={handleAddFromDiscovery}
+              />
+              <button
+                type="button"
+                onClick={handleAddCompetitor}
+                className="text-xs font-medium text-blue-700 hover:text-blue-800"
+              >
+                + Add competitor
+              </button>
+            </div>
           </div>
           <div className="space-y-2">
             {competitors.map((row, index) => (
-              <div
-                key={index}
-                className="flex flex-col gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 sm:flex-row"
-              >
-                <input
-                  value={row.name}
-                  onChange={(e) =>
-                    handleCompetitorChange(index, 'name', e.target.value)
-                  }
-                  placeholder="Name"
-                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:max-w-[180px]"
-                />
-                <input
-                  value={row.url}
-                  onChange={(e) =>
-                    handleCompetitorChange(index, 'url', e.target.value)
-                  }
-                  placeholder="https://example.com"
-                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                />
-                <select
-                  value={row.role ?? 'direct_competitor'}
-                  onChange={(e) => handleCompetitorChange(index, 'role', e.target.value)}
-                  className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              <div key={index} className="space-y-0">
+                <div
+                  className="flex flex-col gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 sm:flex-row"
                 >
-                  {COMPETITOR_ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveCompetitor(index)}
-                  disabled={competitors.length === 1}
-                  className="rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label={`Remove ${row.name || 'competitor'}`}
-                >
-                  Remove
-                </button>
+                  <input
+                    id={`competitor-name-${index}`}
+                    name={`competitor-name-${index}`}
+                    aria-label="Competitor name"
+                    value={row.name}
+                    onChange={(e) =>
+                      handleCompetitorChange(index, 'name', e.target.value)
+                    }
+                    placeholder="Name"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:max-w-[180px]"
+                  />
+                  <input
+                    id={`competitor-url-${index}`}
+                    name={`competitor-url-${index}`}
+                    aria-label="Competitor website URL"
+                    value={row.url}
+                    onChange={(e) =>
+                      handleCompetitorChange(index, 'url', e.target.value)
+                    }
+                    placeholder="https://example.com"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <select
+                    id={`competitor-role-${index}`}
+                    name={`competitor-role-${index}`}
+                    aria-label="Competitor role"
+                    value={row.role ?? 'direct_competitor'}
+                    onChange={(e) => handleCompetitorChange(index, 'role', e.target.value)}
+                    className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  >
+                    {COMPETITOR_ROLE_OPTIONS.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCompetitor(index)}
+                    disabled={competitors.length === 1}
+                    className="rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={`Remove ${row.name || 'competitor'}`}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <CandidateSourcePanel
+                  competitorName={row.name}
+                  website={row.url}
+                  goals={goals}
+                  industryType={industryType}
+                  onSelectionChange={(urls) =>
+                    setExtraUrlsByKey((prev) => ({ ...prev, [competitorKey(row)]: urls }))
+                  }
+                />
               </div>
             ))}
           </div>

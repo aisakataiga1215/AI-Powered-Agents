@@ -86,8 +86,9 @@ function buildQAMarkdown(qa: ReturnType<typeof extractQAFromTraces>): string {
   if (!qa.found) return ''
 
   const issues = (qa.issues ?? []) as QAIssue[]
-  const blockingIssues = issues.filter((i) => i.severity !== 'low')
-  const advisories = issues.filter((i) => i.severity === 'low')
+  const blockingIssues = issues.filter((i) => i.severity === 'high')
+  const warnings       = issues.filter((i) => i.severity === 'medium')
+  const advisories     = issues.filter((i) => i.severity === 'low')
 
   const lines: string[] = [
     '',
@@ -96,14 +97,31 @@ function buildQAMarkdown(qa: ReturnType<typeof extractQAFromTraces>): string {
     '## QA Summary',
     '',
     `**Score:** ${qa.score}/100 · **Verdict:** ${qa.passed ? 'Passed ✓' : 'Failed ✗'}`,
-    `**Blocking issues:** ${qa.blocking_issue_count} · **Advisories:** ${qa.advisory_count}`,
+    `**Blocking issues:** ${qa.high_severity_count} · **Warnings:** ${qa.medium_severity_count} · **Advisories:** ${qa.advisory_count}`,
   ]
 
   if (blockingIssues.length > 0) {
     lines.push('', '### Blocking Issues', '')
     blockingIssues.forEach((issue, i) => {
       lines.push(
-        `#### Issue ${i + 1} — ${issue.severity}`,
+        `#### Issue ${i + 1} — blocking`,
+        '',
+        `- **Type:** ${issue.issue_type}`,
+        `- **Agent:** ${issue.target_agent}`,
+        `- **Message:** ${issue.message}`,
+      )
+      if (issue.suggested_action) {
+        lines.push(`- **Action:** ${issue.suggested_action}`)
+      }
+      lines.push('')
+    })
+  }
+
+  if (warnings.length > 0) {
+    lines.push('### Warnings', '')
+    warnings.forEach((issue, i) => {
+      lines.push(
+        `#### Warning ${i + 1}`,
         '',
         `- **Type:** ${issue.issue_type}`,
         `- **Agent:** ${issue.target_agent}`,

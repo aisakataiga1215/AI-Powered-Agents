@@ -6,7 +6,7 @@ Priority order:
 1. URL-path match → content validation confirms the candidate type.
    If content is non-empty and lacks matching keywords → SourceType.unknown.
    If content is empty → trust the URL path (backward-compat, test-friendly).
-2. Path is root → official_website (always valid, no content check).
+2. Path is root → official_website (only if domain is not a third-party host).
 3. No path match → content-keyword fallback (pricing signals, docs signals).
 4. Default → unknown.
 """
@@ -14,6 +14,14 @@ Priority order:
 from urllib.parse import urlparse
 
 from app.schemas.source import SourceType
+
+# M16.2: third-party hosting platforms — root path on these is NOT an official_website
+_THIRD_PARTY_HOSTING_DOMAINS: frozenset[str] = frozenset({
+    "readthedocs.io", "readthedocs.org", "gitbook.io", "notion.site",
+    "github.io",  # github pages (e.g. openearth/windsurf)
+    "vercel.app", "netlify.app", "pages.dev",
+    "confluence.atlassian.net",
+})
 
 _CONTENT_VALIDATORS: dict[SourceType, tuple[str, ...]] = {
     SourceType.pricing_page: (
@@ -75,21 +83,33 @@ def classify(url: str, title: str, content: str) -> SourceType:
     it must confirm the URL-path classification; otherwise the source is
     downgraded to unknown so the QA agent can flag it.
     """
-    path = urlparse(url).path.lower().rstrip("/")
+    parsed = urlparse(url)
+    path = parsed.path.lower().rstrip("/")
+    domain = parsed.netloc.removeprefix("www.").lower()
 
     candidate: SourceType | None = None
-    if any(seg in path for seg in ("/pricing", "/price", "/plans")):
-        candidate = SourceType.pricing_page
-    elif "/features" in path:
-        candidate = SourceType.features_page
-    elif any(seg in path for seg in ("/docs", "/documentation", "/api")):
-        candidate = SourceType.docs
+    if "/privacy" in path:
+        candidate = SourceType.privacy
     elif "/security" in path:
         candidate = SourceType.security
-    elif "/privacy" in path:
-        candidate = SourceType.privacy
+    elif any(seg in path for seg in ("/terms", "/legal", "/policy")):
+        candidate = SourceType.unknown
+    elif any(seg in path for seg in ("/pricing", "/price", "/plans", "/usage")):
+        candidate = SourceType.pricing_page
+    elif "/features" in path or "/compare" in path:
+        candidate = SourceType.features_page
+    elif path == "/blog" or path.endswith("/blog"):
+        candidate = SourceType.blog
+    elif domain.startswith("docs.") or any(seg in path for seg in ("/docs", "/documentation", "/api")):
+        candidate = SourceType.docs
     elif path in ("", "/"):
-        return SourceType.official_website  # homepage: always valid
+        # M16.2: third-party hosting platforms are not official_website even at root
+        is_third_party = any(
+            domain == d or domain.endswith("." + d)
+            for d in _THIRD_PARTY_HOSTING_DOMAINS
+        )
+        if not is_third_party:
+            return SourceType.official_website  # homepage: always valid
 
     if candidate is not None:
         return (
@@ -98,13 +118,15 @@ def classify(url: str, title: str, content: str) -> SourceType:
             else SourceType.unknown
         )
 
-    # No path match — fall through to content-keyword detection
-    combined = (title + " " + content).lower()
-    pricing_signals = ("pricing", "per month", "per user", "subscription", "/mo", "/yr")
-    if any(sig in combined for sig in pricing_signals):
+    if any(seg in path for seg in ("/download", "/terms", "/legal", "/policy", "/blog")):
+        return SourceType.unknown
+
+    title_lower = title.lower()
+    if any(kw in title_lower for kw in ("pricing", "plans", "price")):
         return SourceType.pricing_page
-    docs_signals = ("documentation", "api reference", "getting started", "code example")
-    if any(sig in combined for sig in docs_signals):
+    if any(kw in title_lower for kw in ("features", "product", "overview")):
+        return SourceType.features_page
+    if any(kw in title_lower for kw in ("documentation", "docs", "api reference", "developer guide")):
         return SourceType.docs
 
     return SourceType.unknown

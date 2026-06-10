@@ -2,6 +2,143 @@
 
 All notable changes to this project will be documented in this file.
 
+## M16.2 - Search and Discovery Quality Recovery
+
+### Competitor Discovery
+- Boost known AI coding product domains (Cursor, Copilot, Claude Code, Trae, Windsurf, Tabnine, Qodo, Codeium, Replit, Amazon Q Developer) for ai_saas industry type
+- Raise _DISCOVERY_MIN_SCORE from 40 to 60 to filter marginal candidates
+- Add _LISTICLE_TITLE_END_RE to catch titles ending with listicle keywords (e.g. "AI Coding Tools Comparison")
+- Add brand negative-term penalty: ambiguous brand names (windsurfing, surf, sailing, board, kite, weather, sport) capped at score <= 35 when no AI/coding signals present
+- Known AI product domains exempt from negative-term penalty
+- GitHub deep repo paths (e.g. github.com/openearth/windsurf) not boosted as product pages
+- Improve non-AI category robustness for ecommerce, local services, social, and general discovery by filtering research/publisher domains, app-store pages, blog subdomains, root-level listicle slugs, and market-report URLs
+- Social discovery now only uses dating-specific templates when the user query is dating-related
+- Company-name extraction trims noisy title suffixes around separators so UI candidates are shorter and easier to review
+
+### Source Search (search_sources)
+- Two-pass search strategy: pass 1 uses include_domains for official domain + aliases; pass 2 falls back to general web search
+- Add _PRODUCT_DOMAIN_ALIASES mapping for Windsurf, Cursor, Trae, Codeium, Devin and others
+- Use search_depth="advanced" on all Tavily queries
+
+### Source Classifier
+- windsurf.readthedocs.io and other third-party hosting domains (readthedocs.io, gitbook.io, github.io, etc.) no longer classified as official_website
+- _infer_source_confidence now excludes third-party hosting platforms from high-confidence official sources
+
+### Tavily Provider
+- Extend SearchProvider protocol and TavilySearchProvider with search_depth, topic, include_domains, exclude_domains, exact_match parameters
+
+### Tests
+- TestDiscoverCompetitorsM162: known AI products score high, article paths <= 30, listicle titles <= 15, min score 60 enforced, brand negative terms, windsurf.ai not penalized, github.com/openearth/windsurf low score
+- Cross-category discovery regressions cover ecommerce, local_services, social, and general false positives plus positive homepage controls
+- TestSourceClassifierM162: readthedocs.io root not official_website, github.io not official_website, cursor.com is official_website, windsurf.com is official_website
+- TestSourceConfidenceM162: readthedocs.io not high confidence, official domain = high confidence, review site = low confidence
+
+### Limitation
+General competitor discovery still uses heuristic search-result scoring. Only the AI SaaS path extracts known product names from listicle snippets; other categories suppress noisy publisher/listicle pages instead of mining them for product names.
+
+---
+
+## M16.1 — Discovery Quality Recovery (In Progress)
+
+Real Tavily tests showed M15B competitor discovery returning false-positive candidates
+such as Zapier, DigitalOcean blog pages, Gartner, DevGenius Blog, and Axify articles.
+
+### Backend (`backend/app/services/search_service.py`)
+- Added `_ARTICLE_PATH_RE`: caps relevance_score at 30 for URLs with blog/article/guide/review paths
+- Added `_BLOG_DOMAIN_RE`: scores `.blog` TLD and ghost.io domains at 5
+- Extended `_LISTICLE_TITLE_RE`: covers guide, complete guide, how to, I tested, full comparison
+- Expanded `_DISCOVERY_BLOCKED_DOMAINS`: added gartner.com, forrester.com, hackernoon.com, dev.to, hashnode.dev, dzone.com, infoq.com, thenewstack.io
+- Added `_DISCOVERY_MIN_SCORE = 40`: discover_competitors() filters candidates below threshold
+- Added homepage depth bonus (+15 for root path) to reliably push product homepages above min score
+- DigitalOcean/Zapier remain unblocked at domain level — only their article/blog paths are penalized
+
+### Frontend (`frontend/app/page.tsx`)
+- CompetitorDiscoveryPanel.onAdd now deduplicates by normalized domain and name against existing competitors
+
+### Tests (`backend/tests/test_search_service.py`)
+- 8 new regression tests in `TestDiscoverCompetitorsQuality`
+- Covers: Gartner blocked, article path scores <= 30, product homepage >= min score, all returned candidates >= `_DISCOVERY_MIN_SCORE`, results sorted by score, DigitalOcean/Zapier not globally blocked
+
+### Scope
+Does not extract product names from listicle pages. Only prevents listicle/publisher
+domains and article paths from being treated as competitor candidates.
+
+---
+
+## M16 — QA Severity Semantics Refactor
+
+### Backend
+- `backend/app/agents/qa_agent.py`: QA issue severity semantics tightened.
+  - `high` = blocking issue; forces workflow failure.
+  - `medium` = warning; deducts score but workflow can still pass.
+  - `low` = advisory; no score deduction.
+- `blocking_issue_count` now counts only `high` severity (previously counted high + medium). `medium_severity_count` is surfaced as the "warnings" count.
+
+### Frontend
+- `frontend/lib/types.ts`: updated typing comments to match new severity semantics.
+- `frontend/components/qa/QAResultBanner.tsx`, `frontend/app/projects/[id]/report/page.tsx`, `frontend/app/projects/[id]/traces/page.tsx`, `frontend/app/projects/[id]/print/page.tsx`: banner / tab badge / PDF copy updated to render the new categories.
+  - Passed example: `QA Passed · Score 95/100 · 1 warning · 2 advisories`
+  - Failed example: `QA Failed · Score 55/100 · 2 blocking issues · 3 warnings`
+
+### Tests
+- `backend/tests/test_qa_trace_output.py`: regression tests updated for the new severity counting rules (blocking = high only).
+
+---
+
+## M15B — Competitor Discovery
+
+Builds on M15A. Given an industry or topic, surfaces candidate competitor products for user selection — before the user knows any competitors. M15A handles per-competitor source search; M15B handles competitor discovery itself.
+
+### Backend
+- New `backend/app/schemas/discovery.py`: `CandidateCompetitor` model with provenance fields (`raw_title`, `source_url`, `domain`) and quality signals (`relevance_score` 0–100, `relevance_reason`, `role_confidence`). Suggested role defaults to `direct_competitor`.
+- `backend/app/services/search_service.py`: new `discover_competitors()` method. Constants — `_DISCOVERY_BLOCKED_DOMAINS` (aggregators, listings, news sites excluded from candidate results), `_LISTICLE_TITLE_RE` (filters "Top 10…" / "Best of…" style titles), `_DISCOVERY_TEMPLATES` (per-industry templates including `ai_saas` and `social`). New helpers — `_extract_company_name()`, `_score_competitor_relevance()`.
+- New endpoint `POST /api/search/competitors` (`backend/app/api/routes/search.py`): accepts `{ industry, industry_type }`, returns `list[CandidateCompetitor]`.
+
+### Frontend
+- `frontend/lib/types.ts`: added `CandidateCompetitor` interface.
+- `frontend/lib/api.ts`: added `discoverCompetitors()` client.
+- New `frontend/components/competitor/CompetitorDiscoveryPanel.tsx`: "Discover competitors" trigger, candidate list with relevance score badge, `source_url`, "Suggested role: Direct Competitor" label, "Add N selected" button.
+- `frontend/app/page.tsx`: panel mounted in the Competitors section header alongside the "+ Add competitor" control.
+
+### Behavior
+- **Activation**: reuses M14 flags — requires `ENABLE_LIVE_SEARCH=true` and `TAVILY_API_KEY` set.
+- **No DB changes**: candidates are selection input only; once accepted they enter the form as ordinary `CompetitorInput` rows.
+- **Domain hygiene**: aggregators / listicles / news sites are filtered out so candidates point at actual product sites.
+
+### Tests
+- 11 new tests — 8 in `backend/tests/test_search_service.py` (service-level), 3 in `backend/tests/test_search_api.py` (API-level).
+
+---
+
+## M15A — Interactive Source Search
+
+### Backend
+- New `backend/app/schemas/search.py`: `CandidateSource` Pydantic model (10 fields — `candidate_id`, `competitor_name`, `url`, `title`, `snippet` [display-only], `suggested_source_type`, `discovery_query`, `provider`, `confidence`, `reason`, `selected_by_default`). `CandidateSource` is **not evidence** — it becomes a `SourceEvidence` only after the user selects a URL and `CrawlerService` crawls it.
+- `backend/app/schemas/competitor.py`: `CompetitorInput` extended with `extra_urls: list[str]` for user-selected URLs to include in live collection.
+- `backend/app/services/search_provider.py`: added `create_provider_from_settings()` factory.
+- `backend/app/services/search_service.py`: added `search_sources()` method alongside `discover_urls()`. New constants — `_GOAL_QUERY_TEMPLATES`, `_DEFAULT_SOURCE_QUERIES`, `_SOURCE_TYPE_PRIORITY`. New helpers — `_infer_source_confidence()`, `_infer_source_reason()`.
+- New `backend/app/api/routes/search.py`: `POST /api/search/sources` endpoint — interactive per-competitor candidate search; returns `list[CandidateSource]`.
+- `backend/app/main.py`: registered the search router.
+- `backend/app/agents/collector_agent.py`: `_collect_live()` now accepts an `extra_urls` param; trace output includes `selected_extra_urls`, `silent_search_urls`, and `rejected_extra_urls` for observability.
+
+### Frontend
+- `frontend/lib/types.ts`: added `CandidateSource` interface; extended `CompetitorInput` with optional `extra_urls?: string[]`.
+- `frontend/lib/api.ts`: added `searchSources()` client.
+- New `frontend/components/search/CandidateSourcePanel.tsx`: per-competitor search panel for discovering and selecting candidate URLs.
+- `frontend/app/page.tsx`: integrated `CandidateSourcePanel` below each competitor row with stable key management; submits selected `extra_urls` in project payload.
+
+### Behavior
+- **Activation**: reuses M14 flags — requires `ENABLE_LIVE_SEARCH=true` **and** `TAVILY_API_KEY` set.
+- **Unavailable state**: panel shows a disabled state with a clear message (not silently hidden).
+- **Tavily snippets**: display-only in the candidate picker; never stored as `SourceEvidence.content`.
+- **M14 silent background search**: unchanged — `_collect_live()` continues to run search alongside known-path discovery for the workflow.
+- **User-selected URLs**: merged into the live collection cap with the rest of the discovered URLs.
+
+### Tests
+- Total: **332 backend tests passing** (+16 new).
+
+---
+
 ## M14 — Search-Plus-Crawl (Tavily)
 
 ### Backend

@@ -181,7 +181,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
         )}
       </section>
 
-      <section className="flex flex-wrap gap-3">
+      <section className="relative z-10 flex flex-wrap gap-3">
         <Link
           href={`/projects/${id}/traces`}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"

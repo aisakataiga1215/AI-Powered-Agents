@@ -15,6 +15,7 @@ from app.api.routes import (
     knowledge,
     projects,
     reports,
+    search,
     sources,
     traces,
 )
@@ -69,3 +70,4 @@ app.include_router(traces.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(sources.router, prefix="/api")
 app.include_router(knowledge.router, prefix="/api")
+app.include_router(search.router, prefix="/api")

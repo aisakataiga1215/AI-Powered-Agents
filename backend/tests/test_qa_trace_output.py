@@ -5,9 +5,9 @@ The invariants being verified:
 
 1. The trace output always includes the ``issues`` list.
 2. ``len(issues) == issue_count`` (consistency between array and scalar).
-3. ``score < 100`` implies ``blocking_issue_count > 0`` because the
-   ``@model_validator`` on ``QAResult`` only deducts for high/medium
-   severity; low severity is advisory-only (0 deduction).
+3. ``blocking_issue_count`` counts only ``high`` severity issues (forcing QA fail).
+   Medium severity (warnings) deduct score but do not increment blocking_issue_count.
+   Low severity (advisories) carry 0 deduction and 0 blocking count.
 """
 
 import pytest
@@ -86,9 +86,26 @@ def test_qa_trace_score_below_100_implies_blocking_issue():
 
     assert output["score"] < 100
     assert output["blocking_issue_count"] > 0, (
-        "score < 100 must be backed by at least one high or medium issue; "
-        "low-severity advisories carry 0 deduction per QAResult model_validator"
+        "high severity must increment blocking_issue_count"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 3b: medium-only → score deducted but blocking_issue_count stays 0
+# ---------------------------------------------------------------------------
+
+
+def test_qa_trace_medium_only_deducts_score_but_not_blocking_count():
+    # Medium issue deducts 5 points → score = 95, but not a "blocking" issue
+    issues = [_issue(IssueSeverity.medium)]
+    result = _result(issues)
+    output = _build_trace_output(result, issues)
+
+    assert output["score"] == 95, "medium issue should deduct 5 points"
+    assert output["blocking_issue_count"] == 0, (
+        "medium severity is a warning, not a blocking issue"
+    )
+    assert output["medium_severity_count"] == 1
 
 
 # ---------------------------------------------------------------------------

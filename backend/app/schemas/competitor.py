@@ -22,6 +22,7 @@ class CompetitorInput(BaseModel):
     name: str
     url: str
     role: CompetitorRole = "direct_competitor"
+    extra_urls: list[str] = Field(default_factory=list)
 
 
 class Competitor(BaseModel):

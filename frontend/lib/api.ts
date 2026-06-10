@@ -7,6 +7,8 @@
  */
 
 import type {
+  CandidateCompetitor,
+  CandidateSource,
   CompetitiveReport,
   ProjectCreate,
   ProjectResponse,
@@ -71,4 +73,21 @@ export const api = {
 
   getSource: (sourceId: string) =>
     request<SourceEvidence>(`/api/sources/${sourceId}`),
+
+  searchSources: (payload: {
+    competitor_name: string
+    website: string
+    goals: string[]
+    industry_type: string
+  }) =>
+    request<{ candidates: CandidateSource[]; search_available: boolean }>(
+      '/api/search/sources',
+      { method: 'POST', body: JSON.stringify(payload) }
+    ),
+
+  discoverCompetitors: (payload: { industry: string; industry_type: string }) =>
+    request<{ candidates: CandidateCompetitor[]; search_available: boolean }>(
+      '/api/search/competitors',
+      { method: 'POST', body: JSON.stringify(payload) }
+    ),
 }

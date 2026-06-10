@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Backend artefacts that end up in the frontend directory
+    ".pytest_cache/**",
   ]),
 ]);
 

@@ -104,6 +104,7 @@ export interface CompetitorInput {
   name: string
   url: string
   role?: CompetitorRole
+  extra_urls?: string[]
 }
 
 export interface CompetitorInProject {
@@ -265,6 +266,38 @@ export type SourceType =
 
 export type Reliability = 'high' | 'medium' | 'low'
 
+export interface CandidateSource {
+  candidate_id: string
+  competitor_name: string
+  url: string
+  title: string
+  snippet: string
+  suggested_source_type?: string
+  discovery_query?: string
+  provider?: string
+  confidence?: 'high' | 'medium' | 'low'
+  reason?: string
+  selected_by_default?: boolean
+}
+
+export interface CandidateCompetitor {
+  candidate_id: string
+  name: string
+  website: string
+  description: string
+  raw_title?: string
+  source_url?: string
+  domain?: string
+  discovery_query?: string
+  provider?: string
+  confidence?: 'high' | 'medium' | 'low'
+  relevance_score?: number
+  relevance_reason?: string
+  role_confidence?: 'high' | 'medium' | 'low'
+  reason?: string
+  selected_by_default?: boolean
+}
+
 export interface SourceEvidence {
   source_id: string
   project_id: string
@@ -319,7 +352,7 @@ export interface CompetitiveReport {
  * `critical` here so the UI can display it if future versions emit it,
  * but the backend MVP will not produce that value.
  */
-export type IssueSeverity = 'critical' | 'high' | 'medium' | 'low'
+export type IssueSeverity = 'high' | 'medium' | 'low'
 
 export interface QAIssue {
   issue_id?: string

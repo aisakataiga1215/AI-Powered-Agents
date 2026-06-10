@@ -32,10 +32,14 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.knowledge import CompetitorKnowledge
+from app.schemas.pm_sections import FeatureInsights, MarketBackground, OperationMonetization
 from app.schemas.report import CompetitiveReport
+from app.schemas.scoring import CompetitorScore, OpportunityScore
 from app.schemas.source import SourceEvidence
 from app.schemas.trace import AgentRun, AgentRunStatus, TokenUsage
 from app.services import trace_service
+from app.services.markdown_renderer import render_report_markdown
+from app.services.normalization_service import normalize_feature_category
 
 logger = get_logger(__name__)
 
@@ -77,6 +81,8 @@ def _build_user_message(
     goals: list[str],
     rework_hints: list[str] | None,
     output_language: str = "en",
+    analysis_purpose: str = "general",
+    custom_dimensions: list[str] | None = None,
 ) -> str:
     hints_section = ""
     if rework_hints:
@@ -92,6 +98,60 @@ def _build_user_message(
             "\n\nREMINDER — write all user-facing text in Simplified Chinese (简体中文).\n"
         )
 
+    purpose_instruction = (
+        "\n\nOutput these fields in addition to existing ones:\n"
+        f'"analysis_purpose": "{analysis_purpose}",\n'
+        '"analysis_objective": "one-sentence statement of what this analysis accomplishes",\n'
+        '"competitor_selection_rationale": {<comp_name>: "why included based on its role"},\n'
+    )
+
+    if analysis_purpose == "choose_product":
+        purpose_instruction += (
+            '\n"competitor_scores": {\n'
+            '  <comp_name>: {\n'
+            '    "competitor_name": <comp_name>,\n'
+            '    "overall_score": <float 0-100>,\n'
+            '    "dimensions": [{"dimension_name": str, "score": int 1-5, "rationale": str, "evidence": [src_ids], "source_confidence": "high"|"medium"|"low"|"unknown"}],\n'
+            '    "scoring_note": "Scores are model-assisted evaluations, not objective measurements."\n'
+            '  }\n'
+            '}\n'
+            'Scoring dimensions: feature_fit, pricing_value, ease_of_use, maturity, privacy_security, source_confidence_overall.\n'
+            '\n"purpose_sections": {\n'
+            '  "recommendation_ranking": [{"rank": int, "competitor_name": str, "summary": str}],\n'
+            '  "best_for": {<comp_name>: "use case description"},\n'
+            '  "who_should_avoid": {<comp_name>: "reason"},\n'
+            '  "decision_matrix": [{"criterion": str, <comp_name>: {"value": str, "evidence": [src_ids]}}]\n'
+            '}\n'
+        )
+    elif analysis_purpose == "build_product":
+        purpose_instruction += (
+            '\n"opportunity_score": {\n'
+            '  "overall_score": <float 0-100>,\n'
+            '  "dimensions": [{"dimension_name": str, "score": int 1-5, "rationale": str, "evidence": [src_ids], "source_confidence": "high"|"medium"|"low"|"unknown"}],\n'
+            '  "scoring_note": "Scores are model-assisted evaluations, not objective measurements."\n'
+            '}\n'
+            'Opportunity dimensions: market_gap, pain_intensity, differentiation_potential, feasibility, monetization_potential, competitive_risk.\n'
+            '\n"purpose_sections": {\n'
+            '  "features_to_learn_from": [{"competitor_name": str, "feature": str, "rationale": str, "evidence": [src_ids]}],\n'
+            '  "pitfalls_to_avoid": [{"competitor_name": str, "pitfall": str, "risk_level": "high"|"medium"|"low", "evidence": [src_ids]}],\n'
+            '  "market_gaps": [{"gap_description": str, "evidence": [src_ids], "affected_user_segment": str}],\n'
+            '  "mvp_direction": "prose recommendation",\n'
+            '  "differentiation_opportunities": [{"opportunity": str, "rationale": str}]\n'
+            '}\n'
+        )
+
+    dims_instruction = ""
+    if custom_dimensions:
+        rendered = ", ".join(f'"{d}"' for d in custom_dimensions)
+        dims_instruction = (
+            f'\n"custom_dimension_analysis": {{\n'
+            f'  <dim_name for each of {rendered}>: {{\n'
+            f'    <comp_name>: {{"score": 1-5 or "unknown", "rationale": str, "evidence": [src_ids], "source_confidence": "high"|"medium"|"low"|"unknown"}}\n'
+            f'  }}\n'
+            f'}}\n'
+            "If no evidence is found for a dimension, use \"unknown\" for score — do not guess.\n"
+        )
+
     return (
         f"Report goals: {', '.join(goals) if goals else '(none)'}\n"
         f"{hints_section}\n"
@@ -100,12 +160,56 @@ def _build_user_message(
         f"Competitor knowledge (JSON, one per competitor):\n"
         f"{_serialize_knowledge(competitor_knowledge)}\n\n"
         f"{lang_instruction}"
+        f"{purpose_instruction}"
+        f"{dims_instruction}"
+        f"{_PM_SECTIONS_INSTRUCTION}"
         "Return ONE JSON object matching the CompetitiveReport schema. "
         "Every executive_summary and strategic_recommendations entry MUST "
         "be an object with 'text', 'evidence' (list of source_ids), and "
         "'is_hypothesis'. Do not invent sources. Do not wrap the response "
         "in markdown fences."
     )
+
+
+_PM_SECTIONS_INSTRUCTION = """
+Output these three PM-framework sections in addition to existing fields:
+
+"market_background": {
+  "market_overview": "2-3 sentence overview of the competitive landscape and market dynamics",
+  "market_size_notes": "any TAM/SAM estimates found in sources, or qualitative market size description",
+  "trends": [{"trend": "trend description", "evidence": ["src_xxx"]}],
+  "key_drivers": ["growth driver 1", "growth driver 2"],
+  "key_challenges": ["market challenge 1"]
+}
+
+"feature_insights": {
+  "table_stakes": ["feature all or most competitors offer"],
+  "differentiators": [{"feature": "feature name", "competitors": ["CompetitorA"]}],
+  "gaps": ["feature category no competitor addresses — potential market opportunity"],
+  "cross_competitor_patterns": ["cross-cutting pattern or trend observed across competitors"]
+}
+
+"operation_monetization": {
+  "gtm_profiles": [{
+    "competitor_name": "name",
+    "motion": "PLG|sales_led|marketing_led|channel|hybrid",
+    "acquisition_channels": ["organic search", "product-led trial"],
+    "pricing_strategy": "freemium|per_seat|usage_based|flat_rate|enterprise",
+    "expansion_model": "how they expand revenue from existing customers",
+    "evidence": ["src_xxx"]
+  }],
+  "monetization_patterns": ["cross-competitor monetization observation"],
+  "aarrr_notes": {
+    "acquisition": {"CompetitorA": "how they acquire users"},
+    "activation": {"CompetitorA": "onboarding / first value approach"},
+    "retention": {"CompetitorA": "stickiness and retention mechanics"},
+    "referral": {"CompetitorA": "referral / virality / word-of-mouth"},
+    "revenue": {"CompetitorA": "revenue model and expansion levers"}
+  }
+}
+
+Use only evidence from provided sources. If a field cannot be determined, omit it or use an empty array — do not guess.
+"""
 
 
 def _build_json_llm() -> ChatOpenAI:
@@ -231,9 +335,59 @@ def _normalize_report_payload(data: Any) -> dict:
         "swot_comparison",
     ):
         data[key] = _to_dict(data.get(key))
-    # ``markdown_content`` should be a string even if the model omitted it.
     if not isinstance(data.get("markdown_content"), str):
         data["markdown_content"] = ""
+
+    # New purpose-analysis fields — all default gracefully on absent/invalid data.
+    if not isinstance(data.get("analysis_purpose"), str):
+        data["analysis_purpose"] = "general"
+    if not isinstance(data.get("analysis_objective"), str):
+        data["analysis_objective"] = ""
+    if not isinstance(data.get("competitor_selection_rationale"), dict):
+        data["competitor_selection_rationale"] = {}
+    if not isinstance(data.get("purpose_sections"), dict):
+        data["purpose_sections"] = {}
+    if not isinstance(data.get("custom_dimension_analysis"), dict):
+        data["custom_dimension_analysis"] = {}
+
+    # Validate competitor_scores: keep valid entries, drop invalid ones.
+    raw_scores = data.get("competitor_scores")
+    validated_scores: dict = {}
+    if isinstance(raw_scores, dict):
+        for name, val in raw_scores.items():
+            try:
+                validated_scores[name] = CompetitorScore.model_validate(val).model_dump(mode="json")
+            except Exception:  # noqa: BLE001
+                pass
+    data["competitor_scores"] = validated_scores
+
+    # Validate opportunity_score: None on any failure.
+    raw_opp = data.get("opportunity_score")
+    if raw_opp is not None:
+        try:
+            data["opportunity_score"] = OpportunityScore.model_validate(raw_opp).model_dump(mode="json")
+        except Exception:  # noqa: BLE001
+            data["opportunity_score"] = None
+
+    # M13B: PM-framework sections — validate each, default to None on failure.
+    try:
+        mb = data.get("market_background")
+        data["market_background"] = MarketBackground.model_validate(mb).model_dump(mode="json") if mb else None
+    except Exception:  # noqa: BLE001
+        data["market_background"] = None
+
+    try:
+        fi = data.get("feature_insights")
+        data["feature_insights"] = FeatureInsights.model_validate(fi).model_dump(mode="json") if fi else None
+    except Exception:  # noqa: BLE001
+        data["feature_insights"] = None
+
+    try:
+        om = data.get("operation_monetization")
+        data["operation_monetization"] = OperationMonetization.model_validate(om).model_dump(mode="json") if om else None
+    except Exception:  # noqa: BLE001
+        data["operation_monetization"] = None
+
     return data
 
 
@@ -395,23 +549,32 @@ def _build_feature_comparison(
     """Build feature_comparison deterministically from structured feature_tree.
 
     Produces a dict mapping competitor_name -> compact feature summary string,
-    grouped by category. This prevents the LLM from contradicting the analyst's
-    structured feature availability data (e.g. reporting 'none' for a feature
-    that the analyst explicitly recorded as 'available').
+    grouped by canonical category. Categories that differ in raw form but share
+    the same canonical name (e.g. "AI Agent" + "Agent Management" → "AI Agents")
+    are merged into a single row to prevent duplicate table entries.
     """
     result: dict[str, str] = {}
     for ck in knowledge:
         if not ck.feature_tree:
             continue
-        cat_parts: list[str] = []
+        # Accumulate features per canonical category before building the string
+        merged: dict[str, list[str]] = {}
         for cat in ck.feature_tree:
+            canonical = normalize_feature_category(cat.category)
             feature_names = [
                 f.name
                 for f in cat.features
                 if f.availability != "unknown" and f.name
             ]
-            if feature_names:
-                cat_parts.append(f"{cat.category}: {', '.join(feature_names)}")
+            if canonical in merged:
+                merged[canonical].extend(feature_names)
+            else:
+                merged[canonical] = feature_names
+        cat_parts = [
+            f"{canonical}: {', '.join(names)}"
+            for canonical, names in merged.items()
+            if names
+        ]
         if cat_parts:
             result[ck.competitor_name] = " | ".join(cat_parts)
     return result
@@ -517,6 +680,9 @@ def _bind_report_fields(
             report.markdown_content = (
                 report.markdown_content.rstrip() + "\n\n" + pricing_md
             )
+
+    # Post-process: replace raw [src_xxx] tokens with deterministic [N] citations.
+    report.markdown_content = render_report_markdown(report)
     return report
 
 
@@ -528,6 +694,8 @@ def run(
     goals: list[str],
     rework_hints: list[str] | None = None,
     output_language: str = "en",
+    analysis_purpose: str = "general",
+    custom_dimensions: list[str] | None = None,
 ) -> CompetitiveReport:
     """Generate a :class:`CompetitiveReport` from competitor knowledge."""
     run_id = f"run_{uuid.uuid4().hex[:8]}"
@@ -543,6 +711,8 @@ def run(
             "goals": goals,
             "rework_hints": rework_hints or [],
             "output_language": output_language,
+            "analysis_purpose": analysis_purpose,
+            "custom_dimensions": custom_dimensions or [],
         },
         status=AgentRunStatus.running,
     )
@@ -572,6 +742,8 @@ def run(
             goals=goals,
             rework_hints=rework_hints,
             output_language=output_language,
+            analysis_purpose=analysis_purpose,
+            custom_dimensions=custom_dimensions,
         )
         messages = [
             SystemMessage(content=system_prompt),
@@ -592,6 +764,7 @@ def run(
             sources=sources,
             output_language=output_language,
         )
+        report.analysis_purpose = analysis_purpose
 
         elapsed_ms = int((time.time() - start) * 1000)
         trace_service.update_agent_run(

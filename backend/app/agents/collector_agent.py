@@ -100,6 +100,10 @@ class _CollectionResult:
     fallback_used: bool = False        # demo sources were actually merged
     fallback_available: bool = False   # fixture file exists on disk
     fallback_source_count: int = 0     # number of merged demo sources
+    # M15A URL observability fields
+    selected_extra_urls: list = field(default_factory=list)
+    silent_search_urls: list = field(default_factory=list)
+    rejected_extra_urls: list = field(default_factory=list)
 
 
 def _hints_request_pricing(rework_hints: list[str] | None) -> bool:
@@ -169,6 +173,7 @@ def _collect_live(
     competitor_id: str,
     industry_type: str = "general",
     search_service: SearchService | None = None,
+    extra_urls: list[str] | None = None,
 ) -> _CollectionResult:
     """Crawl a competitor's website using industry-specific paths.
 
@@ -190,10 +195,23 @@ def _collect_live(
                 exc,
             )
 
+    # Normalize + filter user-selected URLs (untrusted — same pipeline as M14)
+    from app.services.search_service import _normalize_url as _svc_normalize, _is_crawlable
+    cleaned_extra: list[str] = []
+    rejected_extra: list[dict] = []
+    for raw_url in (extra_urls or []):
+        norm = _svc_normalize(raw_url)
+        if not _is_crawlable(norm):
+            rejected_extra.append({"url": raw_url, "reason": "blocked_domain_or_extension"})
+        elif norm not in {_svc_normalize(u) for u in cleaned_extra}:
+            cleaned_extra.append(raw_url)
+
+    combined_extra = cleaned_extra + search_urls
+    combined_extra_norms = {_normalize_url(u) for u in combined_extra}
+
     industry_max = get_industry_max_pages(industry_type)
     combined_cap = industry_max + _SEARCH_MAX_URLS
-    all_candidates = _deduplicate_urls(candidate_urls + search_urls)[:combined_cap]
-    search_url_norms = {_normalize_url(u) for u in search_urls}
+    all_candidates = _deduplicate_urls(candidate_urls + combined_extra)[:combined_cap]
 
     live_sources: list[SourceEvidence] = []
     failed_urls: list[str] = []
@@ -210,7 +228,7 @@ def _collect_live(
             source_domain = urlparse(page.url).netloc
             s_type = source_classifier.classify(page.url, page.title, page.content)
             reliability = _assign_reliability(s_type, source_domain, competitor_domain)
-            data_source = "search" if _normalize_url(url) in search_url_norms else "live"
+            data_source = "search" if _normalize_url(url) in combined_extra_norms else "live"
 
             live_sources.append(
                 SourceEvidence(
@@ -274,6 +292,9 @@ def _collect_live(
         fallback_used=fallback_used,
         fallback_available=fallback_available,
         fallback_source_count=len(fixture_sources),
+        selected_extra_urls=cleaned_extra,
+        silent_search_urls=search_urls,
+        rejected_extra_urls=rejected_extra,
     )
 
 
@@ -349,6 +370,7 @@ def run(
                 result = _collect_live(
                     name, website, project_id, competitor_id, industry_type,
                     search_service=search_svc,
+                    extra_urls=comp.get("extra_urls", []) if isinstance(comp, dict) else [],
                 )
                 all_failed_urls.extend(result.failed_urls)
                 attempted_urls_by_competitor[name] = result.attempted_urls
@@ -359,6 +381,11 @@ def run(
                     "fallback_used": result.fallback_used,
                     "fallback_available": result.fallback_available,
                     "fallback_source_count": result.fallback_source_count,
+                    "selected_extra_url_count": len(result.selected_extra_urls),
+                    "silent_search_url_count": len(result.silent_search_urls),
+                    "selected_extra_urls": result.selected_extra_urls,
+                    "silent_search_urls": result.silent_search_urls,
+                    "rejected_extra_urls": result.rejected_extra_urls,
                 }
                 sources = result.sources
             else:

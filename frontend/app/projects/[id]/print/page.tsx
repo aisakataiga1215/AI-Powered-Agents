@@ -51,9 +51,9 @@ export default function PrintPage({ params }: PageProps) {
   })
 
   const report = reportQuery.data
-  const traces = tracesQuery.data?.traces ?? []
+  const traces = useMemo(() => tracesQuery.data?.traces ?? [], [tracesQuery.data])
   const projectStatus = projectQuery.data?.status
-  const requestedCompetitors = projectQuery.data?.competitors ?? []
+  const requestedCompetitors = useMemo(() => projectQuery.data?.competitors ?? [], [projectQuery.data])
 
   const qaResult = useMemo(() => extractLatestQA(traces), [traces])
 
@@ -750,16 +750,16 @@ function PrintSWOTSection({
 // ─── QA result (simplified, no progress bar) ─────────────────────────────────
 
 const SEVERITY_LABEL: Record<string, string> = {
-  critical: 'Critical',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Advisory',
+  high:   'Blocking Issue',
+  medium: 'Warning',
+  low:    'Advisory',
 }
 
 function PrintQAResult({ result }: { result: QAResult }) {
   const issues = result.issues ?? []
-  const blockingIssues = issues.filter((i) => i.severity !== 'low')
-  const advisories = issues.filter((i) => i.severity === 'low')
+  const blockingIssues = issues.filter((i) => i.severity === 'high')
+  const warnings       = issues.filter((i) => i.severity === 'medium')
+  const advisories     = issues.filter((i) => i.severity === 'low')
 
   return (
     <div className="text-sm">
@@ -777,12 +777,17 @@ function PrintQAResult({ result }: { result: QAResult }) {
             {blockingIssues.length} blocking issue{blockingIssues.length !== 1 ? 's' : ''}
           </span>
         )}
+        {warnings.length > 0 && (
+          <span className="text-gray-500">
+            {warnings.length} warning{warnings.length !== 1 ? 's' : ''}
+          </span>
+        )}
         {advisories.length > 0 && (
           <span className="text-gray-500">
             {advisories.length} advisor{advisories.length !== 1 ? 'ies' : 'y'}
           </span>
         )}
-        {blockingIssues.length === 0 && advisories.length === 0 && (
+        {blockingIssues.length === 0 && warnings.length === 0 && advisories.length === 0 && (
           <span className="text-gray-500">No issues</span>
         )}
       </div>
@@ -797,6 +802,32 @@ function PrintQAResult({ result }: { result: QAResult }) {
               <li key={issue.issue_id ?? i} className="print-card rounded border border-gray-200 p-3">
                 <div className="mb-1 flex items-center gap-2">
                   <span className="text-xs font-semibold uppercase text-gray-700">
+                    {SEVERITY_LABEL[issue.severity] ?? issue.severity}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {issue.target_agent} · {issue.issue_type}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-900">{issue.message}</p>
+                {issue.suggested_action && (
+                  <p className="mt-1 text-xs text-gray-500">Action: {issue.suggested_action}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {warnings.length > 0 && (
+        <>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-600">
+            Warnings
+          </h3>
+          <ul className="mb-4 space-y-2">
+            {warnings.map((issue, i) => (
+              <li key={issue.issue_id ?? i} className="print-card rounded border border-gray-200 p-3">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase text-yellow-700">
                     {SEVERITY_LABEL[issue.severity] ?? issue.severity}
                   </span>
                   <span className="text-xs text-gray-400">

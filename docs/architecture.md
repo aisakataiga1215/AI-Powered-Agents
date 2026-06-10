@@ -315,7 +315,7 @@ Contains application services:
 | `crawler_service.py`     | Public data collection (httpx + BeautifulSoup, 10s timeout, robots.txt best-effort)           |
 | `source_discovery.py`    | Probes industry-specific candidate URL paths on the competitor root domain. **Not a web crawler** — constructs known path variants (e.g. `/pricing`, `/seller-fees`) and probes them directly. No sitemap parsing, link following, or search-engine discovery. Industry-keyed path sets: `ai_saas` (10 paths, max 5 pages), `ecommerce` (14 paths, max 8 pages), `local_services` (12 paths, max 8 pages), `general` (6 paths, max 5 pages). `industry_type` is set per project at creation and threads through the workflow to CollectorAgent. Public helper `get_industry_max_pages(industry_type)` exposed for `CollectorAgent`. |
 | `search_provider.py`     | `SearchProvider` Protocol + `TavilySearchProvider` (wraps Tavily SDK) + `NullSearchProvider` (no-op) + `create_search_provider()` factory. Active when `ENABLE_LIVE_SEARCH=true` and `TAVILY_API_KEY` is set; degrades to `NullSearchProvider` otherwise. |
-| `search_service.py`      | Industry-keyed web search query templates → URL discovery via `SearchProvider` → `_is_crawlable()` filter (`_BLOCKED_DOMAINS` covers youtube/twitter/reddit/linkedin; `_UNSUPPORTED_EXTENSIONS` blocks binary files) → `_SEARCH_MAX_URLS=5` cap. Acts as a second URL-discovery channel alongside `source_discovery` inside `CollectorAgent._collect_live()`. Tavily title/snippet are discovery-only — never stored as evidence. |
+| `search_service.py`      | Industry-keyed web search query templates → URL discovery via `SearchProvider` → `_is_crawlable()` filter (`_BLOCKED_DOMAINS` covers youtube/twitter/reddit/linkedin; `_UNSUPPORTED_EXTENSIONS` blocks binary files) → `_SEARCH_MAX_URLS=5` cap. Acts as a second URL-discovery channel alongside `source_discovery` inside `CollectorAgent._collect_live()`. Tavily title/snippet are discovery-only — never stored as evidence. Exposes three methods: `discover_urls()` for silent background discovery (workflow), `search_sources()` for interactive per-competitor candidate search (used by `POST /api/search/sources`) returning `CandidateSource` items annotated with `suggested_source_type`/`confidence`/`reason`, and `discover_competitors()` for industry-driven candidate-competitor discovery (used by `POST /api/search/competitors`) returning `CandidateCompetitor` items with provenance + relevance score. Aggregator/listicle/news domains are excluded via `_DISCOVERY_BLOCKED_DOMAINS` and `_LISTICLE_TITLE_RE`. |
 | `source_classifier.py`   | URL-path-first keyword classifier mapping discovered pages to `SourceType` (`features_page`, `security`, `privacy`, `unknown`, etc.) |
 | `coverage_evaluator.py`  | Per-competitor source coverage scoring (homepage/pricing/features/security weights, `WEAK_THRESHOLD=40`). Drives QA coverage checks. |
 | `source_service.py`      | Source storage and retrieval                                                                  |
@@ -373,6 +373,14 @@ Displays Agent input, output, prompt, token usage, latency, and retry history.
 ### 6.6 `frontend/components/qa/`
 
 Displays QAAgent results and rework decisions.
+
+### 6.7 `frontend/components/search/`
+
+Interactive source search UI. `CandidateSourcePanel.tsx` lets the user pick per-competitor `CandidateSource` URLs (M15A); selected URLs are submitted as `CompetitorInput.extra_urls`.
+
+### 6.8 `frontend/components/competitor/`
+
+Competitor discovery UI. `CompetitorDiscoveryPanel.tsx` (M15B) calls `POST /api/search/competitors` for the project's industry/topic, displays `CandidateCompetitor` items with relevance score and suggested role, and pushes selected candidates into the form's competitor list.
 
 ## 7. Runtime Workflow
 
@@ -451,6 +459,8 @@ Core MVP APIs:
 | GET    | `/api/projects/{project_id}/traces`    | Get Agent traces                      |
 | GET    | `/api/projects/{project_id}/report`    | Get report                            |
 | GET    | `/api/sources/{source_id}`             | Get source detail                     |
+| POST   | `/api/search/sources`                  | Interactive per-competitor candidate URL search (returns `list[CandidateSource]`; requires `ENABLE_LIVE_SEARCH=true` and `TAVILY_API_KEY`) |
+| POST   | `/api/search/competitors`              | Industry-driven competitor discovery (accepts `{ industry, industry_type }`, returns `list[CandidateCompetitor]`; requires `ENABLE_LIVE_SEARCH=true` and `TAVILY_API_KEY`) |
 | PATCH  | `/api/projects/{project_id}/knowledge` | Manually correct structured knowledge |
 
 ## 10. Traceability Design
