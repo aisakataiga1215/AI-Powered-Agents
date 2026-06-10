@@ -6,9 +6,9 @@ retrieval. These map to the REST endpoints documented in
 """
 
 from enum import Enum
-from typing import Literal
+from typing import Literal, get_args
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.competitor import CompetitorInput, CompetitorRole
 
@@ -23,13 +23,32 @@ IndustryType = Literal[
     "general",
 ]
 AnalysisPurpose = Literal[
-    "build_product",
-    "choose_product",
-    "industry_landscape",
-    "competitor_success",
-    "improve_product",
-    "general",
+    "build_similar_product",
+    "choose_product_to_use",
+    "market_research",
+    "competitor_success_analysis",
 ]
+
+LEGACY_ANALYSIS_PURPOSES: dict[str, AnalysisPurpose] = {
+    "build_product": "build_similar_product",
+    "choose_product": "choose_product_to_use",
+    "industry_landscape": "market_research",
+    "competitor_success": "competitor_success_analysis",
+    "improve_product": "build_similar_product",
+    "general": "market_research",
+}
+DEFAULT_ANALYSIS_PURPOSE: AnalysisPurpose = "market_research"
+
+
+def normalize_analysis_purpose(value: str | None, *, strict: bool = False) -> AnalysisPurpose:
+    raw = (value or DEFAULT_ANALYSIS_PURPOSE).strip()
+    if raw in LEGACY_ANALYSIS_PURPOSES:
+        return LEGACY_ANALYSIS_PURPOSES[raw]
+    if raw in get_args(AnalysisPurpose):
+        return raw
+    if strict:
+        raise ValueError(f"Unsupported analysis_purpose: {raw}")
+    return DEFAULT_ANALYSIS_PURPOSE
 
 
 class ProjectStatus(str, Enum):
@@ -57,7 +76,7 @@ class ResearchInput(BaseModel):
 class ProjectCreate(BaseModel):
     industry: str
     industry_type: IndustryType = "general"
-    analysis_purpose: AnalysisPurpose = "general"
+    analysis_purpose: AnalysisPurpose = DEFAULT_ANALYSIS_PURPOSE
     custom_dimensions: list[str] = Field(default_factory=list)
     competitors: list[CompetitorInput]
     goals: list[str] = Field(default_factory=list)
@@ -66,12 +85,17 @@ class ProjectCreate(BaseModel):
     data_mode: Literal["demo", "live_with_fallback"] = "demo"
     research_inputs: list[ResearchInput] = Field(default_factory=list)
 
+    @field_validator("analysis_purpose", mode="before")
+    @classmethod
+    def normalize_purpose(cls, value: str | None) -> AnalysisPurpose:
+        return normalize_analysis_purpose(value, strict=True)
+
 
 class ProjectResponse(BaseModel):
     project_id: str
     industry: str
     industry_type: str = "general"
-    analysis_purpose: str = "general"
+    analysis_purpose: str = DEFAULT_ANALYSIS_PURPOSE
     custom_dimensions: list[str] = []
     goals: list[str]
     status: ProjectStatus

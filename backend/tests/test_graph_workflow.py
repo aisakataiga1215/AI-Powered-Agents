@@ -26,7 +26,11 @@ from app.agents import (
 )
 from app.db import models
 from app.graph import nodes as graph_nodes
-from app.graph.workflow import build_workflow, competitive_analysis_workflow
+from app.graph.workflow import (
+    _initial_state,
+    build_workflow,
+    competitive_analysis_workflow,
+)
 from app.schemas.claim import Claim
 from app.schemas.knowledge import (
     CompetitorKnowledge,
@@ -52,6 +56,17 @@ def test_workflow_module_level_singleton_compiled():
     """The cached singleton must be ready for invoke() at import time."""
     assert competitive_analysis_workflow is not None
     assert hasattr(competitive_analysis_workflow, "invoke")
+
+
+def test_initial_state_normalizes_legacy_analysis_purpose():
+    state = _initial_state(
+        project_id="proj_legacy",
+        competitors=[],
+        goals=[],
+        analysis_purpose="choose_product",
+    )
+
+    assert state["analysis_purpose"] == "choose_product_to_use"
 
 
 # ---------------------------------------------------------------------------

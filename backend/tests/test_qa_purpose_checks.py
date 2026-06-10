@@ -67,14 +67,14 @@ def test_check_custom_dimensions_dim_found_in_markdown_returns_no_issue():
 # ---------------------------------------------------------------------------
 
 
-def test_check_scoring_rationale_general_purpose_returns_no_issues():
+def test_check_scoring_rationale_market_research_returns_no_issues():
     report = _make_report()
-    assert check_scoring_rationale(report, "general") == []
+    assert check_scoring_rationale(report, "market_research") == []
 
 
 def test_check_scoring_rationale_choose_product_missing_scores_returns_medium():
     report = _make_report(competitor_scores={})
-    issues = check_scoring_rationale(report, "choose_product")
+    issues = check_scoring_rationale(report, "choose_product_to_use")
     assert len(issues) == 1
     assert issues[0].severity is IssueSeverity.medium
     assert "competitor_scores" in issues[0].message
@@ -82,7 +82,7 @@ def test_check_scoring_rationale_choose_product_missing_scores_returns_medium():
 
 def test_check_scoring_rationale_build_product_missing_opportunity_score_returns_medium():
     report = _make_report(opportunity_score=None)
-    issues = check_scoring_rationale(report, "build_product")
+    issues = check_scoring_rationale(report, "build_similar_product")
     assert len(issues) == 1
     assert issues[0].severity is IssueSeverity.medium
     assert "opportunity_score" in issues[0].message

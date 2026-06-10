@@ -32,6 +32,7 @@ from app.graph.nodes import (
 )
 from app.graph.routing import route_after_qa, route_rework
 from app.graph.state import WorkflowState
+from app.schemas.project import normalize_analysis_purpose
 
 logger = get_logger(__name__)
 
@@ -93,7 +94,7 @@ def _initial_state(
     output_language: str = "en",
     data_mode: str = "demo",
     industry_type: str = "general",
-    analysis_purpose: str = "general",
+    analysis_purpose: str = "market_research",
     custom_dimensions: list[str] | None = None,
     research_inputs: list[dict] | None = None,
 ) -> WorkflowState:
@@ -104,7 +105,7 @@ def _initial_state(
         "output_language": output_language,
         "data_mode": data_mode,
         "industry_type": industry_type,
-        "analysis_purpose": analysis_purpose,
+        "analysis_purpose": normalize_analysis_purpose(analysis_purpose),
         "custom_dimensions": custom_dimensions or [],
         "research_inputs": research_inputs or [],
         "sources": [],
@@ -126,7 +127,7 @@ def run_workflow_background(
     output_language: str = "en",
     data_mode: str = "demo",
     industry_type: str = "general",
-    analysis_purpose: str = "general",
+    analysis_purpose: str = "market_research",
     custom_dimensions: list[str] | None = None,
     research_inputs: list[dict] | None = None,
 ) -> None:
@@ -144,8 +145,9 @@ def run_workflow_background(
             crawls competitor websites and falls back to fixtures when
             coverage is insufficient.
         industry_type: Industry context for source discovery path selection.
-        analysis_purpose: Analysis intent — ``"general"``, ``"build_product"``,
-            or ``"choose_product"``. Controls purpose-specific report sections.
+        analysis_purpose: Analysis intent — ``"build_similar_product"``,
+            ``"choose_product_to_use"``, ``"market_research"``, or
+            ``"competitor_success_analysis"``. Controls purpose-specific report sections.
         custom_dimensions: Optional list of user-defined analysis dimensions.
         research_inputs: Optional manually supplied survey/interview/questionnaire notes.
     """
@@ -154,7 +156,7 @@ def run_workflow_background(
     del db_url
 
     from app.db.session import SessionLocal
-    from app.schemas.project import ProjectStatus
+    from app.schemas.project import ProjectStatus, normalize_analysis_purpose
     from app.services import project_service
 
     logger.info("Starting workflow for project %s", project_id)

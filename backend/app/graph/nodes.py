@@ -16,7 +16,7 @@ from app.agents import qa_agent
 from app.agents import writer_agent
 from app.core.logging import get_logger
 from app.graph.state import WorkflowState
-from app.schemas.project import ProjectStatus
+from app.schemas.project import DEFAULT_ANALYSIS_PURPOSE, ProjectStatus
 from app.schemas.qa import IssueSeverity, QAResult
 from app.services import project_service, report_service
 
@@ -69,7 +69,7 @@ def analyze_competitors_node(state: WorkflowState) -> dict:
             sources=state["sources"],
             goals=state["goals"],
             rework_hints=state.get("rework_hints", []),
-            analysis_purpose=state.get("analysis_purpose", "general"),
+            analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
             custom_dimensions=state.get("custom_dimensions", []),
             competitor_roles=competitor_roles,
         )
@@ -90,7 +90,7 @@ def write_report_node(state: WorkflowState) -> dict:
             goals=state["goals"],
             rework_hints=state.get("rework_hints", []),
             output_language=state.get("output_language", "en"),
-            analysis_purpose=state.get("analysis_purpose", "general"),
+            analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
             custom_dimensions=state.get("custom_dimensions", []),
         )
         return {"report": report}
@@ -109,7 +109,7 @@ def qa_review_node(state: WorkflowState) -> dict:
             knowledge=state["competitor_knowledge"],
             sources=state["sources"],
             goals=state["goals"],
-            analysis_purpose=state.get("analysis_purpose", "general"),
+            analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
             custom_dimensions=state.get("custom_dimensions", []),
         )
         return {"qa_result": result}

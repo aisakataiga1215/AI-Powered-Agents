@@ -81,7 +81,7 @@ def _build_user_message(
     goals: list[str],
     rework_hints: list[str] | None,
     output_language: str = "en",
-    analysis_purpose: str = "general",
+    analysis_purpose: str = "market_research",
     custom_dimensions: list[str] | None = None,
 ) -> str:
     hints_section = ""
@@ -105,7 +105,7 @@ def _build_user_message(
         '"competitor_selection_rationale": {<comp_name>: "why included based on its role"},\n'
     )
 
-    if analysis_purpose == "choose_product":
+    if analysis_purpose == "choose_product_to_use":
         purpose_instruction += (
             '\n"competitor_scores": {\n'
             '  <comp_name>: {\n'
@@ -123,7 +123,7 @@ def _build_user_message(
             '  "decision_matrix": [{"criterion": str, <comp_name>: {"value": str, "evidence": [src_ids]}}]\n'
             '}\n'
         )
-    elif analysis_purpose == "build_product":
+    elif analysis_purpose == "build_similar_product":
         purpose_instruction += (
             '\n"opportunity_score": {\n'
             '  "overall_score": <float 0-100>,\n'
@@ -139,7 +139,7 @@ def _build_user_message(
             '  "differentiation_opportunities": [{"opportunity": str, "rationale": str}]\n'
             '}\n'
         )
-    elif analysis_purpose == "industry_landscape":
+    elif analysis_purpose == "market_research":
         purpose_instruction += (
             '\n"purpose_sections": {\n'
             '  "market_map": [{"segment": str, "competitors": [str], "rationale": str, "evidence": [src_ids]}],\n'
@@ -148,22 +148,13 @@ def _build_user_message(
             '  "landscape_takeaways": [{"takeaway": str, "evidence": [src_ids]}]\n'
             '}\n'
         )
-    elif analysis_purpose == "competitor_success":
+    elif analysis_purpose == "competitor_success_analysis":
         purpose_instruction += (
             '\n"purpose_sections": {\n'
             '  "success_drivers": [{"competitor_name": str, "driver": str, "evidence": [src_ids]}],\n'
             '  "growth_events": [{"competitor_name": str, "event": str, "impact": str, "evidence": [src_ids]}],\n'
             '  "moat_analysis": {<comp_name>: "product, distribution, data, brand, ecosystem, or switching-cost moat"},\n'
             '  "failure_risks": [{"competitor_name": str, "risk": str, "evidence": [src_ids]}]\n'
-            '}\n'
-        )
-    elif analysis_purpose == "improve_product":
-        purpose_instruction += (
-            '\n"purpose_sections": {\n'
-            '  "user_pain_points": [{"pain": str, "affected_segment": str, "evidence": [src_ids]}],\n'
-            '  "feature_gap_backlog": [{"initiative": str, "priority": "high"|"medium"|"low", "rationale": str, "evidence": [src_ids]}],\n'
-            '  "workflow_improvements": [{"current_friction": str, "recommended_change": str, "evidence": [src_ids]}],\n'
-            '  "risk_tradeoffs": [{"tradeoff": str, "mitigation": str}]\n'
             '}\n'
         )
 
@@ -399,7 +390,7 @@ def _normalize_report_payload(data: Any) -> dict:
 
     # New purpose-analysis fields — all default gracefully on absent/invalid data.
     if not isinstance(data.get("analysis_purpose"), str):
-        data["analysis_purpose"] = "general"
+        data["analysis_purpose"] = "market_research"
     if not isinstance(data.get("analysis_objective"), str):
         data["analysis_objective"] = ""
     if not isinstance(data.get("competitor_selection_rationale"), dict):
@@ -753,7 +744,7 @@ def run(
     goals: list[str],
     rework_hints: list[str] | None = None,
     output_language: str = "en",
-    analysis_purpose: str = "general",
+    analysis_purpose: str = "market_research",
     custom_dimensions: list[str] | None = None,
 ) -> CompetitiveReport:
     """Generate a :class:`CompetitiveReport` from competitor knowledge."""

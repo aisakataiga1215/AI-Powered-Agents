@@ -21,6 +21,7 @@ from app.schemas.project import (
     ProjectCreate,
     ProjectResponse,
     ProjectStatus,
+    normalize_analysis_purpose,
 )
 from app.services import project_service
 
@@ -52,7 +53,7 @@ def _to_response(project) -> ProjectResponse:
         project_id=project.id,
         industry=project.industry,
         industry_type=getattr(project, "industry_type", "general") or "general",
-        analysis_purpose=getattr(project, "analysis_purpose", "general") or "general",
+        analysis_purpose=normalize_analysis_purpose(getattr(project, "analysis_purpose", None)),
         custom_dimensions=json.loads(getattr(project, "custom_dimensions", "[]") or "[]"),
         research_inputs=json.loads(getattr(project, "research_inputs", "[]") or "[]"),
         goals=project_service.deserialize_goals(project),
@@ -126,7 +127,7 @@ def run_project(
             project.output_language,
             getattr(project, "data_mode", "demo") or "demo",
             getattr(project, "industry_type", "general") or "general",
-            getattr(project, "analysis_purpose", "general") or "general",
+            normalize_analysis_purpose(getattr(project, "analysis_purpose", None)),
             json.loads(getattr(project, "custom_dimensions", "[]") or "[]"),
             json.loads(getattr(project, "research_inputs", "[]") or "[]"),
         )

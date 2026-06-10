@@ -55,7 +55,7 @@ def _apply_migrations() -> None:
     _add_column_if_missing(
         "projects",
         "analysis_purpose",
-        "ALTER TABLE projects ADD COLUMN analysis_purpose TEXT DEFAULT 'general'"
+        "ALTER TABLE projects ADD COLUMN analysis_purpose TEXT DEFAULT 'market_research'"
     )
     _add_column_if_missing(
         "projects",

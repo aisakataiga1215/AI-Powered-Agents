@@ -32,6 +32,17 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
+function purposeSectionTitle(purpose?: string): string | null {
+  if (!purpose) return null
+  const labels: Record<string, string> = {
+    build_similar_product: 'Build Insights',
+    choose_product_to_use: 'Decision Guide',
+    market_research: 'Market Research',
+    competitor_success_analysis: 'Success Analysis',
+  }
+  return labels[purpose] ?? null
+}
+
 export default function PrintPage({ params }: PageProps) {
   const { id } = use(params)
 
@@ -97,6 +108,8 @@ export default function PrintPage({ params }: PageProps) {
   }
 
   const { index: citationIndex, usedIds, unusedIds } = citationData
+
+  const purposeTitle = purposeSectionTitle(report.analysis_purpose)
 
   const usedSources = usedIds
     .map((sid) => report.source_list.find((s) => s.source_id === sid))
@@ -246,9 +259,9 @@ export default function PrintPage({ params }: PageProps) {
         )}
 
         {/* Purpose-specific scoring and sections */}
-        {report.analysis_purpose && report.analysis_purpose !== 'general' && (
+        {purposeTitle && (
           <>
-            <PrintSection title={report.analysis_purpose === 'build_product' ? 'Build Insights' : 'Decision Guide'}>
+            <PrintSection title={purposeTitle}>
               <ScoringMatrix
                 analysisPurpose={report.analysis_purpose}
                 competitorScores={report.competitor_scores}
@@ -260,6 +273,7 @@ export default function PrintPage({ params }: PageProps) {
                 <PurposeSections
                   analysisPurpose={report.analysis_purpose}
                   purposeSections={report.purpose_sections}
+                  sourceList={report.source_list ?? []}
                 />
               </PrintSection>
             )}

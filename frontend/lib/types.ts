@@ -35,12 +35,10 @@ export type IndustryType =
   | 'general'
 
 export type AnalysisPurpose =
-  | 'build_product'
-  | 'choose_product'
-  | 'industry_landscape'
-  | 'competitor_success'
-  | 'improve_product'
-  | 'general'
+  | 'build_similar_product'
+  | 'choose_product_to_use'
+  | 'market_research'
+  | 'competitor_success_analysis'
 
 export type CompetitorRole =
   | 'direct_competitor'

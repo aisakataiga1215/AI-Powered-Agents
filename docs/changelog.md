@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## M17.1 — Purpose-Driven Decision Support Phase 1
+
+### Backend
+- Canonicalized `analysis_purpose` to four decision intents: `build_similar_product`, `choose_product_to_use`, `market_research`, and `competitor_success_analysis`.
+- Added legacy purpose normalization for stored/API compatibility while rejecting unknown public create values with 422 validation.
+- Threaded canonical purpose values through project persistence, API responses, LangGraph initial state, AnalystAgent, WriterAgent, and QAAgent.
+- Updated default persisted report/project purpose to `market_research`.
+- Restored `research_inputs` create/get/run propagation in `ProjectCreate` while updating purpose validation.
+
+### Frontend
+- Replaced purpose choices with four Chinese decision-intent labels.
+- Added custom-dimension suggestion chips, trim/dedupe behavior, and max-8 cap in project creation.
+- Updated report and print purpose tabs/sections for all four canonical purposes.
+- Improved scoring matrix rendering so dimensions from any competitor are visible.
+- Generic purpose evidence arrays now render as clickable source badges when source IDs are known.
+
+### Tests
+- Added/updated backend coverage for canonical round trip, legacy normalization, unknown-purpose rejection, workflow state normalization, QA purpose checks, and graph regressions.
+- Verified frontend lint and production build.
+
+---
+
 ## M16.2 - Search and Discovery Quality Recovery
 
 ### Competitor Discovery

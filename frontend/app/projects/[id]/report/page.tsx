@@ -46,6 +46,17 @@ interface PageProps {
 
 type TabValue = 'summary' | 'pricing' | 'features' | 'market' | 'swot' | 'recommendations' | 'markdown' | 'qa' | 'purpose'
 
+function purposeTabLabel(purpose?: string): string | null {
+  if (!purpose) return null
+  const labels: Record<string, string> = {
+    build_similar_product: 'Build Insights',
+    choose_product_to_use: 'Decision Guide',
+    market_research: 'Market Research',
+    competitor_success_analysis: 'Success Analysis',
+  }
+  return labels[purpose] ?? null
+}
+
 export default function ReportPage({ params }: PageProps) {
   const { id } = use(params)
   const [activeTab, setActiveTab] = useState<TabValue>('summary')
@@ -99,10 +110,10 @@ export default function ReportPage({ params }: PageProps) {
     const mediumCount = allIssues.filter((i) => i.severity === 'medium').length
     const lowCount    = allIssues.filter((i) => i.severity === 'low').length
     const purpose = reportQuery.data?.analysis_purpose
-    const purposeTab: TabItem | null =
-      purpose && purpose !== 'general'
-        ? { value: 'purpose', label: purpose === 'build_product' ? 'Build Insights' : 'Decision Guide' }
-        : null
+    const purposeLabel = purposeTabLabel(purpose)
+    const purposeTab: TabItem | null = purposeLabel
+      ? { value: 'purpose', label: purposeLabel }
+      : null
     const baseTabs: TabItem[] = [
       { value: 'summary', label: 'Summary' },
       { value: 'pricing', label: 'Pricing' },
@@ -307,7 +318,7 @@ export default function ReportPage({ params }: PageProps) {
               )}
             </>
           )}
-          {activeTab === 'purpose' && report.analysis_purpose && report.analysis_purpose !== 'general' && (
+          {activeTab === 'purpose' && purposeTabLabel(report.analysis_purpose) && (
             <div className="space-y-8">
               <ScoringMatrix
                 analysisPurpose={report.analysis_purpose}
@@ -317,6 +328,7 @@ export default function ReportPage({ params }: PageProps) {
               <PurposeSections
                 analysisPurpose={report.analysis_purpose}
                 purposeSections={report.purpose_sections ?? {}}
+                sourceList={report.source_list ?? []}
               />
               {report.custom_dimension_analysis && Object.keys(report.custom_dimension_analysis).length > 0 && (
                 <CustomDimensionTable analysis={report.custom_dimension_analysis} />

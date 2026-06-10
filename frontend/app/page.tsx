@@ -82,13 +82,14 @@ interface AnalysisPurposeOption {
 }
 
 const ANALYSIS_PURPOSE_OPTIONS: AnalysisPurposeOption[] = [
-  { value: 'build_product', label: 'Build Similar Product', description: 'Find opportunities, differentiation, and MVP direction' },
-  { value: 'choose_product', label: 'Compare Before Choosing', description: 'Rank products by fit, tradeoffs, and evidence' },
-  { value: 'industry_landscape', label: 'Industry Landscape', description: 'Map segments, leaders, challengers, and market dynamics' },
-  { value: 'competitor_success', label: 'Explain Success', description: 'Analyze why a competitor grew or became defensible' },
-  { value: 'improve_product', label: 'Improve Product', description: 'Find gaps, user pain, and product improvement priorities' },
-  { value: 'general', label: 'General Overview', description: 'Standard competitive landscape when the goal is broad' },
+  { value: 'build_similar_product', label: '我想做类似产品', description: '发现市场空白、差异化机会和 MVP 方向' },
+  { value: 'choose_product_to_use', label: '我想选择产品使用', description: '按适配度、价格、风险和证据排序' },
+  { value: 'market_research', label: '我想了解行业', description: '梳理市场格局、用户分层和增长驱动' },
+  { value: 'competitor_success_analysis', label: '我想分析某个竞品', description: '拆解定位、增长路径、变现和护城河' },
 ]
+
+const CUSTOM_DIMENSION_SUGGESTIONS = ['价格', '隐私', '本地部署', 'API', '企业版', '安全合规']
+const MAX_CUSTOM_DIMENSIONS = 8
 
 const COMPETITOR_ROLE_OPTIONS: { value: CompetitorRole; label: string }[] = [
   { value: 'direct_competitor', label: 'Direct Competitor' },
@@ -117,7 +118,7 @@ export default function NewProjectPage() {
   const [creationMode, setCreationMode] = useState<CreationMode>('discover')
   const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('帮我分析一下 AI coding 的竞品')
   const [industryType, setIndustryType] = useState<IndustryType>('ai_saas')
-  const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose>('build_product')
+  const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose>('build_similar_product')
   const [customDimensions, setCustomDimensions] = useState<string[]>([])
   const [dimInput, setDimInput] = useState('')
   const [competitors, setCompetitors] = useState<CompetitorInput[]>(
@@ -178,11 +179,18 @@ export default function NewProjectPage() {
     setCompetitors((prev) => [...prev, { name: '', url: '', role: 'direct_competitor' }])
   }
 
+  const addDimension = (value: string) => {
+    const normalized = value.trim()
+    if (!normalized) return
+    setCustomDimensions((prev) => {
+      if (prev.length >= MAX_CUSTOM_DIMENSIONS) return prev
+      if (prev.some((dim) => dim.toLowerCase() === normalized.toLowerCase())) return prev
+      return [...prev, normalized]
+    })
+  }
+
   const handleAddDimension = () => {
-    const t = dimInput.trim()
-    if (t && !customDimensions.includes(t)) {
-      setCustomDimensions((prev) => [...prev, t])
-    }
+    addDimension(dimInput)
     setDimInput('')
   }
 
@@ -419,7 +427,7 @@ export default function NewProjectPage() {
 
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-gray-900">Analysis purpose</h2>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {ANALYSIS_PURPOSE_OPTIONS.map((option) => (
               <label
                 key={option.value}
@@ -658,6 +666,28 @@ export default function NewProjectPage() {
 
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-gray-900">Custom dimensions <span className="text-gray-400 font-normal">(optional)</span></h2>
+          <div className="flex flex-wrap gap-1.5">
+            {CUSTOM_DIMENSION_SUGGESTIONS.map((suggestion) => {
+              const selected = customDimensions.some((dim) => dim.toLowerCase() === suggestion.toLowerCase())
+              return (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => addDimension(suggestion)}
+                  disabled={selected || customDimensions.length >= MAX_CUSTOM_DIMENSIONS}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                    selected
+                      ? 'border-blue-200 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700',
+                    customDimensions.length >= MAX_CUSTOM_DIMENSIONS && !selected ? 'cursor-not-allowed opacity-50' : ''
+                  )}
+                >
+                  {suggestion}
+                </button>
+              )
+            })}
+          </div>
           <div className="flex gap-2">
             <input
               id="custom-dimension-input"
@@ -667,12 +697,14 @@ export default function NewProjectPage() {
               onChange={(e) => setDimInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDimension() } }}
               placeholder="e.g. API quality, data privacy"
-              className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              disabled={customDimensions.length >= MAX_CUSTOM_DIMENSIONS}
+              className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
             />
             <button
               type="button"
               onClick={handleAddDimension}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              disabled={customDimensions.length >= MAX_CUSTOM_DIMENSIONS}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Add
             </button>
@@ -698,7 +730,7 @@ export default function NewProjectPage() {
             </div>
           )}
           <p className="text-xs text-gray-500">
-            Extra analysis axes the agents will address explicitly.
+            Extra analysis axes the agents will address explicitly. Up to {MAX_CUSTOM_DIMENSIONS} dimensions.
           </p>
         </section>
 

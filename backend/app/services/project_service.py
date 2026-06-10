@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from app.db import models
-from app.schemas.project import ProjectCreate, ProjectStatus
+from app.schemas.project import ProjectCreate, ProjectStatus, normalize_analysis_purpose
 
 
 def _competitor_identity(name: str, url: str) -> tuple[str, str]:
@@ -34,7 +34,7 @@ def create_project(db: Session, data: ProjectCreate) -> models.Project:
         report_depth=data.report_depth,
         data_mode=data.data_mode,
         industry_type=getattr(data, "industry_type", "general") or "general",
-        analysis_purpose=getattr(data, "analysis_purpose", "general") or "general",
+        analysis_purpose=normalize_analysis_purpose(getattr(data, "analysis_purpose", None)),
         custom_dimensions=json.dumps(getattr(data, "custom_dimensions", []) or []),
         research_inputs=json.dumps(
             [

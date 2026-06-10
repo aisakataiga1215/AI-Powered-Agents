@@ -2,11 +2,22 @@
 
 **Last updated:** 2026-06-10
 
-## Current Status: M16.2 Complete — Search and Discovery Quality Recovery
+## Current Status: M17.1 Complete — Purpose-Driven Decision Support Phase 1
 
 ---
 
 ## Milestones
+
+### Milestone 17.1: Purpose-Driven Decision Support Phase 1 ✅ COMPLETE
+
+- [x] Canonical `analysis_purpose` contract uses four decision intents: build similar product, choose product to use, market research, and competitor success analysis.
+- [x] Legacy purpose values normalize to canonical values for stored/API compatibility; unknown create payload values are rejected.
+- [x] Canonical purpose flows through project persistence, API responses, LangGraph state, AnalystAgent, WriterAgent, QAAgent, reports, and print/PDF rendering.
+- [x] Project creation UI shows four Chinese decision-intent purpose options.
+- [x] Custom dimensions support suggestion chips, trimming, dedupe, and max-8 cap.
+- [x] Purpose report tabs/print sections render all four canonical purposes, including clickable source badges for generic evidence arrays.
+- [x] Backend targeted regressions pass: `test_api_projects.py`, `test_qa_purpose_checks.py`, `test_graph_workflow.py`.
+- [x] Frontend lint and production build pass.
 
 ### Milestone 1: Project Setup ✅ COMPLETE
 

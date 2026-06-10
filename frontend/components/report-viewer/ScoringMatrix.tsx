@@ -4,7 +4,7 @@ import type { CompetitorScore, OpportunityScore } from '@/lib/types'
 import { cn } from '@/lib/cn'
 
 interface Props {
-  analysisPurpose: string
+  analysisPurpose?: string
   competitorScores?: Record<string, CompetitorScore>
   opportunityScore?: OpportunityScore | null
 }
@@ -23,13 +23,15 @@ function confidenceBadge(conf: string): string {
 }
 
 export default function ScoringMatrix({ analysisPurpose, competitorScores, opportunityScore }: Props) {
-  if (analysisPurpose === 'general') return null
+  if (analysisPurpose === 'market_research' || analysisPurpose === 'competitor_success_analysis') return null
 
-  if (analysisPurpose === 'choose_product') {
+  if (analysisPurpose === 'choose_product_to_use') {
     if (!competitorScores || Object.keys(competitorScores).length === 0) return null
     const names = Object.keys(competitorScores)
     const firstScore = competitorScores[names[0]]
-    const dims = firstScore?.dimensions?.map((d) => d.dimension_name) ?? []
+    const dims = Array.from(
+      new Set(names.flatMap((name) => competitorScores[name]?.dimensions?.map((d) => d.dimension_name) ?? []))
+    )
 
     return (
       <div className="space-y-3">
@@ -85,7 +87,7 @@ export default function ScoringMatrix({ analysisPurpose, competitorScores, oppor
     )
   }
 
-  if (analysisPurpose === 'build_product') {
+  if (analysisPurpose === 'build_similar_product') {
     if (!opportunityScore) return null
     return (
       <div className="space-y-3">

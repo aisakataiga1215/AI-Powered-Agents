@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger
 from app.schemas.claim import Claim
 from app.schemas.knowledge import CompetitorKnowledge
+from app.schemas.project import DEFAULT_ANALYSIS_PURPOSE
 from app.schemas.qa import IssueSeverity, IssueType, QAIssue, QAResult
 from app.schemas.report import CompetitiveReport
 from app.schemas.source import SourceEvidence, SourceType
@@ -621,17 +622,17 @@ def check_scoring_rationale(
     analysis_purpose: str,
 ) -> list[QAIssue]:
     """Advisory check: ensure scoring sections are present for non-general purposes."""
-    if analysis_purpose == "general":
+    if analysis_purpose == DEFAULT_ANALYSIS_PURPOSE:
         return []
     issues: list[QAIssue] = []
-    if analysis_purpose == "choose_product":
+    if analysis_purpose == "choose_product_to_use":
         if not report.competitor_scores:
             issues.append(
                 QAIssue(
                     severity=IssueSeverity.medium,
                     issue_type=IssueType.missing_score_rationale,
                     target_agent="WriterAgent",
-                    message="competitor_scores missing for choose_product",
+                    message="competitor_scores missing for choose_product_to_use",
                     suggested_action="Add competitor scoring matrix",
                 )
             )
@@ -648,14 +649,14 @@ def check_scoring_rationale(
                             suggested_action="Add rationale for each dimension score",
                         )
                     )
-    elif analysis_purpose == "build_product":
+    elif analysis_purpose == "build_similar_product":
         if not report.opportunity_score:
             issues.append(
                 QAIssue(
                     severity=IssueSeverity.medium,
                     issue_type=IssueType.missing_score_rationale,
                     target_agent="WriterAgent",
-                    message="opportunity_score missing for build_product",
+                    message="opportunity_score missing for build_similar_product",
                     suggested_action="Add opportunity scoring matrix",
                 )
             )
@@ -790,7 +791,7 @@ def run(
     knowledge: list[CompetitorKnowledge],
     sources: list[SourceEvidence],
     goals: list[str],
-    analysis_purpose: str = "general",
+    analysis_purpose: str = DEFAULT_ANALYSIS_PURPOSE,
     custom_dimensions: list[str] | None = None,
 ) -> QAResult:
     """Run rule-based QA checks and persist the resulting :class:`QAResult`."""

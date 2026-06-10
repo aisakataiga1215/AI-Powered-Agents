@@ -30,7 +30,7 @@ class CompetitiveReport(BaseModel):
     source_list: list[SourceEvidence] = Field(default_factory=list)
     markdown_content: str = ""
     # M13A: purpose-aware analysis fields
-    analysis_purpose: str = "general"
+    analysis_purpose: str = "market_research"
     analysis_objective: str = ""
     competitor_selection_rationale: dict = Field(default_factory=dict)
     purpose_sections: dict = Field(default_factory=dict)

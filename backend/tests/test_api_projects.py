@@ -253,7 +253,7 @@ def test_analysis_purpose_and_custom_dimensions_round_trip(client):
     """analysis_purpose, custom_dimensions, and competitor role persist through create→GET."""
     payload = {
         "industry": "AI Tools",
-        "analysis_purpose": "build_product",
+        "analysis_purpose": "build_similar_product",
         "custom_dimensions": ["pricing transparency"],
         "competitors": [
             {"name": "Notion", "url": "https://notion.so", "role": "inspiration_product"},
@@ -267,9 +267,40 @@ def test_analysis_purpose_and_custom_dimensions_round_trip(client):
     response = client.get(f"/api/projects/{project_id}")
     assert response.status_code == 200
     body = response.json()
-    assert body["analysis_purpose"] == "build_product"
+    assert body["analysis_purpose"] == "build_similar_product"
     assert body["custom_dimensions"] == ["pricing transparency"]
     assert body["competitors"][0]["role"] == "inspiration_product"
+
+
+def test_legacy_analysis_purpose_normalizes_to_canonical(client):
+    payload = {
+        "industry": "AI Tools",
+        "analysis_purpose": "choose_product",
+        "competitors": [
+            {"name": "Cursor", "url": "https://cursor.com"},
+        ],
+        "goals": ["feature_comparison"],
+    }
+    create = client.post("/api/projects", json=payload)
+    assert create.status_code == 200
+    project_id = create.json()["project_id"]
+
+    response = client.get(f"/api/projects/{project_id}")
+    assert response.status_code == 200
+    assert response.json()["analysis_purpose"] == "choose_product_to_use"
+
+
+def test_project_create_rejects_unknown_analysis_purpose(client):
+    response = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Tools",
+            "analysis_purpose": "not_a_supported_purpose",
+            "competitors": [{"name": "Cursor", "url": "https://cursor.com"}],
+            "goals": ["feature_comparison"],
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_competitor_extra_urls_round_trip_through_create_and_get(client):

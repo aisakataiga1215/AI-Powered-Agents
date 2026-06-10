@@ -60,7 +60,7 @@ def _build_user_message(
     sources: list[SourceEvidence],
     goals: list[str],
     rework_hints: list[str] | None,
-    analysis_purpose: str = "general",
+    analysis_purpose: str = "market_research",
     competitor_role: str = "direct_competitor",
     custom_dimensions: list[str] | None = None,
 ) -> str:
@@ -85,17 +85,27 @@ def _build_user_message(
         )
 
     purpose_section = ""
-    if analysis_purpose == "build_product":
+    if analysis_purpose == "build_similar_product":
         purpose_section = (
-            "\n\nAnalysis purpose: BUILD PRODUCT. Focus on: market gaps this competitor "
+            "\n\nAnalysis purpose: BUILD A SIMILAR PRODUCT. Focus on: market gaps this competitor "
             "fails to address, pain points they don't solve, risky product decisions, "
             "and technical approaches worth learning from."
         )
-    elif analysis_purpose == "choose_product":
+    elif analysis_purpose == "choose_product_to_use":
         purpose_section = (
-            "\n\nAnalysis purpose: CHOOSE PRODUCT. Focus on: strengths and weaknesses "
+            "\n\nAnalysis purpose: CHOOSE A PRODUCT TO USE. Focus on: strengths and weaknesses "
             "for different user profiles, pricing value, ease of onboarding, maturity, "
             "reliability, and clear differentiators."
+        )
+    elif analysis_purpose == "market_research":
+        purpose_section = (
+            "\n\nAnalysis purpose: MARKET RESEARCH. Focus on: market segments, major players, "
+            "target users, growth drivers, business models, entry barriers, and opportunities."
+        )
+    elif analysis_purpose == "competitor_success_analysis":
+        purpose_section = (
+            "\n\nAnalysis purpose: COMPETITOR SUCCESS ANALYSIS. Focus on: positioning, growth path, "
+            "core product mechanisms, GTM, monetization, user feedback, and defensible success factors."
         )
 
     role_section = ""
@@ -211,7 +221,7 @@ def run(
     sources: list[SourceEvidence],
     goals: list[str],
     rework_hints: list[str] | None = None,
-    analysis_purpose: str = "general",
+    analysis_purpose: str = "market_research",
     custom_dimensions: list[str] | None = None,
     competitor_roles: dict[str, str] | None = None,
 ) -> list[CompetitorKnowledge]:
@@ -223,7 +233,7 @@ def run(
         sources: All source evidence collected by the collector.
         goals: Analysis goals (e.g. ``["pricing_analysis"]``).
         rework_hints: Optional QA hints from a previous failed run.
-        analysis_purpose: "general" | "build_product" | "choose_product".
+        analysis_purpose: Decision-support purpose string.
         custom_dimensions: Optional user-defined analysis dimensions.
         competitor_roles: Mapping of competitor name to role string.
 

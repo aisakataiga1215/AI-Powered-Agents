@@ -1,8 +1,12 @@
 'use client'
 
+import { useSourcePanel } from '@/lib/store'
+import type { SourceEvidence } from '@/lib/types'
+
 interface Props {
-  analysisPurpose: string
+  analysisPurpose?: string
   purposeSections: Record<string, unknown>
+  sourceList?: SourceEvidence[]
 }
 
 function RiskBadge({ level }: { level: string }) {
@@ -13,10 +17,12 @@ function RiskBadge({ level }: { level: string }) {
   return <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${cls}`}>{level}</span>
 }
 
-export default function PurposeSections({ analysisPurpose, purposeSections }: Props) {
+export default function PurposeSections({ analysisPurpose, purposeSections, sourceList = [] }: Props) {
+  const openSource = useSourcePanel((s) => s.openSource)
+  const sourceIndex = new Map(sourceList.map((s, i) => [s.source_id, i + 1]))
   if (!purposeSections || Object.keys(purposeSections).length === 0) return null
 
-  if (analysisPurpose === 'choose_product') {
+  if (analysisPurpose === 'choose_product_to_use') {
     const ranking = purposeSections.recommendation_ranking as Array<{ rank: number; competitor_name: string; summary: string }> | undefined
     const bestFor = purposeSections.best_for as Record<string, string> | undefined
     const avoid = purposeSections.who_should_avoid as Record<string, string> | undefined
@@ -107,7 +113,7 @@ export default function PurposeSections({ analysisPurpose, purposeSections }: Pr
     )
   }
 
-  if (analysisPurpose === 'build_product') {
+  if (analysisPurpose === 'build_similar_product') {
     const gaps = purposeSections.market_gaps as Array<{ gap_description: string; affected_user_segment?: string; evidence?: string[] }> | undefined
     const toLearn = purposeSections.features_to_learn_from as Array<{ competitor_name: string; feature: string; rationale: string }> | undefined
     const pitfalls = purposeSections.pitfalls_to_avoid as Array<{ competitor_name: string; pitfall: string; risk_level: string }> | undefined
@@ -201,5 +207,75 @@ export default function PurposeSections({ analysisPurpose, purposeSections }: Pr
     )
   }
 
+  if (analysisPurpose === 'market_research' || analysisPurpose === 'competitor_success_analysis') {
+    return (
+      <div className="space-y-4">
+        {Object.entries(purposeSections).map(([key, value]) => (
+          <section key={key}>
+            <h4 className="mb-2 text-sm font-semibold text-gray-900 capitalize">{key.replace(/_/g, ' ')}</h4>
+            <div className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700">
+              <PurposeValue value={value} sourceIndex={sourceIndex} openSource={openSource} />
+            </div>
+          </section>
+        ))}
+      </div>
+    )
+  }
+
   return null
+}
+
+function PurposeValue({
+  value,
+  sourceIndex,
+  openSource,
+}: {
+  value: unknown
+  sourceIndex: Map<string, number>
+  openSource: (sourceId: string) => void
+}) {
+  if (Array.isArray(value)) {
+    if (value.every((item) => typeof item === 'string' && sourceIndex.has(item))) {
+      return (
+        <span className="inline-flex flex-wrap gap-1 align-middle">
+          {value.map((srcId) => (
+            <button
+              key={srcId}
+              type="button"
+              onClick={() => openSource(srcId)}
+              title={srcId}
+              className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+            >
+              [{sourceIndex.get(srcId)}]
+            </button>
+          ))}
+        </span>
+      )
+    }
+
+    return (
+      <ul className="space-y-1.5">
+        {value.map((item, index) => (
+          <li key={index} className="text-sm text-gray-700">
+            <PurposeValue value={item} sourceIndex={sourceIndex} openSource={openSource} />
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  if (value && typeof value === 'object') {
+    return (
+      <div className="space-y-2">
+        {Object.entries(value as Record<string, unknown>).map(([key, item]) => (
+          <div key={key}>
+            <span className="font-medium text-gray-900 capitalize">{key.replace(/_/g, ' ')}: </span>
+            <PurposeValue value={item} sourceIndex={sourceIndex} openSource={openSource} />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return <span>{String(value ?? '—')}</span>
 }
