@@ -28,7 +28,7 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 - 每条结论绑定 `source_id`，前端 SourcePanel 一键回溯原始 URL
 - TraceTimeline 可视化每个 AgentRun 的输入 / 输出 / 耗时 / token / QA 反馈
 - QA 失败显式展示（不静默隐藏），最多 N 轮返工后输出当前最优结果
-- Demo（本地 fixtures）/ Live（Tavily + 爬虫）双数据模式共用同一 Agent 流程
+- 真实采集 / Demo 双数据模式共用同一 Agent 流程；真实采集不可用时显式回退到 Demo fixtures
 
 ### 在线 Demo
 
@@ -95,7 +95,7 @@ cd AI-Powered-Agents
 cp .env.example .env
 ```
 
-打开 `.env` 按需填写（详见 [环境变量](#4-环境变量)）。Demo 模式（默认）无需任何 Key 即可运行。
+打开 `.env` 按需填写（详见 [环境变量](#4-环境变量)）。默认建议启用真实采集；未配置搜索 Key 或搜索不可用时，系统会回退到 Demo fixtures，保证本地开发和演示稳定。
 
 ### 3.2 启动后端
 
@@ -156,13 +156,13 @@ E:\miniforge\envs\common\python.exe -m pytest --cov=app --cov-report=term-missin
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `OPENAI_API_KEY` | 是* | LLM 调用密钥（*Demo 模式可留空） |
+| `OPENAI_API_KEY` | 是* | LLM 调用密钥（*仅查看 Demo fixtures 或部分离线流程时可留空） |
 | `OPENAI_BASE_URL` | 否 | OpenAI 兼容 API 地址，DeepSeek 填 `https://api.deepseek.com` |
 | `DEFAULT_MODEL` | 否 | 默认 `deepseek-v4-flash`，可选 `gpt-4.1-mini` / `gpt-4o` / `deepseek-v4-pro` |
 | `LLM_DISABLE_THINKING` | 否 | 默认开启思考的模型（如 deepseek-v4-pro）设为 `true` 关闭 |
 | `DATABASE_URL` | 否 | 默认 `sqlite:///./dev.db` |
-| `ENABLE_DEMO_FIXTURES` | 否 | `true`（默认）= 本地 fixtures，无网络调用 |
-| `ENABLE_LIVE_SEARCH` | 否 | `true` = 启用 Tavily 实时搜索增强 |
+| `ENABLE_DEMO_FIXTURES` | 否 | `true` = 允许使用本地 fixtures 兜底，保证演示稳定 |
+| `ENABLE_LIVE_SEARCH` | 否 | `true` = 启用真实搜索；设为 `false` 可强制关闭搜索 |
 | `TAVILY_API_KEY` | 否 | `ENABLE_LIVE_SEARCH=true` 时必填 |
 | `LANGSMITH_TRACING` | 否 | `true` = 上传 trace 到 LangSmith |
 | `LANGSMITH_API_KEY` | 否 | LangSmith Key |
@@ -172,9 +172,9 @@ E:\miniforge\envs\common\python.exe -m pytest --cov=app --cov-report=term-missin
 
 | 模式 | 配置 | 行为 |
 |------|------|------|
-| Demo | `ENABLE_DEMO_FIXTURES=true` | 读取 `scripts/demo_fixtures/*.json`，零网络调用 |
-| Live（仅爬虫） | `ENABLE_DEMO_FIXTURES=false`, `ENABLE_LIVE_SEARCH=false` | 在已知竞品域名上爬取常见路径 |
-| Live + 搜索 | `ENABLE_LIVE_SEARCH=true` + `TAVILY_API_KEY` | 爬虫 + Tavily 网页搜索补充 URL |
+| 真实采集 | `ENABLE_LIVE_SEARCH=true` + `TAVILY_API_KEY` | 使用 Tavily 搜索补充候选 URL，并抓取公开网页作为来源 |
+| 真实采集 + Demo 兜底 | `ENABLE_LIVE_SEARCH=true`, `ENABLE_DEMO_FIXTURES=true` | 搜索或网页抓取不足时补充 fixtures，报告中会体现来源强弱 |
+| Demo | `ENABLE_LIVE_SEARCH=false`, `ENABLE_DEMO_FIXTURES=true` | 读取 `scripts/demo_fixtures/*.json`，适合离线开发和稳定演示 |
 
 ---
 
@@ -244,7 +244,7 @@ AI-Powered-Agents/
 
 3. 在 Space → **Settings → Variables and secrets** 配置：
    `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`DEFAULT_MODEL`、`TAVILY_API_KEY`、
-   `LANGSMITH_API_KEY`、`LANGSMITH_TRACING`、`ENABLE_DEMO_FIXTURES`、`FRONTEND_ORIGINS`。
+   `LANGSMITH_API_KEY`、`LANGSMITH_TRACING`、`ENABLE_LIVE_SEARCH`、`ENABLE_DEMO_FIXTURES`、`FRONTEND_ORIGINS`。
 
 ### 前端 → Vercel
 
