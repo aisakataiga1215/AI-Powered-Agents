@@ -13,16 +13,27 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 
 Multi-agent system that researches competitors, generates structured analysis, and produces traceable reports via a LangGraph DAG workflow.
 
+## Live Demo
+
+| Surface | URL |
+|---------|-----|
+| Frontend (Vercel) | https://ai-powered-agents.vercel.app/ |
+| Backend (Hugging Face Space) | https://aisakamai-ai-powered-agents.hf.space |
+| Backend API docs | https://aisakamai-ai-powered-agents.hf.space/docs |
+| Backend health check | https://aisakamai-ai-powered-agents.hf.space/api/health |
+
+> The HF Space free tier sleeps after ~48h of inactivity. First request may take 30–60s to wake.
+
 ## Architecture
 
 ```
-Next.js Frontend (port 3000)
+Next.js Frontend (port 3000 dev / Vercel prod)
   ↓
-FastAPI Backend (port 8000)
+FastAPI Backend (port 8000 dev / HF Space port 7860 prod)
   ↓
 LangGraph: CollectorAgent → AnalystAgent → WriterAgent → QAAgent
   ↓
-SQLite (dev) / PostgreSQL (prod)
+SQLite (dev / HF Space ephemeral) / PostgreSQL (prod recommended)
 ```
 
 ---
@@ -93,6 +104,7 @@ Key variables in `.env` (project root — backend reads it from there):
 | `TAVILY_API_KEY` | No | Required when `ENABLE_LIVE_SEARCH=true` for extra URL discovery |
 | `LANGSMITH_TRACING` | No | `true` = upload traces to LangSmith |
 | `LANGSMITH_API_KEY` | No | LangSmith API key |
+| `FRONTEND_ORIGINS` | No | Comma-separated CORS allow-list. Defaults to `*` for the demo |
 
 ### Frontend env
 
@@ -101,6 +113,39 @@ Create `frontend/.env.local`:
 ```ini
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
+
+---
+
+## Deployment
+
+The repo is wired up for a zero-cost demo deployment.
+
+| Component | Platform | Notes |
+|-----------|----------|-------|
+| Backend | Hugging Face Space (Docker SDK) | Uses root `Dockerfile`, listens on port `7860`, SQLite is ephemeral on free tier |
+| Frontend | Vercel | Set **Root Directory** to `frontend` when importing the repo |
+
+### Backend → Hugging Face Space
+
+1. Create a new Space with **SDK = Docker**, **Template = Blank**.
+2. Add the Space as a git remote and force-push the repo:
+
+   ```bash
+   git remote add space https://huggingface.co/spaces/<owner>/<name>
+   git -c http.version=HTTP/1.1 push -f space main
+   ```
+
+3. In the Space → **Settings → Variables and secrets**, add:
+   `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `DEFAULT_MODEL`, `TAVILY_API_KEY`,
+   `LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `ENABLE_DEMO_FIXTURES`,
+   and (optionally) `FRONTEND_ORIGINS` to lock CORS down to the Vercel domain.
+
+### Frontend → Vercel
+
+1. Import the GitHub repo at https://vercel.com/new.
+2. **Root Directory** → `frontend` (Framework is auto-detected as Next.js).
+3. Add environment variable `NEXT_PUBLIC_API_BASE_URL` = your HF Space URL,
+   e.g. `https://aisakamai-ai-powered-agents.hf.space`.
 
 ---
 
