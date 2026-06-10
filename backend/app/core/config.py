@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     # Search / Data
-    enable_live_search: bool = False
+    enable_live_search: bool = True
     enable_demo_fixtures: bool = True
     tavily_api_key: str = ""
     # ``demo_scenario`` lets the demo deliberately exercise the QA rework

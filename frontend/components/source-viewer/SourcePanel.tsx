@@ -148,14 +148,23 @@ export function SourcePanel() {
 
               {sourceQuery.data.url && (
                 <div>
-                  <a
-                    href={sourceQuery.data.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm break-all text-blue-700 underline hover:text-blue-800"
-                  >
+                  {toExternalHref(sourceQuery.data.url) ? (
+                    <a
+                      href={toExternalHref(sourceQuery.data.url)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                    >
+                      打开原始链接
+                    </a>
+                  ) : (
+                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-500">
+                      原始链接格式无效，无法直接打开
+                    </span>
+                  )}
+                  <p className="mt-2 break-all font-mono text-xs text-gray-500">
                     {sourceQuery.data.url}
-                  </a>
+                  </p>
                 </div>
               )}
 
@@ -185,6 +194,19 @@ export function SourcePanel() {
       </aside>
     </>
   )
+}
+
+function toExternalHref(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim()
+  if (!trimmed) return null
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  try {
+    const url = new URL(withProtocol)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    return url.toString()
+  } catch {
+    return null
+  }
 }
 
 function Badge({ children, className }: { children: React.ReactNode; className?: string }) {

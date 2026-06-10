@@ -126,6 +126,18 @@ const DEFAULT_COMPETITORS: CompetitorInput[] = [
   { name: 'Windsurf', url: 'https://windsurf.ai', role: 'direct_competitor' },
 ]
 
+function isDefaultCompetitorSet(rows: CompetitorInput[]): boolean {
+  if (rows.length !== DEFAULT_COMPETITORS.length) return false
+  return rows.every((row, index) => {
+    const defaultRow = DEFAULT_COMPETITORS[index]
+    return (
+      row.name === defaultRow.name &&
+      row.url === defaultRow.url &&
+      (row.role ?? 'direct_competitor') === defaultRow.role
+    )
+  })
+}
+
 function extractIndustryTopic(input: string): string {
   const normalized = input.replace(/\s+/g, ' ').trim()
   if (!normalized) return ''
@@ -202,6 +214,11 @@ export default function NewProjectPage() {
   const applyIndustryType = useCallback((value: IndustryType) => {
     setIndustryType(value)
     setGoals(defaultGoalsForIndustryType(value))
+    setCompetitors((prev) => {
+      if (value !== 'ai_saas' && isDefaultCompetitorSet(prev)) return []
+      if (value === 'ai_saas' && prev.length === 0) return DEFAULT_COMPETITORS
+      return prev
+    })
   }, [])
 
   const handleCompetitorChange = (

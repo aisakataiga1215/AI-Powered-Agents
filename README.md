@@ -29,6 +29,7 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 - TraceTimeline 可视化每个 AgentRun 的输入 / 输出 / 耗时 / token / QA 反馈
 - QA 失败显式展示（不静默隐藏），最多 N 轮返工后输出当前最优结果
 - 真实采集 / Demo 双数据模式共用同一 Agent 流程；真实采集不可用时显式回退到 Demo fixtures
+- 结构化输出默认使用 JSON Output + Pydantic 校验；schema 可映射到 function/tool calling，但默认不依赖原生 tool calling 以兼容 OpenAI-compatible 模型
 
 ### 在线 Demo
 
@@ -175,6 +176,13 @@ E:\miniforge\envs\common\python.exe -m pytest --cov=app --cov-report=term-missin
 | 真实采集 | `ENABLE_LIVE_SEARCH=true` + `TAVILY_API_KEY` | 使用 Tavily 搜索补充候选 URL，并抓取公开网页作为来源 |
 | 真实采集 + Demo 兜底 | `ENABLE_LIVE_SEARCH=true`, `ENABLE_DEMO_FIXTURES=true` | 搜索或网页抓取不足时补充 fixtures，报告中会体现来源强弱 |
 | Demo | `ENABLE_LIVE_SEARCH=false`, `ENABLE_DEMO_FIXTURES=true` | 读取 `scripts/demo_fixtures/*.json`，适合离线开发和稳定演示 |
+
+### 质量与鲁棒性策略
+
+- **上下文管理**：AnalystAgent 按竞品分组独立抽取，每条来源正文截断；WriterAgent 对每个竞品知识输入做长度上限，并限制输出条数。
+- **错误恢复**：CollectorAgent 在真实采集覆盖不足时使用 Demo fixtures 兜底；WriterAgent 在 LLM 解析失败时生成带 fallback 标记的结构化报告；QA 失败会路由到 Collector / Analyst / Writer 之一重做。
+- **幻觉抑制**：关键 claim 必须绑定 `source_id` 或标记为假设；QAAgent 检查缺失引用、未知 source_id、价格数字不一致、弱来源和错误页面。
+- **可观测指标**：Trace 中记录每个 Agent 的输入、输出、耗时、token 和 QA 反馈；Collector 输出每个竞品的来源覆盖分，QA 输出分数、问题数、阻塞问题数和返工目标。
 
 ---
 

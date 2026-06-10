@@ -26,6 +26,13 @@ For architecture, see [architecture.md](architecture.md).
 
 ## 3. Base Agent Message
 
+Implementation note: the runtime workflow currently passes these
+structured payloads through LangGraph `WorkflowState` and persists the
+corresponding `AgentRun` traces. The `AgentMessage` schema documents the
+logical protocol boundary; it is not a claim that every edge is implemented
+as native OpenAI function/tool calling. LLM calls use JSON Output mode plus
+Pydantic validation by default for provider compatibility.
+
 ```json
 {
   "message_id": "string",
