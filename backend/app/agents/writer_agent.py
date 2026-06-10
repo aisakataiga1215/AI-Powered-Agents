@@ -1,16 +1,9 @@
 """WriterAgent.
 
 Synthesizes a :class:`CompetitiveReport` from structured competitor
-knowledge using an LLM in **JSON Output mode**.
-
-Why JSON output instead of ``with_structured_output``:
-DeepSeek's OpenAI-compatible endpoint reliably returns plain assistant
-content for this task and frequently refuses the tool-call path that
-LangChain's ``with_structured_output(method="function_calling")``
-expects, leaving the workflow stuck on a ``None`` return. JSON output
-mode (``response_format={"type": "json_object"}``) is the supported way
-to get strict-JSON responses from DeepSeek; we then parse, normalize,
-and validate against :class:`CompetitiveReport` ourselves.
+knowledge using function/tool calling when the provider supports it.
+JSON Output remains as a compatibility fallback for OpenAI-compatible
+providers whose function-calling implementation is incomplete.
 
 The writer never raises on LLM/parsing/validation failure — it always
 produces a valid (possibly minimal) :class:`CompetitiveReport` so the
@@ -138,8 +131,8 @@ Keep the report concise:
 """
 
 
-def _build_json_llm() -> ChatOpenAI:
-    """Construct a ChatOpenAI client bound to JSON-object response mode."""
+def _build_base_llm(*, json_mode: bool) -> ChatOpenAI:
+    """Construct a ChatOpenAI client for structured report generation."""
     if not settings.openai_api_key:
         raise RuntimeError(
             "OPENAI_API_KEY is not configured; WriterAgent cannot run."
@@ -148,10 +141,11 @@ def _build_json_llm() -> ChatOpenAI:
         "model": settings.default_model,
         "api_key": settings.openai_api_key,
         "temperature": 0,
+    }
+    if json_mode:
         # ``response_format`` is an OpenAI request param; ``model_kwargs``
         # is the langchain-openai escape hatch for forwarding it.
-        "model_kwargs": {"response_format": {"type": "json_object"}},
-    }
+        kwargs["model_kwargs"] = {"response_format": {"type": "json_object"}}
     if settings.openai_base_url:
         kwargs["base_url"] = settings.openai_base_url
     if settings.llm_disable_thinking:
@@ -160,6 +154,20 @@ def _build_json_llm() -> ChatOpenAI:
         # OpenAI client reject it as an unknown argument.
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
     return ChatOpenAI(**kwargs)
+
+
+def _build_json_llm() -> ChatOpenAI:
+    """Construct a ChatOpenAI client bound to JSON-object response mode."""
+    return _build_base_llm(json_mode=True)
+
+
+def _build_function_calling_llm():
+    """Construct a structured-output client using native function calling."""
+    return _build_base_llm(json_mode=False).with_structured_output(
+        CompetitiveReport,
+        method="function_calling",
+        include_raw=True,
+    )
 
 
 def _extract_token_usage(response: Any) -> TokenUsage:
@@ -433,6 +441,36 @@ def _produce_report(
         )
 
     return report, False, token_usage, _preview(content), "parsed"
+
+
+def _produce_report_function_calling(
+    llm: Any,
+    messages: list,
+) -> tuple[CompetitiveReport, TokenUsage, str, str]:
+    """Invoke a function-calling structured-output LLM.
+
+    Raises on provider/tool-call/parsing failure so the caller can fall back
+    to JSON Output mode without marking the report as a true fallback.
+    """
+    response = llm.invoke(messages)
+    raw_message = response.get("raw") if isinstance(response, dict) else None
+    parsed = response.get("parsed") if isinstance(response, dict) else response
+    parsing_error = response.get("parsing_error") if isinstance(response, dict) else None
+    if parsing_error is not None:
+        raise ValueError(f"function calling parse error: {parsing_error}")
+
+    if isinstance(parsed, CompetitiveReport):
+        report = parsed
+    else:
+        report = CompetitiveReport.model_validate(_normalize_report_payload(parsed))
+
+    preview_payload = report.model_dump(mode="json")
+    return (
+        report,
+        _extract_token_usage(raw_message),
+        _preview(json.dumps(preview_payload, ensure_ascii=False)),
+        "function_calling_parsed",
+    )
 
 
 def _build_feature_comparison(
@@ -723,8 +761,6 @@ def run(
                 "and the report title.\n"
                 "JSON keys, source_ids, competitor names, URLs, and enum values stay in English."
             )
-        llm = _build_json_llm()
-
         user_message = _build_user_message(
             competitor_knowledge=competitor_knowledge,
             sources=sources,
@@ -738,14 +774,25 @@ def run(
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_message),
         ]
-        report, is_fallback, token_usage, llm_output_preview, parse_status = _produce_report(
-            llm,
-            messages,
-            project_id=project_id,
-            competitor_knowledge=competitor_knowledge,
-            sources=sources,
-            goals=goals,
-        )
+        is_fallback = False
+        try:
+            report, token_usage, llm_output_preview, parse_status = _produce_report_function_calling(
+                _build_function_calling_llm(),
+                messages,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "WriterAgent: function calling failed: %s; falling back to JSON output.",
+                exc,
+            )
+            report, is_fallback, token_usage, llm_output_preview, parse_status = _produce_report(
+                _build_json_llm(),
+                messages,
+                project_id=project_id,
+                competitor_knowledge=competitor_knowledge,
+                sources=sources,
+                goals=goals,
+            )
         report = _bind_report_fields(
             report,
             project_id=project_id,

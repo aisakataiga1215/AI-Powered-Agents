@@ -153,7 +153,7 @@ def _build_user_message(
     )
 
 
-def _build_json_llm() -> ChatOpenAI:
+def _build_base_llm(*, json_mode: bool) -> ChatOpenAI:
     if not settings.openai_api_key:
         raise RuntimeError(
             "OPENAI_API_KEY is not configured; AnalystAgent cannot run."
@@ -162,13 +162,50 @@ def _build_json_llm() -> ChatOpenAI:
         "model": settings.default_model,
         "api_key": settings.openai_api_key,
         "temperature": 0,
-        "model_kwargs": {"response_format": {"type": "json_object"}},
     }
+    if json_mode:
+        kwargs["model_kwargs"] = {"response_format": {"type": "json_object"}}
     if settings.openai_base_url:
         kwargs["base_url"] = settings.openai_base_url
     if settings.llm_disable_thinking:
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
     return ChatOpenAI(**kwargs)
+
+
+def _build_json_llm() -> ChatOpenAI:
+    return _build_base_llm(json_mode=True)
+
+
+def _build_function_calling_llm():
+    """Build a structured-output LLM that uses native tool/function calling.
+
+    ``include_raw=True`` lets us keep token usage and raw-provider metadata in
+    traces while still receiving a Pydantic object as the parsed result.
+    """
+    return _build_base_llm(json_mode=False).with_structured_output(
+        RawCompetitorExtraction,
+        method="function_calling",
+        include_raw=True,
+    )
+
+
+def _extract_token_usage(response: object) -> TokenUsage:
+    meta = getattr(response, "usage_metadata", None)
+    if meta and isinstance(meta, dict):
+        return TokenUsage(
+            prompt_tokens=int(meta.get("input_tokens", 0)),
+            completion_tokens=int(meta.get("output_tokens", 0)),
+            total_tokens=int(meta.get("total_tokens", 0)),
+        )
+    resp_meta = getattr(response, "response_metadata", None) or {}
+    usage = resp_meta.get("token_usage") or resp_meta.get("usage") or {}
+    if usage:
+        return TokenUsage(
+            prompt_tokens=int(usage.get("prompt_tokens", 0)),
+            completion_tokens=int(usage.get("completion_tokens", 0)),
+            total_tokens=int(usage.get("total_tokens", 0)),
+        )
+    return TokenUsage()
 
 
 def _extract_json_text(content: str) -> str:
@@ -267,7 +304,8 @@ def run(
 
     try:
         system_prompt = _load_prompt()
-        llm = _build_json_llm()
+        function_llm = _build_function_calling_llm()
+        json_llm: ChatOpenAI | None = None
 
         grouped = _group_sources_by_competitor(sources)
         if not grouped:
@@ -300,37 +338,57 @@ def run(
 
             raw_extraction: RawCompetitorExtraction | None = None
             try:
-                response = llm.invoke(messages)
-                content = getattr(response, "content", "") or ""
-                llm_output_previews[competitor_name] = _preview(str(content))
-                raw_extraction = _parse_raw_extraction(content, competitor_name)
-                parse_status_by_competitor[competitor_name] = (
-                    "parsed" if raw_extraction is not None else "fallback_empty"
-                )
-                # Accumulate token usage across all per-competitor LLM calls.
-                usage_meta = getattr(response, "usage_metadata", None)
-                if usage_meta and isinstance(usage_meta, dict):
-                    total_usage = TokenUsage(
-                        prompt_tokens=total_usage.prompt_tokens + int(usage_meta.get("input_tokens", 0)),
-                        completion_tokens=total_usage.completion_tokens + int(usage_meta.get("output_tokens", 0)),
-                        total_tokens=total_usage.total_tokens + int(usage_meta.get("total_tokens", 0)),
-                    )
+                structured_response = function_llm.invoke(messages)
+                raw_message = structured_response.get("raw") if isinstance(structured_response, dict) else None
+                parsed = structured_response.get("parsed") if isinstance(structured_response, dict) else structured_response
+                parsing_error = structured_response.get("parsing_error") if isinstance(structured_response, dict) else None
+                if parsing_error is not None:
+                    raise ValueError(f"function calling parse error: {parsing_error}")
+                if isinstance(parsed, RawCompetitorExtraction):
+                    raw_extraction = parsed
                 else:
-                    resp_meta = getattr(response, "response_metadata", None) or {}
-                    usage = resp_meta.get("token_usage") or resp_meta.get("usage") or {}
-                    if usage:
-                        total_usage = TokenUsage(
-                            prompt_tokens=total_usage.prompt_tokens + int(usage.get("prompt_tokens", 0)),
-                            completion_tokens=total_usage.completion_tokens + int(usage.get("completion_tokens", 0)),
-                            total_tokens=total_usage.total_tokens + int(usage.get("total_tokens", 0)),
-                        )
+                    raw_extraction = RawCompetitorExtraction.model_validate(parsed)
+                if not raw_extraction.name:
+                    raw_extraction.name = competitor_name
+                llm_output_previews[competitor_name] = _preview(
+                    json.dumps(raw_extraction.model_dump(mode="json"), ensure_ascii=False)
+                )
+                parse_status_by_competitor[competitor_name] = "function_calling_parsed"
+                usage = _extract_token_usage(raw_message)
+                total_usage = TokenUsage(
+                    prompt_tokens=total_usage.prompt_tokens + usage.prompt_tokens,
+                    completion_tokens=total_usage.completion_tokens + usage.completion_tokens,
+                    total_tokens=total_usage.total_tokens + usage.total_tokens,
+                )
             except Exception as exc:  # noqa: BLE001
-                parse_status_by_competitor[competitor_name] = "llm_error_fallback_empty"
-                logger.error(
-                    "AnalystAgent: LLM call failed for '%s': %s; using empty knowledge.",
+                logger.warning(
+                    "AnalystAgent: function calling failed for '%s': %s; falling back to JSON output.",
                     competitor_name,
                     exc,
                 )
+                try:
+                    if json_llm is None:
+                        json_llm = _build_json_llm()
+                    response = json_llm.invoke(messages)
+                    content = getattr(response, "content", "") or ""
+                    llm_output_previews[competitor_name] = _preview(str(content))
+                    raw_extraction = _parse_raw_extraction(content, competitor_name)
+                    parse_status_by_competitor[competitor_name] = (
+                        "json_output_parsed" if raw_extraction is not None else "json_output_fallback_empty"
+                    )
+                    usage = _extract_token_usage(response)
+                    total_usage = TokenUsage(
+                        prompt_tokens=total_usage.prompt_tokens + usage.prompt_tokens,
+                        completion_tokens=total_usage.completion_tokens + usage.completion_tokens,
+                        total_tokens=total_usage.total_tokens + usage.total_tokens,
+                    )
+                except Exception as json_exc:  # noqa: BLE001
+                    parse_status_by_competitor[competitor_name] = "llm_error_fallback_empty"
+                    logger.error(
+                        "AnalystAgent: JSON fallback failed for '%s': %s; using empty knowledge.",
+                        competitor_name,
+                        json_exc,
+                    )
 
             if raw_extraction is None:
                 logger.error(

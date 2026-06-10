@@ -29,7 +29,7 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 - TraceTimeline 可视化每个 AgentRun 的输入 / 输出 / 耗时 / token / QA 反馈
 - QA 失败显式展示（不静默隐藏），最多 N 轮返工后输出当前最优结果
 - 真实采集 / Demo 双数据模式共用同一 Agent 流程；真实采集不可用时显式回退到 Demo fixtures
-- 结构化输出默认使用 JSON Output + Pydantic 校验；schema 可映射到 function/tool calling，但默认不依赖原生 tool calling 以兼容 OpenAI-compatible 模型
+- 结构化输出优先使用 function/tool calling；当 OpenAI-compatible 模型不稳定或不支持时自动回退到 JSON Output + Pydantic 校验
 
 ### 在线 Demo
 
