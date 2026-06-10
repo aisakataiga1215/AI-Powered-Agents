@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## M17.1.1 — Print/PDF Custom Dimension Coverage
+
+### Frontend
+- Added custom dimension analysis to the print/PDF report page, including score, rationale, evidence source IDs, and confidence.
+- Verified the print/PDF page with Chrome DevTools MCP after generating an AI coding tools report with custom dimensions.
+
+### Tests
+- Verified frontend lint and production build.
+
+---
+
 ## M17.1 — Purpose-Driven Decision Support Phase 1
 
 ### Backend

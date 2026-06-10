@@ -2,11 +2,17 @@
 
 **Last updated:** 2026-06-10
 
-## Current Status: M17.1 Complete — Purpose-Driven Decision Support Phase 1
+## Current Status: M17.1.1 Complete — Print/PDF Custom Dimension Coverage
 
 ---
 
 ## Milestones
+
+### Milestone 17.1.1: Print/PDF Custom Dimension Coverage ✅ COMPLETE
+
+- [x] Chrome DevTools MCP regression test confirmed AI coding tools project creation, workflow run, report viewing, trace viewing, source panel, and print/PDF rendering.
+- [x] Print/PDF reports now include custom dimension analysis with score, rationale, evidence source IDs, and confidence.
+- [x] Frontend lint and production build pass.
 
 ### Milestone 17.1: Purpose-Driven Decision Support Phase 1 ✅ COMPLETE
 

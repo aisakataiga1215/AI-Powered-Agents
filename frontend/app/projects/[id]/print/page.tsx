@@ -277,6 +277,12 @@ export default function PrintPage({ params }: PageProps) {
                 />
               </PrintSection>
             )}
+            {report.custom_dimension_analysis &&
+              Object.keys(report.custom_dimension_analysis).length > 0 && (
+                <PrintSection title="Custom Dimension Analysis">
+                  <PrintCustomDimensionTable analysis={report.custom_dimension_analysis} />
+                </PrintSection>
+              )}
           </>
         )}
 
@@ -890,6 +896,72 @@ function PrintQAResult({ result }: { result: QAResult }) {
       </p>
     </div>
   )
+}
+
+interface PrintCustomDimensionCell {
+  score?: number | string
+  rationale?: string
+  evidence?: unknown
+  source_confidence?: string
+  confidence?: string
+}
+
+function PrintCustomDimensionTable({
+  analysis,
+}: {
+  analysis: Record<string, Record<string, unknown>>
+}) {
+  return (
+    <div className="space-y-4">
+      {Object.entries(analysis).map(([dimension, competitorData]) => {
+        const entries = isRecord(competitorData) ? Object.entries(competitorData) : []
+        return (
+          <div key={dimension} className="overflow-x-auto rounded-lg border border-gray-200 print:overflow-visible">
+            <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700">
+              {dimension.replace(/_/g, ' ')}
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-100 text-left text-gray-500">
+                  <th className="px-3 py-2 font-medium">Competitor</th>
+                  <th className="px-3 py-2 text-center font-medium">Score</th>
+                  <th className="px-3 py-2 font-medium">Rationale</th>
+                  <th className="px-3 py-2 font-medium">Evidence</th>
+                  <th className="px-3 py-2 font-medium">Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map(([competitorName, value]) => {
+                  const cell = isRecord(value) ? (value as PrintCustomDimensionCell) : undefined
+                  return (
+                    <tr key={competitorName} className="border-b border-gray-100 last:border-0">
+                      <td className="px-3 py-2 font-medium text-gray-700">{competitorName}</td>
+                      <td className="px-3 py-2 text-center text-gray-600">{cell?.score ?? '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{cell?.rationale ?? '—'}</td>
+                      <td className="px-3 py-2 font-mono text-[11px] text-gray-500">
+                        {formatEvidenceList(cell?.evidence)}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500">
+                        {cell?.source_confidence ?? cell?.confidence ?? '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function formatEvidenceList(evidence: unknown): string {
+  return Array.isArray(evidence) && evidence.length > 0 ? evidence.join(', ') : '—'
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
