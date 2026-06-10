@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     max_repair_loops: int = 1
     log_level: str = "INFO"
 
+    # Pricing (per 1M tokens; defaults match gpt-4o)
+    openai_input_price_per_1m: float = 2.50
+    openai_output_price_per_1m: float = 10.00
+
 settings = Settings()
 
 
