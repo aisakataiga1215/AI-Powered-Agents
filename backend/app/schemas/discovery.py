@@ -21,6 +21,12 @@ class CandidateCompetitor(BaseModel):
     confidence: Literal["high", "medium", "low"] = "medium"
     relevance_score: int = 50          # 0-100; used for sorting and UI display
     relevance_reason: str = ""
+    suggested_role: Literal[
+        "direct_competitor",
+        "indirect_competitor",
+        "inspiration_product",
+        "benchmark_leader",
+    ] = "direct_competitor"
     role_confidence: Literal["high", "medium", "low"] = "medium"
     reason: str = ""
     selected_by_default: bool = False

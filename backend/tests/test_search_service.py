@@ -1058,3 +1058,291 @@ class TestSourceConfidenceM162:
             "https://windsurf.ai",
         )
         assert confidence == "low"
+
+
+# ---------------------------------------------------------------------------
+# TestIndustryDetection — NL-prompt → industry_type auto-detection
+# ---------------------------------------------------------------------------
+
+
+class TestIndustryDetection:
+    """Unit tests for _detect_industry_type — the fallback used when the NL
+    discovery panel does not pass industry_type. Cross-checks Chinese and
+    English keywords so the user's prompt drives the search templates instead
+    of a stale frontend dropdown default."""
+
+    def test_detects_ecommerce_from_chinese(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("帮我分析一下电商的竞品") == "ecommerce"
+
+    def test_detects_ecommerce_from_short_chinese(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("电商") == "ecommerce"
+
+    def test_detects_ecommerce_from_english(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("ecommerce platform competitors") == "ecommerce"
+
+    def test_detects_local_services_from_chinese(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("外卖配送平台") == "local_services"
+
+    def test_detects_local_services_from_english(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("food delivery apps") == "local_services"
+
+    def test_detects_design_tools_from_chinese(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("设计工具的竞品") == "design_tools"
+
+    def test_detects_design_tools_from_english(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("graphic design platform") == "design_tools"
+
+    def test_detects_ai_search_from_english(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("AI search engines") == "ai_search"
+
+    def test_detects_ai_search_from_chinese(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("AI 问答助手") == "ai_search"
+
+    def test_detects_social_from_chinese(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("约会交友 app") == "social"
+
+    def test_detects_social_from_english(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("dating apps") == "social"
+
+    def test_detects_open_source(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("开源项目") == "open_source"
+
+    def test_detects_ai_saas_from_chinese(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("AI 编程助手") == "ai_saas"
+
+    def test_detects_ai_saas_from_english(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("AI coding tools") == "ai_saas"
+
+    def test_returns_none_on_generic_input(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("project management software") is None
+
+    def test_returns_none_on_empty_input(self):
+        from app.services.search_service import _detect_industry_type
+        assert _detect_industry_type("") is None
+
+
+# ---------------------------------------------------------------------------
+# TestDiscoverCompetitorsAutoIndustry — bug regression: NL prompt overrides
+# stale dropdown so e-commerce prompts no longer return AI-coding products.
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverCompetitorsAutoIndustry:
+    def _make_service(self, results: list):
+        from app.services.search_provider import SearchResult
+        from app.services.search_service import SearchService
+
+        mock_provider = MagicMock()
+        mock_provider.search.return_value = [
+            SearchResult(url=r["url"], title=r.get("title", ""), snippet=r.get("snippet", ""))
+            for r in results
+        ]
+        return SearchService(mock_provider)
+
+    def _capture_queries(self):
+        """Build a SearchService that records every issued query for inspection."""
+        from app.services.search_provider import SearchResult
+        from app.services.search_service import SearchService
+
+        captured: list[str] = []
+
+        def fake_search(query, max_results=5, **kwargs):
+            captured.append(query)
+            return [SearchResult(url="https://example.com/", title="Example", snippet="")]
+
+        mock_provider = MagicMock()
+        mock_provider.search.side_effect = fake_search
+        return SearchService(mock_provider), captured
+
+    def test_chinese_ecommerce_prompt_overrides_stale_ai_saas_dropdown(self):
+        """Bug regression: user types 电商 in NL prompt but dropdown still
+        defaults to ai_saas. The prompt must win — queries should target
+        ecommerce templates and known ecommerce products should be extracted."""
+        svc = self._make_service([
+            {
+                "url": "https://example.com/best-ecommerce-platforms",
+                "title": "Top ecommerce platforms",
+                "snippet": "Amazon, eBay, Etsy, JD.com, and Taobao are leading ecommerce platforms.",
+            },
+        ])
+        candidates = svc.discover_competitors("帮我分析一下电商的竞品", "ai_saas")
+        names = {c.name for c in candidates}
+        # Bug was: returned AI coding products (Cursor/Copilot/Tabnine). After fix,
+        # the prompt drives detection and ecommerce products dominate.
+        assert "Amazon" in names or "eBay" in names or "Etsy" in names, (
+            f"Expected ecommerce products in {names}, got AI-coding fallback"
+        )
+        assert not any(n in names for n in {"Cursor", "GitHub Copilot", "Tabnine"})
+
+    def test_english_ecommerce_prompt_picks_ecommerce_queries(self):
+        svc, queries = self._capture_queries()
+        svc.discover_competitors("ecommerce platform competitors", "general")
+        joined = " ".join(queries).lower()
+        # ecommerce-keyed templates contain "ecommerce" or "online store" or "store builder"
+        assert "ecommerce" in joined or "store" in joined
+
+    def test_ai_coding_prompt_still_uses_ai_saas_templates(self):
+        """Detection on the original happy path must not regress: AI coding
+        prompts still resolve to the ai_saas template set."""
+        svc, queries = self._capture_queries()
+        svc.discover_competitors("AI Coding Tools", "ai_saas")
+        joined = " ".join(queries).lower()
+        assert "ai coding" in joined or "ai ide" in joined
+
+    def test_generic_prompt_does_not_override_explicit_dropdown(self):
+        """If the prompt has no industry keywords, the caller's industry_type
+        must be respected (no override to general)."""
+        svc, queries = self._capture_queries()
+        svc.discover_competitors("project management software", "general")
+        joined = " ".join(queries).lower()
+        # general template contains "software" / "saas platform" / "tools"
+        assert "project management" in joined
+
+    def test_detected_industry_uses_english_template_not_raw_prompt(self):
+        """Bug regression (full prompt leak): when the user types a Chinese NL
+        prompt, the {industry} placeholder must NOT be filled with the raw
+        prompt — otherwise Tavily searches for the conversational phrase and
+        returns dictionary or ad pages. Detected industries route to static
+        English query templates instead."""
+        svc, queries = self._capture_queries()
+        svc.discover_competitors("帮我分析一下电商的竞品", "ai_saas")
+        joined = " ".join(queries)
+        assert "帮我分析" not in joined, (
+            f"Raw Chinese prompt fragment leaked into queries: {queries!r}"
+        )
+        assert "ecommerce" in joined.lower() or "marketplace" in joined.lower()
+
+    def test_explicit_ecommerce_dropdown_with_chinese_keyword_uses_english(self):
+        """Bug regression (SEO spam): manual mode with industry='电商' and
+        dropdown=ecommerce previously yielded Chinese SEO ads. Detection now
+        routes the query to static English templates."""
+        svc, queries = self._capture_queries()
+        svc.discover_competitors("电商", "ecommerce")
+        joined = " ".join(queries)
+        assert "电商" not in joined, (
+            f"Chinese keyword leaked into queries: {queries!r}"
+        )
+        assert "ecommerce" in joined.lower() or "marketplace" in joined.lower()
+
+    def test_dictionary_domain_is_blocked_from_discovery(self):
+        """Bug regression: dict.youdao.com etc. were returned as candidates
+        because the conversational prompt leaked into the search query and
+        matched translation lookups."""
+        svc = self._make_service([
+            {
+                "url": "https://dict.youdao.com/result?word=外卖",
+                "title": "【帮我分析一下】",
+                "snippet": "外卖 translation",
+            },
+            {"url": "https://www.meituan.com/", "title": "Meituan", "snippet": "food delivery"},
+        ])
+        candidates = svc.discover_competitors("外卖", "general")
+        assert not any("youdao" in (c.domain or "") for c in candidates), (
+            f"Dictionary domain leaked: {[c.domain for c in candidates]}"
+        )
+
+    def test_candidate_name_with_chinese_prompt_filler_is_disqualified(self):
+        """Names extracted from translation/lookup pages often echo the user's
+        prompt verbatim (e.g. '【帮我分析一下】'). Score 0."""
+        from app.services.search_service import _score_competitor_relevance
+
+        score, _ = _score_competitor_relevance(
+            "帮我分析一下",
+            "【帮我分析一下】 - 有道词典",
+            "https://dict.youdao.com/result?word=foo",
+            "dict.youdao.com",
+            "外卖 official platform",
+            "local_services",
+        )
+        assert score <= 30
+
+    def test_local_services_filters_infra_and_content_sites(self):
+        """Food-delivery discovery should not surface infra/dev/content sites as competitors."""
+        svc = self._make_service([
+            {
+                "url": "https://www.cloudflare.com/developer-platform/",
+                "title": "Cloudflare: Build for the agent era",
+                "snippet": "Developer platform",
+            },
+            {
+                "url": "https://github.com/topics/food-delivery",
+                "title": "food-delivery · GitHub Topics",
+                "snippet": "Open source repositories",
+            },
+            {
+                "url": "https://www.sohu.com/a/123",
+                "title": "当前主流外卖APP竞品分析 - 搜狐",
+                "snippet": "外卖竞品分析文章",
+            },
+        ])
+        candidates = svc.discover_competitors("帮我分析一下 外卖 的竞品", "ai_saas")
+        domains = {c.domain for c in candidates}
+        assert "cloudflare.com" not in domains
+        assert "github.com" not in domains
+        assert "sohu.com" not in domains
+        assert {"doordash.com", "ubereats.com", "meituan.com"} & domains
+
+    def test_generic_ecommerce_seeds_known_marketplaces(self):
+        svc = self._make_service([
+            {
+                "url": "https://m.lfppt.com/detail_123.html",
+                "title": "商业竞品分析PPT-LFPPT网",
+                "snippet": "PPT template",
+            },
+        ])
+        candidates = svc.discover_competitors("帮我分析一下电商的竞品", "ai_saas")
+        domains = {c.domain for c in candidates}
+        assert {"amazon.com", "ebay.com", "etsy.com"} <= domains
+        assert "lfppt.com" not in domains
+
+    def test_product_prompt_qq_overrides_stale_ai_saas_dropdown(self):
+        """Single-product prompts should search product alternatives, not stale industry templates."""
+        svc, queries = self._capture_queries()
+        candidates = svc.discover_competitors("帮我分析qq的竞品", "ai_saas")
+        joined = " ".join(queries).lower()
+        domains = {c.domain for c in candidates}
+        roles = {c.name: c.suggested_role for c in candidates}
+        assert "ai coding" not in joined
+        assert "qq competitors" in joined or "qq alternatives" in joined
+        assert {"wechat.com", "whatsapp.com", "messenger.com"} <= domains
+        assert {"weibo.com", "x.com", "facebook.com"} <= domains
+        assert {"zepeto.me", "douyin.com", "kuaishou.com", "bilibili.com"} <= domains
+        assert roles["WeChat"] == "direct_competitor"
+        assert roles["Weibo"] == "indirect_competitor"
+        assert roles["ZEPETO"] == "inspiration_product"
+        assert "cursor.com" not in domains
+
+    def test_detect_product_target_handles_chinese_without_spaces(self):
+        from app.services.search_service import _extract_product_discovery_target
+
+        target = _extract_product_discovery_target("帮我分析qq的竞品")
+        assert target == ("qq", "QQ", "social")
+
+    def test_generic_product_extractor_handles_no_yixia_phrase(self):
+        from app.services.search_service import _extract_generic_product_target
+
+        target = _extract_generic_product_target("帮我分析Notion的竞品")
+        assert target == ("notion", "Notion", "general")
+
+    def test_generic_product_prompt_uses_product_alternative_queries(self):
+        """Unknown products should still use product alternatives, not stale dropdown templates."""
+        svc, queries = self._capture_queries()
+        svc.discover_competitors("帮我分析Notion的竞品", "ai_saas")
+        joined = " ".join(queries).lower()
+        assert "notion competitors" in joined or "notion alternatives" in joined
+        assert "ai coding" not in joined

@@ -100,6 +100,14 @@ const CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY: Record<IndustryType, string[]> =
 }
 const MAX_CUSTOM_DIMENSIONS = 8
 
+function defaultGoalsForIndustryType(industryType: IndustryType): string[] {
+  const goals = GOAL_OPTIONS.map((g) => g.value)
+  if (industryType === 'local_services' || industryType === 'open_source') {
+    return goals.filter((goal) => goal !== 'pricing_analysis')
+  }
+  return goals
+}
+
 const COMPETITOR_ROLE_OPTIONS: { value: CompetitorRole; label: string }[] = [
   { value: 'direct_competitor', label: '直接竞品' },
   { value: 'indirect_competitor', label: '间接竞品' },
@@ -120,6 +128,42 @@ const DEFAULT_COMPETITORS: CompetitorInput[] = [
   { name: 'Trae', url: 'https://www.trae.ai', role: 'direct_competitor' },
   { name: 'Windsurf', url: 'https://windsurf.ai', role: 'direct_competitor' },
 ]
+
+function extractIndustryTopic(input: string): string {
+  const normalized = input.replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+
+  const patterns = [
+    /^(?:请|麻烦)?帮我分析一下\s*(.+?)\s*的竞品[。.!！?？]*$/i,
+    /^(?:请|麻烦)?帮我分析\s*(.+?)\s*的竞品[。.!！?？]*$/i,
+    /^(?:请|麻烦)?帮我看看\s*(.+?)\s*的竞品[。.!！?？]*$/i,
+    /^分析一下\s*(.+?)\s*的竞品[。.!！?？]*$/i,
+    /^分析\s*(.+?)\s*的竞品[。.!！?？]*$/i,
+    /^(.+?)\s*的竞品[。.!！?？]*$/i,
+  ]
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern)
+    if (match?.[1]?.trim()) return match[1].trim()
+  }
+
+  return normalized
+    .replace(/^(?:请|麻烦)?帮我(?:分析|看看|了解)?(?:一下)?\s*/i, '')
+    .replace(/\s*(?:的)?(?:竞品|竞争对手|对标产品|类似产品)[。.!！?？]*$/i, '')
+    .trim() || normalized
+}
+
+function inferIndustryTypeFromTopic(topic: string): IndustryType | null {
+  const lower = topic.toLowerCase()
+  if (/^(qq|微信|wechat|telegram|discord|whatsapp|line|signal|snapchat)\b/.test(lower)) return 'social'
+  if (/电商|电子商务|网购|网店|marketplace|e-?commerce|online store/.test(lower)) return 'ecommerce'
+  if (/外卖|本地生活|配送|到家|跑腿|送餐|food delivery|local service|on-demand/.test(lower)) return 'local_services'
+  if (/ai\s*搜索|ai搜索|答案引擎|问答|perplexity|answer engine/.test(lower)) return 'ai_search'
+  if (/设计|figma|canva|adobe express|design tool|prototyp/.test(lower)) return 'design_tools'
+  if (/开源|非营利|基金会|open source|foundation|nonprofit/.test(lower)) return 'open_source'
+  if (/社交|社区|约会|交友|social|dating|community/.test(lower)) return 'social'
+  if (/ai\s*coding|ai\s*编程|代码助手|编程助手|ide|coding assistant|code assistant/.test(lower)) return 'ai_saas'
+  return null
+}
 
 export default function NewProjectPage() {
   const router = useRouter()
@@ -157,6 +201,11 @@ export default function NewProjectPage() {
       router.push(`/projects/${result.project_id}`)
     },
   })
+
+  const applyIndustryType = useCallback((value: IndustryType) => {
+    setIndustryType(value)
+    setGoals(defaultGoalsForIndustryType(value))
+  }, [])
 
   const handleCompetitorChange = (
     index: number,
@@ -275,7 +324,7 @@ export default function NewProjectPage() {
       custom_dimensions: customDimensions,
       competitors: cleanedCompetitors,
       goals,
-      output_language: 'en',
+      output_language: 'zh',
       report_depth: 'standard',
       data_mode: dataMode,
       research_inputs: researchInputs,
@@ -350,15 +399,18 @@ export default function NewProjectPage() {
               value={naturalLanguageQuery}
               onChange={(e) => {
                 const value = e.target.value
+                const topic = extractIndustryTopic(value)
+                const inferredType = inferIndustryTypeFromTopic(topic)
                 setNaturalLanguageQuery(value)
-                setIndustry(value)
+                setIndustry(topic)
+                if (inferredType) applyIndustryType(inferredType)
               }}
               placeholder="例如：帮我分析一下 AI coding 的竞品"
               rows={3}
               className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-shadow focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             />
             <CompetitorDiscoveryPanel
-              industry={naturalLanguageQuery}
+              industry={extractIndustryTopic(naturalLanguageQuery)}
               industryType={industryType}
               onAdd={handleAddFromDiscovery}
               label="查找候选竞品"
@@ -399,7 +451,7 @@ export default function NewProjectPage() {
           <select
             id="industry-type"
             value={industryType}
-            onChange={(e) => setIndustryType(e.target.value as IndustryType)}
+            onChange={(e) => applyIndustryType(e.target.value as IndustryType)}
             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           >
             {INDUSTRY_TYPE_OPTIONS.map((option) => (

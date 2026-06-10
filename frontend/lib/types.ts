@@ -262,6 +262,7 @@ export interface CandidateCompetitor {
   confidence?: 'high' | 'medium' | 'low'
   relevance_score?: number
   relevance_reason?: string
+  suggested_role?: CompetitorRole
   role_confidence?: 'high' | 'medium' | 'low'
   reason?: string
   selected_by_default?: boolean

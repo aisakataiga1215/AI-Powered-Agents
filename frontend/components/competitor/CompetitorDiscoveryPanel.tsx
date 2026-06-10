@@ -24,6 +24,13 @@ const CONFIDENCE_BADGE: Record<string, string> = {
   low: 'bg-gray-100 text-gray-500',
 }
 
+const ROLE_LABEL: Record<CompetitorRole, string> = {
+  direct_competitor: '直接竞品',
+  indirect_competitor: '间接竞品',
+  inspiration_product: '参考产品',
+  benchmark_leader: '标杆产品',
+}
+
 export default function CompetitorDiscoveryPanel({
   industry,
   industryType,
@@ -74,7 +81,7 @@ export default function CompetitorDiscoveryPanel({
       .map((c): CompetitorInput => ({
         name: c.name,
         url: c.website,
-        role: 'direct_competitor' as CompetitorRole,
+        role: (c.suggested_role ?? 'direct_competitor') as CompetitorRole,
       }))
     if (toAdd.length > 0) {
       onAdd(toAdd)
@@ -151,7 +158,7 @@ export default function CompetitorDiscoveryPanel({
                         </span>
                       )}
                       <span className="text-[10px] text-blue-500 italic">
-                        建议角色：直接竞品
+                        建议角色：{ROLE_LABEL[(c.suggested_role ?? 'direct_competitor') as CompetitorRole]}
                       </span>
                     </div>
                     <p className="truncate text-[10px] text-blue-600">{c.website}</p>

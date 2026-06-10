@@ -228,6 +228,9 @@ _INDUSTRY_NEGATIVE_NAME_TERMS: dict[str, tuple[str, ...]] = {
 
 _INDUSTRY_NEGATIVE_DOMAINS: dict[str, tuple[str, ...]] = {
     "ecommerce": ("godaddy.com",),
+    "local_services": ("cloudflare.com", "github.com"),
+    "ai_search": ("acquia.com",),
+    "open_source": ("stradley.com",),
 }
 
 # M16.2: known product domain aliases for source_search official-domain priority
@@ -293,6 +296,13 @@ _DISCOVERY_BLOCKED_DOMAINS: frozenset[str] = frozenset({
     "reddit.com", "twitter.com", "linkedin.com", "medium.com", "substack.com",
     "virtina.com", "goodhousekeeping.com", "ebsco.com", "apps.apple.com",
     "play.google.com", "travelwithwildlynorth.com",
+    "sohu.com", "news.qq.com", "tmtpost.com", "woshipm.com", "lfppt.com",
+    "yuntingai.com", "xda-developers.com",
+    # M16.3: dictionary, translation, encyclopedia, Q&A platforms — generic
+    # content hosts that match any conversational prompt. Never a competitor.
+    "youdao.com", "dict.cn", "iciba.com",
+    "baike.baidu.com", "zhidao.baidu.com", "wenku.baidu.com", "tieba.baidu.com",
+    "translate.google.com",
 })
 
 _DISCOVERY_RESEARCH_DOMAIN_KEYWORDS: tuple[str, ...] = (
@@ -322,6 +332,12 @@ _LISTICLE_TITLE_END_RE = re.compile(
     r'(?:^|\s)(?:comparison|compare|review|reviews|vs\.?|guide|alternatives?|'
     r'ranking|roundup|overview|tutorial|rundown|analysis|summary|platforms|'
     r'best\s+.*|top\s+.*)\s*$',
+    re.IGNORECASE,
+)
+
+_CHINESE_DISCOVERY_CONTENT_TITLE_RE = re.compile(
+    r"(竞品分析|产品分析|分析报告|主流.*app|ppt|模板|案例|教程|方法论|"
+    r"必看|手把手|旧王与新王|新闻|资讯)",
     re.IGNORECASE,
 )
 
@@ -402,7 +418,239 @@ _DEFAULT_DISCOVERY_QUERIES: list[str] = [
     "{industry} alternatives",
 ]
 
-_MAX_DISCOVERY_RESULTS: int = 8
+_MAX_DISCOVERY_RESULTS: int = 12
+
+# M16.3: NL-prompt → industry_type detection. The NL discovery panel does not
+# send industry_type; backend infers it from the free-text prompt so the search
+# templates and known-product extraction match the user's actual intent.
+# Earlier entries take priority on ties (ecommerce/local_services/etc. before
+# the generic AI categories so "AI 电商 工具" is classified as ecommerce, not ai_saas).
+_INDUSTRY_KEYWORD_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ecommerce", (
+        "电商", "电子商务", "网店", "网购", "电销", "卖货", "带货",
+        "跨境电商", "shopify", "marketplace", "ecommerce", "e-commerce",
+        "online shop", "online store", "online retail", "merchant platform",
+        "seller platform",
+    )),
+    ("local_services", (
+        "本地生活", "外卖", "配送", "跑腿", "上门", "到家", "送餐",
+        "打车", "网约车", "同城",
+        "food delivery", "local service", "local services", "on-demand",
+        "on demand", "ride sharing", "ride-hailing", "grocery delivery",
+        "last mile",
+    )),
+    ("design_tools", (
+        "设计工具", "设计软件", "设计平台", "平面设计", "ui设计",
+        "原型工具", "原型设计",
+        "design tool", "design tools", "design platform", "graphic design",
+        "ui/ux", "ui design", "prototyping tool", "canva", "figma",
+    )),
+    ("ai_search", (
+        "ai搜索", "智能搜索", "答案引擎", "ai问答", "ai 问答", "ai助手",
+        "ai 助手", "智能问答",
+        "ai search", "answer engine", "ai chatbot", "ai assistant",
+        "perplexity",
+    )),
+    ("open_source", (
+        "开源", "开源项目", "开源软件", "非营利", "非盈利", "基金会",
+        "open source", "open-source", "nonprofit", "foundation", "oss project",
+    )),
+    ("social", (
+        "社交", "约会", "交友", "婚恋", "陌生人社交", "兴趣社区",
+        "dating", "matchmaking", "social network", "social app",
+        "community app",
+    )),
+    ("ai_saas", (
+        "ai 编程", "ai编程", "ai 代码", "ai代码", "ai ide", "编程助手",
+        "代码助手", "代码补全",
+        "ai coding", "code completion", "code assistant", "coding assistant",
+        "developer ai", "ai copilot",
+    )),
+)
+
+
+def _detect_industry_type(industry_text: str) -> str | None:
+    """Detect industry_type from a free-text industry/prompt input.
+
+    Scans for industry-specific keywords (Chinese + English). Returns the first
+    matched industry_type per _INDUSTRY_KEYWORD_RULES order or None if no clear
+    signal — callers should fall back to their explicit industry_type in that
+    case.
+    """
+    if not industry_text:
+        return None
+    lower = industry_text.lower()
+    for industry_type, keywords in _INDUSTRY_KEYWORD_RULES:
+        if any(kw in lower for kw in keywords):
+            return industry_type
+    return None
+
+
+# M16.3: Static English discovery queries keyed by industry_type. Used when an
+# industry is confidently detected from the user's prompt. Avoids leaking
+# Chinese conversational fragments into Tavily queries (which previously
+# matched dict.youdao.com lookups and SEO ad pages).
+_STATIC_DISCOVERY_QUERIES: dict[str, list[str]] = {
+    "ai_saas": [
+        "AI coding tool competitors",
+        "AI IDE alternatives",
+        "best AI code assistant",
+        "developer AI coding assistants",
+    ],
+    "ai_search": [
+        "AI search engine competitors",
+        "AI answer engine alternatives",
+        "best AI chat assistant",
+        "Perplexity ChatGPT Claude alternatives",
+    ],
+    "design_tools": [
+        "design tool competitors",
+        "graphic design platform alternatives",
+        "best design software",
+        "Canva Figma Adobe Express alternatives",
+    ],
+    "ecommerce": [
+        "ecommerce platform competitors",
+        "online marketplace alternatives",
+        "best ecommerce platform",
+        "Amazon eBay Etsy Taobao competitors",
+    ],
+    "local_services": [
+        "food delivery app competitors",
+        "on-demand delivery platform alternatives",
+        "local services marketplace",
+        "DoorDash Uber Eats Meituan competitors",
+    ],
+    "open_source": [
+        "open source project alternatives",
+        "open source foundation",
+        "nonprofit OSS organizations",
+    ],
+    "social": [
+        "dating app competitors",
+        "social network alternatives",
+        "Tinder Bumble Hinge competitors",
+    ],
+}
+
+_PRODUCT_DISCOVERY_ALIASES: dict[str, tuple[str, str]] = {
+    "qq": ("QQ", "social"),
+    "腾讯qq": ("QQ", "social"),
+    "wechat": ("WeChat", "social"),
+    "微信": ("WeChat", "social"),
+    "telegram": ("Telegram", "social"),
+    "discord": ("Discord", "social"),
+    "whatsapp": ("WhatsApp", "social"),
+    "line": ("LINE", "social"),
+    "signal": ("Signal", "social"),
+    "snapchat": ("Snapchat", "social"),
+    "messenger": ("Messenger", "social"),
+    "facebook messenger": ("Messenger", "social"),
+    "微博": ("Weibo", "social"),
+    "weibo": ("Weibo", "social"),
+    "twitter": ("Twitter/X", "social"),
+    "x": ("Twitter/X", "social"),
+    "facebook": ("Facebook", "social"),
+    "zepeto": ("ZEPETO", "social"),
+    "vyou": ("Vyou", "social"),
+    "星偶": ("星偶", "social"),
+    "抖音": ("Douyin", "social"),
+    "douyin": ("Douyin", "social"),
+    "快手": ("Kuaishou", "social"),
+    "kuaishou": ("Kuaishou", "social"),
+    "b站": ("Bilibili", "social"),
+    "哔哩哔哩": ("Bilibili", "social"),
+    "bilibili": ("Bilibili", "social"),
+}
+
+_PRODUCT_COMPETITOR_SEEDS: dict[str, tuple[tuple[str, str, str, str, str], ...]] = {
+    "qq": (
+        ("WeChat", "https://www.wechat.com", "wechat.com", "direct_competitor", "IM social product with similar messaging and relationship-chain use cases."),
+        ("WhatsApp", "https://www.whatsapp.com", "whatsapp.com", "direct_competitor", "Large-scale messaging product with similar communication jobs."),
+        ("Messenger", "https://www.messenger.com", "messenger.com", "direct_competitor", "Messaging product connected to a large social graph."),
+        ("Weibo", "https://weibo.com", "weibo.com", "indirect_competitor", "Text/image social network competing for communication and social attention."),
+        ("Twitter/X", "https://x.com", "x.com", "indirect_competitor", "Public social feed model worth comparing for content and relationship mechanics."),
+        ("Facebook", "https://www.facebook.com", "facebook.com", "indirect_competitor", "Social graph and feed product with adjacent user attention use cases."),
+        ("ZEPETO", "https://zepeto.me", "zepeto.me", "inspiration_product", "Avatar social product useful for virtual identity and social-play mechanics."),
+        ("Vyou", "https://www.vyou.com", "vyou.com", "inspiration_product", "Avatar/virtual social reference product."),
+        ("星偶", "https://www.xingouapp.com", "xingouapp.com", "inspiration_product", "Avatar social reference product for virtual identity."),
+        ("Douyin", "https://www.douyin.com", "douyin.com", "inspiration_product", "Video social/content product useful for retention and content loop inspiration."),
+        ("Kuaishou", "https://www.kuaishou.com", "kuaishou.com", "inspiration_product", "Video community product useful for creator/community mechanics."),
+        ("Bilibili", "https://www.bilibili.com", "bilibili.com", "inspiration_product", "Video/community product useful for interest-community operations."),
+    ),
+    "wechat": (
+        ("QQ", "https://im.qq.com", "im.qq.com", "direct_competitor", "Tencent IM product with adjacent communication and social graph use cases."),
+        ("Telegram", "https://telegram.org", "telegram.org", "direct_competitor", "Messaging product with channels/groups and cross-platform usage."),
+        ("WhatsApp", "https://www.whatsapp.com", "whatsapp.com", "direct_competitor", "Large-scale messaging product with similar communication jobs."),
+        ("LINE", "https://line.me", "line.me", "direct_competitor", "Messaging product with stickers, services, and social extensions."),
+        ("Signal", "https://signal.org", "signal.org", "indirect_competitor", "Privacy-led messaging product worth comparing on trust and security."),
+        ("Discord", "https://discord.com", "discord.com", "indirect_competitor", "Community/chat product for group and interest-based social use cases."),
+    ),
+}
+
+
+def _extract_product_discovery_target(text: str) -> tuple[str, str, str] | None:
+    """Return (alias_key, display_name, inferred_industry_type) for known products."""
+    lower = (text or "").lower()
+    for alias, (display_name, inferred_industry) in _PRODUCT_DISCOVERY_ALIASES.items():
+        alias_lower = alias.lower()
+        if alias_lower in {"qq", "腾讯qq", "微信"}:
+            matched = alias_lower in lower
+        else:
+            matched = bool(re.search(rf"(?<![a-z0-9-]){re.escape(alias_lower)}(?![a-z0-9-])", lower))
+        if matched:
+            key = "wechat" if alias in {"微信", "wechat"} else alias.lower()
+            if key == "腾讯qq":
+                key = "qq"
+            return key, display_name, inferred_industry
+    return None
+
+
+def _extract_generic_product_target(text: str) -> tuple[str, str, str] | None:
+    """Extract an arbitrary product name from a product-competitor prompt."""
+    cleaned = " ".join((text or "").split()).strip()
+    if not cleaned:
+        return None
+    patterns = (
+        r"^(?:请|麻烦)?帮我分析一下\s*(.+?)\s*的竞品[。.!！?？]*$",
+        r"^(?:请|麻烦)?帮我分析\s*(.+?)\s*的竞品[。.!！?？]*$",
+        r"^(?:请|麻烦)?帮我看看\s*(.+?)\s*的竞品[。.!！?？]*$",
+        r"^分析一下\s*(.+?)\s*的竞品[。.!！?？]*$",
+        r"^分析\s*(.+?)\s*的竞品[。.!！?？]*$",
+        r"^(.+?)\s*的竞品[。.!！?？]*$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, cleaned, flags=re.IGNORECASE)
+        if match and match.group(1).strip():
+            product = match.group(1).strip(" 「」\"'“”")
+            if 1 < len(product) <= 60:
+                return product.lower(), product, "general"
+    return None
+
+
+def _product_discovery_queries(display_name: str, alias_key: str) -> list[str]:
+    if alias_key in {"qq", "wechat"}:
+        return [
+            f"{display_name} competitors official messaging apps",
+            f"{display_name} alternatives chat apps",
+            "QQ WeChat Telegram Discord WhatsApp LINE Signal official",
+            "instant messaging app competitors official websites",
+        ]
+    return [
+        f"{display_name} competitors official",
+        f"{display_name} alternatives official",
+        f"apps like {display_name} official websites",
+    ]
+
+# M16.3: Chinese conversational filler patterns. When a candidate name contains
+# any of these the result is almost certainly from a translation/lookup page
+# that matched the user's prompt verbatim, not an actual product.
+_PROMPT_FILLER_PATTERNS: frozenset[str] = frozenset({
+    "帮我", "请帮", "麻烦", "我想了解", "我想知道", "我想做",
+    "分析一下", "看一下", "推荐一下",
+    "竞品", "竞争对手", "对标", "类似产品",
+    "怎么样", "有哪些", "求推荐",
+})
 
 
 def _extract_company_name(raw_title: str, url: str) -> str:
@@ -426,6 +674,12 @@ def _score_competitor_relevance(
     # Hard disqualifications
     if any(domain == d or domain.endswith("." + d) for d in _DISCOVERY_BLOCKED_DOMAINS):
         return 0, "aggregator or listing site"
+    # M16.3: candidate name contains the user's conversational prompt fragment
+    # (e.g. 【帮我分析一下】 from dict.youdao.com) — this is never a real product.
+    name_lower = name.lower()
+    title_lower = raw_title.lower()
+    if any(filler in name_lower or filler in title_lower for filler in _PROMPT_FILLER_PATTERNS):
+        return 0, f"name contains conversational prompt filler: {name!r}"
     negative_domains = _INDUSTRY_NEGATIVE_DOMAINS.get(industry_type, ())
     if any(domain == d or domain.endswith("." + d) for d in negative_domains):
         return 20, f"domain is not a direct {industry_type} competitor: {domain}"
@@ -436,6 +690,8 @@ def _score_competitor_relevance(
     parsed_path = urlparse(url).path.lower()
     if _LISTICLE_TITLE_RE.match(raw_title):
         return 15, f"title looks like a listicle: {raw_title[:60]!r}"
+    if _CHINESE_DISCOVERY_CONTENT_TITLE_RE.search(raw_title):
+        return 15, f"title looks like Chinese content/research article: {raw_title[:60]!r}"
     if _LISTICLE_TITLE_RE.search(raw_title):
         return 20, f"title contains listicle marker: {raw_title[:60]!r}"
     if _LISTICLE_TITLE_END_RE.search(raw_title):
@@ -870,20 +1126,126 @@ class SearchService:
         """Return CandidateCompetitor[] for user selection. Descriptions are display-only."""
         from app.schemas.discovery import CandidateCompetitor
 
-        templates = _DISCOVERY_TEMPLATES.get(industry_type, _DEFAULT_DISCOVERY_QUERIES)
-        if industry_type == "social" and not re.search(
-            r"\b(dating|date|singles?|friend|matchmaking|relationship)\b",
-            industry,
-            re.IGNORECASE,
-        ):
-            templates = [
-                t for t in templates
-                if "dating" not in t.lower() and "tinder" not in t.lower()
-            ]
-        queries = [t.format(industry=industry) for t in templates]
+        # M16.3: detect industry from the prompt and override the caller's
+        # industry_type. The NL discovery panel does not send industry_type at
+        # all, and the manual mode dropdown may be stale relative to the prompt.
+        detected = _detect_industry_type(industry)
+        product_target = _extract_product_discovery_target(industry)
+        if not product_target and not detected:
+            product_target = _extract_generic_product_target(industry)
+        if product_target:
+            _alias_key, display_name, product_industry_type = product_target
+            detected = product_industry_type
+        if detected and detected != industry_type:
+            logger.info(
+                "discover_competitors: overriding industry_type %r → %r from prompt %r",
+                industry_type, detected, industry[:80],
+            )
+            industry_type = detected
+
+        # When the industry is confidently detected, run static English query
+        # templates so Chinese conversational fragments never leak into Tavily
+        # queries (previously matched dict.youdao.com / Chinese SEO ads).
+        if product_target:
+            alias_key, display_name, _product_industry_type = product_target
+            queries = _product_discovery_queries(display_name, alias_key)
+        elif detected and industry_type in _STATIC_DISCOVERY_QUERIES:
+            queries = list(_STATIC_DISCOVERY_QUERIES[industry_type])
+            if industry_type == "social" and not re.search(
+                r"\b(dating|date|singles?|friend|matchmaking|relationship)\b",
+                industry,
+                re.IGNORECASE,
+            ):
+                queries = [
+                    q for q in queries
+                    if "dating" not in q.lower() and "tinder" not in q.lower()
+                ]
+        else:
+            templates = _DISCOVERY_TEMPLATES.get(industry_type, _DEFAULT_DISCOVERY_QUERIES)
+            if industry_type == "social" and not re.search(
+                r"\b(dating|date|singles?|friend|matchmaking|relationship)\b",
+                industry,
+                re.IGNORECASE,
+            ):
+                templates = [
+                    t for t in templates
+                    if "dating" not in t.lower() and "tinder" not in t.lower()
+                ]
+            queries = [t.format(industry=industry) for t in templates]
 
         seen_domains: set[str] = set()
         candidates: list[CandidateCompetitor] = []
+
+        has_cjk_prompt = bool(re.search(r"[\u4e00-\u9fff]", industry))
+        provider_available = self._provider.__class__.__name__ != "NullSearchProvider"
+        seed_known_industries = {
+            "ai_saas", "ai_search", "design_tools", "ecommerce",
+            "local_services", "open_source",
+        }
+        if provider_available and product_target:
+            alias_key, _display_name, _product_industry_type = product_target
+            for product_name, product_website, product_domain, suggested_role, seed_reason in _PRODUCT_COMPETITOR_SEEDS.get(alias_key, ()):
+                if product_domain in seen_domains:
+                    continue
+                seen_domains.add(product_domain)
+                candidates.append(CandidateCompetitor(
+                    name=product_name,
+                    website=product_website,
+                    description=seed_reason,
+                    raw_title=product_name,
+                    source_url=product_website,
+                    domain=product_domain,
+                    discovery_query=f"known {alias_key} competitors",
+                    confidence="high",
+                    relevance_score=96,
+                    relevance_reason=f"known competitor/alternative for {alias_key}",
+                    suggested_role=suggested_role,
+                    role_confidence="high",
+                    reason="Seeded from product competitor list; verify before adding.",
+                ))
+        elif provider_available and has_cjk_prompt and detected and industry_type in seed_known_industries:
+            for product_name, product_website, product_domain in _KNOWN_PRODUCTS_BY_INDUSTRY.get(industry_type, ())[:6]:
+                if product_domain in seen_domains:
+                    continue
+                seen_domains.add(product_domain)
+                candidates.append(CandidateCompetitor(
+                    name=product_name,
+                    website=product_website,
+                    description=f"Known benchmark product for {industry_type}.",
+                    raw_title=product_name,
+                    source_url=product_website,
+                    domain=product_domain,
+                    discovery_query=f"known {industry_type} benchmark",
+                    confidence="high",
+                    relevance_score=95,
+                    relevance_reason=f"known {industry_type} benchmark product",
+                    role_confidence="high",
+                    reason="Seeded from industry benchmark list; verify before adding.",
+                ))
+        elif provider_available and has_cjk_prompt and detected == "social":
+            social_benchmarks = (
+                ("Instagram", "https://www.instagram.com", "instagram.com"),
+                ("TikTok", "https://www.tiktok.com", "tiktok.com"),
+                ("X", "https://x.com", "x.com"),
+                ("Reddit", "https://www.reddit.com", "reddit.com"),
+                ("Discord", "https://discord.com", "discord.com"),
+            )
+            for product_name, product_website, product_domain in social_benchmarks:
+                seen_domains.add(product_domain)
+                candidates.append(CandidateCompetitor(
+                    name=product_name,
+                    website=product_website,
+                    description="Known social/community product; crawling may be limited by access controls.",
+                    raw_title=product_name,
+                    source_url=product_website,
+                    domain=product_domain,
+                    discovery_query="known social benchmark",
+                    confidence="high",
+                    relevance_score=95,
+                    relevance_reason="known social/community benchmark product",
+                    role_confidence="high",
+                    reason="Seeded from industry benchmark list; verify before adding.",
+                ))
 
         for query in queries:
             try:
