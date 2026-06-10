@@ -24,9 +24,23 @@ export type ProjectStatus =
   | 'qa_failed'
   | 'failed'
 
-export type IndustryType = 'ai_saas' | 'ecommerce' | 'local_services' | 'social' | 'general'
+export type IndustryType =
+  | 'ai_saas'
+  | 'ai_search'
+  | 'design_tools'
+  | 'ecommerce'
+  | 'local_services'
+  | 'open_source'
+  | 'social'
+  | 'general'
 
-export type AnalysisPurpose = 'general' | 'build_product' | 'choose_product'
+export type AnalysisPurpose =
+  | 'build_product'
+  | 'choose_product'
+  | 'industry_landscape'
+  | 'competitor_success'
+  | 'improve_product'
+  | 'general'
 
 export type CompetitorRole =
   | 'direct_competitor'
@@ -70,12 +84,24 @@ export interface MarketTrend {
   evidence: string[]
 }
 
+export interface DataSignal {
+  metric_name: string
+  competitor_name: string
+  value: string
+  signal_type: string
+  source_ids: string[]
+  confidence: SourceConfidence
+  is_estimate: boolean
+  notes: string
+}
+
 export interface MarketBackground {
   market_overview: string
   market_size_notes: string
   trends: MarketTrend[]
   key_drivers: string[]
   key_challenges: string[]
+  data_signals?: DataSignal[]
 }
 
 export interface FeatureInsights {
@@ -83,6 +109,14 @@ export interface FeatureInsights {
   differentiators: Array<{ feature: string; competitors: string[] }>
   gaps: string[]
   cross_competitor_patterns: string[]
+  module_breakdown?: Array<{
+    module_name: string
+    user_pain: string
+    core_or_auxiliary: string
+    competitors: string[]
+    evidence: string[]
+  }>
+  user_path_notes?: Record<string, string>
 }
 
 export interface GtmProfile {
@@ -98,6 +132,9 @@ export interface OperationMonetization {
   gtm_profiles: GtmProfile[]
   monetization_patterns: string[]
   aarrr_notes: Record<string, Record<string, string>>
+  free_paid_boundaries?: Record<string, string>
+  willingness_to_pay?: Record<string, string>
+  experience_risks?: Record<string, string>
 }
 
 export interface CompetitorInput {
@@ -107,9 +144,20 @@ export interface CompetitorInput {
   extra_urls?: string[]
 }
 
+export type ResearchInputKind = 'survey' | 'interview' | 'questionnaire' | 'desk_research' | 'notes'
+
+export interface ResearchInput {
+  title: string
+  content: string
+  source_kind: ResearchInputKind
+  competitor_name?: string
+}
+
 export interface CompetitorInProject {
   name: string
   url: string
+  role?: CompetitorRole
+  extra_urls?: string[]
 }
 
 export interface ProjectCreate {
@@ -122,6 +170,7 @@ export interface ProjectCreate {
   output_language?: string
   report_depth?: string
   data_mode?: 'demo' | 'live_with_fallback'
+  research_inputs?: ResearchInput[]
 }
 
 export interface ProjectResponse {
@@ -135,6 +184,7 @@ export interface ProjectResponse {
   created_at: string
   updated_at: string
   data_mode?: string
+  research_inputs?: ResearchInput[]
   competitors?: CompetitorInProject[]
 }
 
@@ -310,7 +360,7 @@ export interface SourceEvidence {
   content: string
   retrieved_at: string
   reliability: Reliability | string
-  data_source?: 'live' | 'demo' | 'search'
+  data_source?: 'live' | 'demo' | 'search' | 'manual'
 }
 
 /**

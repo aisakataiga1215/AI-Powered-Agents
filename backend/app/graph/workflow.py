@@ -95,6 +95,7 @@ def _initial_state(
     industry_type: str = "general",
     analysis_purpose: str = "general",
     custom_dimensions: list[str] | None = None,
+    research_inputs: list[dict] | None = None,
 ) -> WorkflowState:
     return {
         "project_id": project_id,
@@ -105,6 +106,7 @@ def _initial_state(
         "industry_type": industry_type,
         "analysis_purpose": analysis_purpose,
         "custom_dimensions": custom_dimensions or [],
+        "research_inputs": research_inputs or [],
         "sources": [],
         "competitor_knowledge": [],
         "report": None,
@@ -126,6 +128,7 @@ def run_workflow_background(
     industry_type: str = "general",
     analysis_purpose: str = "general",
     custom_dimensions: list[str] | None = None,
+    research_inputs: list[dict] | None = None,
 ) -> None:
     """Entry point invoked by FastAPI BackgroundTasks.
 
@@ -144,6 +147,7 @@ def run_workflow_background(
         analysis_purpose: Analysis intent — ``"general"``, ``"build_product"``,
             or ``"choose_product"``. Controls purpose-specific report sections.
         custom_dimensions: Optional list of user-defined analysis dimensions.
+        research_inputs: Optional manually supplied survey/interview/questionnaire notes.
     """
     # ``db_url`` reserved for future per-tenant routing; currently the
     # process-wide engine from ``app.db.session`` is authoritative.
@@ -167,7 +171,7 @@ def run_workflow_background(
     state = _initial_state(
         project_id, competitors, goals,
         output_language, data_mode, industry_type,
-        analysis_purpose, custom_dimensions,
+        analysis_purpose, custom_dimensions, research_inputs,
     )
     try:
         competitive_analysis_workflow.invoke(state)

@@ -37,6 +37,16 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _loads_list(value) -> list[str]:
+    try:
+        parsed = json.loads(value or "[]")
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+        return []
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+
 def _to_response(project) -> ProjectResponse:
     return ProjectResponse(
         project_id=project.id,
@@ -44,6 +54,7 @@ def _to_response(project) -> ProjectResponse:
         industry_type=getattr(project, "industry_type", "general") or "general",
         analysis_purpose=getattr(project, "analysis_purpose", "general") or "general",
         custom_dimensions=json.loads(getattr(project, "custom_dimensions", "[]") or "[]"),
+        research_inputs=json.loads(getattr(project, "research_inputs", "[]") or "[]"),
         goals=project_service.deserialize_goals(project),
         status=ProjectStatus(project.status),
         output_language=project.output_language,
@@ -51,7 +62,12 @@ def _to_response(project) -> ProjectResponse:
         updated_at=_iso(project.updated_at),
         data_mode=getattr(project, "data_mode", "demo") or "demo",
         competitors=[
-            CompetitorInProject(name=c.name, url=c.url)
+            CompetitorInProject(
+                name=c.name,
+                url=c.url,
+                role=getattr(c, "role", "direct_competitor") or "direct_competitor",
+                extra_urls=_loads_list(getattr(c, "extra_urls", "[]")),
+            )
             for c in (project.competitors or [])
         ],
     )
@@ -94,6 +110,7 @@ def run_project(
             "name": c.name,
             "url": c.url,
             "role": getattr(c, "role", "direct_competitor") or "direct_competitor",
+            "extra_urls": _loads_list(getattr(c, "extra_urls", "[]")),
         }
         for c in project_service.get_project_competitors(db, project_id)
     ]
@@ -111,6 +128,7 @@ def run_project(
             getattr(project, "industry_type", "general") or "general",
             getattr(project, "analysis_purpose", "general") or "general",
             json.loads(getattr(project, "custom_dimensions", "[]") or "[]"),
+            json.loads(getattr(project, "research_inputs", "[]") or "[]"),
         )
     else:
         logger.warning(

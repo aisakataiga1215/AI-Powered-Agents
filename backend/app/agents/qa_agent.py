@@ -537,6 +537,14 @@ _PRODUCT_BRAND_MAP: dict[str, frozenset] = {
 }
 
 _BRAND_MENTION_THRESHOLD = 2
+_BRAND_CHECK_SOURCE_TYPES = {
+    SourceType.official_website,
+    SourceType.pricing_page,
+    SourceType.docs,
+    SourceType.features_page,
+    SourceType.security,
+    SourceType.privacy,
+}
 
 
 def check_brand_consistency(
@@ -554,6 +562,8 @@ def check_brand_consistency(
     competitor_names = {k.competitor_name.lower() for k in knowledge}
 
     for source in sources:
+        if source.source_type not in _BRAND_CHECK_SOURCE_TYPES:
+            continue
         expected = source.competitor_name.lower()
         preview = (source.title + " " + (source.content or "")[:500]).lower()
 
@@ -686,6 +696,44 @@ def check_pm_sections(report: CompetitiveReport) -> list[QAIssue]:
             )
         )
     return issues
+
+
+def check_data_signals(report: CompetitiveReport, source_ids: set[str]) -> list[QAIssue]:
+    """Advisory check: data claims must expose source, confidence, and estimates."""
+    if not report.market_background or not report.market_background.data_signals:
+        return []
+
+    issues: list[QAIssue] = []
+    valid_confidence = {"high", "medium", "low", "unknown"}
+    for signal in report.market_background.data_signals:
+        label = signal.metric_name or signal.signal_type or "unnamed data signal"
+        missing_source = not signal.source_ids
+        unknown_sources = [sid for sid in signal.source_ids if sid not in source_ids]
+        invalid_confidence = signal.confidence not in valid_confidence
+        estimate_without_context = signal.is_estimate and not signal.notes.strip()
+        if missing_source or unknown_sources or invalid_confidence or estimate_without_context:
+            details: list[str] = []
+            if missing_source:
+                details.append("missing source_ids")
+            if unknown_sources:
+                details.append(f"unknown source_ids: {', '.join(unknown_sources)}")
+            if invalid_confidence:
+                details.append(f"invalid confidence '{signal.confidence}'")
+            if estimate_without_context:
+                details.append("estimate has no notes")
+            issues.append(
+                QAIssue(
+                    severity=IssueSeverity.medium,
+                    issue_type=IssueType.weak_data_signal,
+                    target_agent="WriterAgent",
+                    message=f"Data signal '{label}' is weak: {'; '.join(details)}",
+                    suggested_action=(
+                        "Attach source_ids, confidence, and estimate notes; "
+                        "omit unsupported metrics instead of presenting them as facts"
+                    ),
+                )
+            )
+    return issues
 def _build_trace_output(result: QAResult, issues: list[QAIssue]) -> dict:
     """Build the trace output dict for a completed QAAgent run.
 
@@ -784,6 +832,7 @@ def run(
         issues.extend(check_custom_dimensions(report, custom_dimensions or []))
         issues.extend(check_scoring_rationale(report, analysis_purpose))
         issues.extend(check_pm_sections(report))
+        issues.extend(check_data_signals(report, known_source_ids))
 
         score = _score_issues(issues)
         passed = score >= _PASS_THRESHOLD and not _has_high_severity(issues)

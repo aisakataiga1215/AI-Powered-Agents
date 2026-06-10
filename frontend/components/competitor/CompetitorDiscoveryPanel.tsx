@@ -8,6 +8,8 @@ interface CompetitorDiscoveryPanelProps {
   industry: string
   industryType: string
   onAdd: (competitors: CompetitorInput[]) => void
+  label?: string
+  emptyLabel?: string
 }
 
 const RELEVANCE_BADGE: (score: number) => string = (score) => {
@@ -26,6 +28,8 @@ export default function CompetitorDiscoveryPanel({
   industry,
   industryType,
   onAdd,
+  label = 'Discover competitors',
+  emptyLabel = 'No candidates found.',
 }: CompetitorDiscoveryPanelProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -98,7 +102,7 @@ export default function CompetitorDiscoveryPanel({
         disabled={loading || !industry.trim()}
         className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400 underline"
       >
-        {loading ? 'Discovering…' : 'Discover competitors'}
+        {loading ? 'Discovering…' : label}
       </button>
 
       {error && (
@@ -106,7 +110,7 @@ export default function CompetitorDiscoveryPanel({
       )}
 
       {open && candidates.length === 0 && !loading && (
-        <p className="mt-1 text-xs text-gray-400">No candidates found.</p>
+        <p className="mt-1 text-xs text-gray-400">{emptyLabel}</p>
       )}
 
       {open && candidates.length > 0 && (

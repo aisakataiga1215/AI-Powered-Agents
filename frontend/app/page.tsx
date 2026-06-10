@@ -11,13 +11,23 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useCallback, type FormEvent } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
-import type { AnalysisPurpose, CompetitorInput, CompetitorRole, IndustryType, ProjectCreate } from '@/lib/types'
+import type {
+  AnalysisPurpose,
+  CompetitorInput,
+  CompetitorRole,
+  IndustryType,
+  ProjectCreate,
+  ResearchInput,
+  ResearchInputKind,
+} from '@/lib/types'
 import CandidateSourcePanel from '@/components/search/CandidateSourcePanel'
 import CompetitorDiscoveryPanel from '@/components/competitor/CompetitorDiscoveryPanel'
+
+type CreationMode = 'discover' | 'manual'
 
 interface GoalOption {
   value: string
@@ -56,8 +66,11 @@ interface IndustryTypeOption {
 
 const INDUSTRY_TYPE_OPTIONS: IndustryTypeOption[] = [
   { value: 'ai_saas', label: 'AI / SaaS', description: 'Software tools, APIs, developer platforms' },
+  { value: 'ai_search', label: 'AI Search / Q&A', description: 'Answer engines, chat assistants, research tools' },
+  { value: 'design_tools', label: 'Design Tools', description: 'Visual design, whiteboards, creative suites' },
   { value: 'ecommerce', label: 'E-commerce', description: 'Online marketplaces, retail, shopping' },
   { value: 'local_services', label: 'Local Services', description: 'Delivery, gig economy, on-demand' },
+  { value: 'open_source', label: 'Open Source / Nonprofit', description: 'Foundations, public-good products, communities' },
   { value: 'social', label: 'Social / Creator', description: 'Social platforms, creator tools, communities' },
   { value: 'general', label: 'General', description: 'Other industries' },
 ]
@@ -69,9 +82,12 @@ interface AnalysisPurposeOption {
 }
 
 const ANALYSIS_PURPOSE_OPTIONS: AnalysisPurposeOption[] = [
-  { value: 'general', label: 'General Overview', description: 'Standard competitive landscape' },
-  { value: 'build_product', label: 'Build a Product', description: 'Find gaps, pitfalls, and MVP direction' },
-  { value: 'choose_product', label: 'Choose a Product', description: 'Ranked recommendations and decision support' },
+  { value: 'build_product', label: 'Build Similar Product', description: 'Find opportunities, differentiation, and MVP direction' },
+  { value: 'choose_product', label: 'Compare Before Choosing', description: 'Rank products by fit, tradeoffs, and evidence' },
+  { value: 'industry_landscape', label: 'Industry Landscape', description: 'Map segments, leaders, challengers, and market dynamics' },
+  { value: 'competitor_success', label: 'Explain Success', description: 'Analyze why a competitor grew or became defensible' },
+  { value: 'improve_product', label: 'Improve Product', description: 'Find gaps, user pain, and product improvement priorities' },
+  { value: 'general', label: 'General Overview', description: 'Standard competitive landscape when the goal is broad' },
 ]
 
 const COMPETITOR_ROLE_OPTIONS: { value: CompetitorRole; label: string }[] = [
@@ -79,6 +95,14 @@ const COMPETITOR_ROLE_OPTIONS: { value: CompetitorRole; label: string }[] = [
   { value: 'indirect_competitor', label: 'Indirect Competitor' },
   { value: 'inspiration_product', label: 'Inspiration Product' },
   { value: 'benchmark_leader', label: 'Benchmark Leader' },
+]
+
+const RESEARCH_KIND_OPTIONS: { value: ResearchInputKind; label: string }[] = [
+  { value: 'survey', label: 'Survey results' },
+  { value: 'interview', label: 'Interview notes' },
+  { value: 'questionnaire', label: 'Questionnaire design' },
+  { value: 'desk_research', label: 'Desk research' },
+  { value: 'notes', label: 'Notes' },
 ]
 
 const DEFAULT_COMPETITORS: CompetitorInput[] = [
@@ -90,8 +114,10 @@ const DEFAULT_COMPETITORS: CompetitorInput[] = [
 export default function NewProjectPage() {
   const router = useRouter()
   const [industry, setIndustry] = useState('AI Coding Tools')
+  const [creationMode, setCreationMode] = useState<CreationMode>('discover')
+  const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('帮我分析一下 AI coding 的竞品')
   const [industryType, setIndustryType] = useState<IndustryType>('ai_saas')
-  const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose>('general')
+  const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose>('build_product')
   const [customDimensions, setCustomDimensions] = useState<string[]>([])
   const [dimInput, setDimInput] = useState('')
   const [competitors, setCompetitors] = useState<CompetitorInput[]>(
@@ -100,9 +126,21 @@ export default function NewProjectPage() {
   const [goals, setGoals] = useState<string[]>(
     GOAL_OPTIONS.map((g) => g.value)
   )
-  const [dataMode, setDataMode] = useState<'demo' | 'live_with_fallback'>('demo')
+  const [researchInputs, setResearchInputs] = useState<ResearchInput[]>([])
+  const [researchDraft, setResearchDraft] = useState<ResearchInput>({
+    title: 'User research notes',
+    content: '',
+    source_kind: 'interview',
+    competitor_name: '',
+  })
+  const [selectedDataMode, setSelectedDataMode] = useState<'demo' | 'live_with_fallback' | null>(null)
   const [extraUrlsByKey, setExtraUrlsByKey] = useState<Record<string, string[]>>({})
   const competitorKey = useCallback((c: CompetitorInput) => `${c.name}::${c.url}`, [])
+  const searchStatusQuery = useQuery({
+    queryKey: ['search-status'],
+    queryFn: () => api.getSearchStatus(),
+    retry: false,
+  })
   const createMutation = useMutation({
     mutationFn: (payload: ProjectCreate) => api.createProject(payload),
     onSuccess: (result) => {
@@ -123,7 +161,11 @@ export default function NewProjectPage() {
         if (oldKey !== newKey) {
           setExtraUrlsByKey((prevKeys) => {
             const next = { ...prevKeys }
+            const urls = next[oldKey]
             delete next[oldKey]
+            if (urls) {
+              next[newKey] = urls
+            }
             return next
           })
         }
@@ -180,6 +222,25 @@ export default function NewProjectPage() {
     )
   }
 
+  const handleAddResearchInput = () => {
+    const content = researchDraft.content.trim()
+    if (!content) return
+    setResearchInputs((prev) => [
+      ...prev,
+      {
+        title: researchDraft.title.trim() || 'User research notes',
+        content,
+        source_kind: researchDraft.source_kind,
+        competitor_name: researchDraft.competitor_name?.trim() || '',
+      },
+    ])
+    setResearchDraft((prev) => ({ ...prev, content: '', competitor_name: '' }))
+  }
+
+  const handleRemoveResearchInput = (index: number) => {
+    setResearchInputs((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const cleanedCompetitors = competitors
@@ -200,10 +261,12 @@ export default function NewProjectPage() {
       output_language: 'en',
       report_depth: 'standard',
       data_mode: dataMode,
+      research_inputs: researchInputs,
     }
     createMutation.mutate(payload)
   }
 
+  const dataMode = selectedDataMode ?? (searchStatusQuery.data?.search_available ? 'live_with_fallback' : 'demo')
   const submitDisabled =
     createMutation.isPending ||
     industry.trim().length === 0 ||
@@ -229,6 +292,77 @@ export default function NewProjectPage() {
         onSubmit={handleSubmit}
         className="space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
       >
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-gray-900">Project entry mode</h2>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {([
+              {
+                value: 'discover' as const,
+                label: 'Mode A · Describe and discover',
+                description: 'Start from a natural-language topic, review candidates, then add selected competitors.',
+              },
+              {
+                value: 'manual' as const,
+                label: 'Mode B · Manual competitor list',
+                description: 'Enter known competitor names and URLs directly, then select official source pages.',
+              },
+            ]).map((option) => (
+              <label
+                key={option.value}
+                className={cn(
+                  'flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition-colors',
+                  creationMode === option.value
+                    ? 'border-blue-300 bg-blue-50'
+                    : 'border-gray-200 bg-white hover:bg-gray-50'
+                )}
+              >
+                <input
+                  type="radio"
+                  name="creation_mode"
+                  value={option.value}
+                  checked={creationMode === option.value}
+                  onChange={() => setCreationMode(option.value)}
+                  className="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <div>
+                  <div className="font-medium text-gray-900">{option.label}</div>
+                  <div className="text-xs text-gray-500">{option.description}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </section>
+
+        {creationMode === 'discover' && (
+          <section className="space-y-2 rounded-md border border-blue-100 bg-blue-50/60 p-3">
+            <label htmlFor="natural-language-query" className="text-sm font-medium text-gray-900">
+              Natural-language discovery prompt
+            </label>
+            <textarea
+              id="natural-language-query"
+              value={naturalLanguageQuery}
+              onChange={(e) => {
+                const value = e.target.value
+                setNaturalLanguageQuery(value)
+                setIndustry(value)
+              }}
+              placeholder="e.g. 帮我分析一下 AI coding 的竞品"
+              rows={3}
+              className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-shadow focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+            <CompetitorDiscoveryPanel
+              industry={naturalLanguageQuery}
+              industryType={industryType}
+              onAdd={handleAddFromDiscovery}
+              label="Find candidates"
+              emptyLabel="No candidates found for this prompt. You can switch to manual mode."
+            />
+            <p className="text-xs text-gray-600">
+              Discovery only proposes competitors. You still choose which candidates enter the project and can edit rows before running.
+            </p>
+          </section>
+        )}
+
         <section className="space-y-2">
           <label
             htmlFor="industry"
@@ -314,60 +448,16 @@ export default function NewProjectPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">Custom dimensions <span className="text-gray-400 font-normal">(optional)</span></h2>
-          <div className="flex gap-2">
-            <input
-              id="custom-dimension-input"
-              name="custom-dimension"
-              aria-label="Add custom dimension"
-              value={dimInput}
-              onChange={(e) => setDimInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDimension() } }}
-              placeholder="e.g. API quality, data privacy"
-              className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            />
-            <button
-              type="button"
-              onClick={handleAddDimension}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Add
-            </button>
-          </div>
-          {customDimensions.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {customDimensions.map((dim) => (
-                <span
-                  key={dim}
-                  className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-800"
-                >
-                  {dim}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveDimension(dim)}
-                    className="ml-0.5 text-blue-500 hover:text-blue-800"
-                    aria-label={`Remove ${dim}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-          <p className="text-xs text-gray-500">
-            Extra analysis axes the agents will address explicitly.
-          </p>
-        </section>
-
-        <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-gray-900">Competitors</h2>
             <div className="flex items-center gap-3">
-              <CompetitorDiscoveryPanel
-                industry={industry}
-                industryType={industryType}
-                onAdd={handleAddFromDiscovery}
-              />
+              {creationMode === 'manual' && (
+                <CompetitorDiscoveryPanel
+                  industry={industry}
+                  industryType={industryType}
+                  onAdd={handleAddFromDiscovery}
+                />
+              )}
               <button
                 type="button"
                 onClick={handleAddCompetitor}
@@ -428,6 +518,7 @@ export default function NewProjectPage() {
                   </button>
                 </div>
                 <CandidateSourcePanel
+                  key={competitorKey(row)}
                   competitorName={row.name}
                   website={row.url}
                   goals={goals}
@@ -439,6 +530,99 @@ export default function NewProjectPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-gray-900">Research inputs <span className="font-normal text-gray-400">(optional)</span></h2>
+          <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_170px]">
+              <input
+                id="research-title"
+                name="research-title"
+                aria-label="Research input title"
+                value={researchDraft.title}
+                onChange={(e) => setResearchDraft((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder="e.g. PM workshop interview notes"
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              />
+              <select
+                id="research-kind"
+                name="research-kind"
+                aria-label="Research input type"
+                value={researchDraft.source_kind}
+                onChange={(e) => setResearchDraft((prev) => ({ ...prev, source_kind: e.target.value as ResearchInputKind }))}
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                {RESEARCH_KIND_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <select
+              id="research-competitor"
+              name="research-competitor"
+              aria-label="Bind research input to competitor"
+              value={researchDraft.competitor_name ?? ''}
+              onChange={(e) => setResearchDraft((prev) => ({ ...prev, competitor_name: e.target.value }))}
+              className="mt-2 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            >
+              <option value="">Apply to all competitors</option>
+              {competitors
+                .filter((c) => c.name.trim())
+                .map((c) => (
+                  <option key={competitorKey(c)} value={c.name.trim()}>{c.name.trim()}</option>
+                ))}
+            </select>
+            <textarea
+              id="research-content"
+              name="research-content"
+              aria-label="Research input content"
+              value={researchDraft.content}
+              onChange={(e) => setResearchDraft((prev) => ({ ...prev, content: e.target.value }))}
+              placeholder="Paste survey findings, questionnaire design, interview notes, or manual research observations."
+              rows={4}
+              className="mt-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={handleAddResearchInput}
+                disabled={!researchDraft.content.trim()}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Add research input
+              </button>
+            </div>
+          </div>
+          {researchInputs.length > 0 && (
+            <div className="space-y-2">
+              {researchInputs.map((item, index) => (
+                <div
+                  key={`${item.title}-${index}`}
+                  className="flex items-start justify-between gap-3 rounded-md border border-gray-200 bg-white p-3"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-gray-900">{item.title}</div>
+                    <div className="mt-0.5 text-xs text-gray-500">
+                      {item.source_kind.replace('_', ' ')}
+                      {item.competitor_name ? ` · ${item.competitor_name}` : ' · all competitors'}
+                    </div>
+                    <div className="mt-1 line-clamp-2 text-xs text-gray-600">{item.content}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveResearchInput(index)}
+                    className="shrink-0 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-gray-500">
+            Added material is stored as manual evidence and appears in source traceability.
+          </p>
         </section>
 
         <section className="space-y-3">
@@ -473,6 +657,52 @@ export default function NewProjectPage() {
         </section>
 
         <section className="space-y-3">
+          <h2 className="text-sm font-medium text-gray-900">Custom dimensions <span className="text-gray-400 font-normal">(optional)</span></h2>
+          <div className="flex gap-2">
+            <input
+              id="custom-dimension-input"
+              name="custom-dimension"
+              aria-label="Add custom dimension"
+              value={dimInput}
+              onChange={(e) => setDimInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDimension() } }}
+              placeholder="e.g. API quality, data privacy"
+              className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+            <button
+              type="button"
+              onClick={handleAddDimension}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Add
+            </button>
+          </div>
+          {customDimensions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {customDimensions.map((dim) => (
+                <span
+                  key={dim}
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-800"
+                >
+                  {dim}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveDimension(dim)}
+                    className="ml-0.5 text-blue-500 hover:text-blue-800"
+                    aria-label={`Remove ${dim}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-gray-500">
+            Extra analysis axes the agents will address explicitly.
+          </p>
+        </section>
+
+        <section className="space-y-3">
           <h2 className="text-sm font-medium text-gray-900">Data mode</h2>
           <div className="space-y-2">
             {([
@@ -501,7 +731,9 @@ export default function NewProjectPage() {
                   name="data_mode"
                   value={option.value}
                   checked={dataMode === option.value}
-                  onChange={() => setDataMode(option.value)}
+                  onChange={() => {
+                    setSelectedDataMode(option.value)
+                  }}
                   className="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <div>

@@ -7,7 +7,14 @@ interface Props {
 }
 
 export default function FeatureInsights({ data }: Props) {
-  if (!data || (!data.table_stakes?.length && !data.differentiators?.length && !data.gaps?.length)) {
+  if (
+    !data ||
+    (!data.table_stakes?.length &&
+      !data.differentiators?.length &&
+      !data.gaps?.length &&
+      !data.module_breakdown?.length &&
+      !Object.keys(data.user_path_notes ?? {}).length)
+  ) {
     return null
   }
 
@@ -64,6 +71,48 @@ export default function FeatureInsights({ data }: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {data.module_breakdown && data.module_breakdown.length > 0 && (
+        <section>
+          <h4 className="mb-2 text-sm font-semibold text-gray-700">Module Breakdown</h4>
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">Module</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">User Pain</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">Role</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">Competitors</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.module_breakdown.map((module, i) => (
+                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                    <td className="px-3 py-2 font-medium text-gray-700">{module.module_name}</td>
+                    <td className="px-3 py-2 text-gray-600">{module.user_pain || 'Unknown'}</td>
+                    <td className="px-3 py-2 text-gray-600">{module.core_or_auxiliary || 'unknown'}</td>
+                    <td className="px-3 py-2 text-gray-600">{(module.competitors ?? []).join(', ') || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {data.user_path_notes && Object.keys(data.user_path_notes).length > 0 && (
+        <section>
+          <h4 className="mb-2 text-sm font-semibold text-gray-700">User Path Notes</h4>
+          <div className="space-y-2">
+            {Object.entries(data.user_path_notes).map(([name, note]) => (
+              <div key={name} className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="text-xs font-semibold text-gray-900">{name}</div>
+                <div className="mt-1 text-sm text-gray-700">{note}</div>
+              </div>
+            ))}
           </div>
         </section>
       )}

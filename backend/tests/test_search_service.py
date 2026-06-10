@@ -406,6 +406,30 @@ class TestDiscoverCompetitors:
         assert {"Tinder", "Bumble", "Hinge"} <= names
         assert not any(c.domain == "example.com" for c in candidates)
 
+    def test_discover_competitors_extracts_known_ai_search_products(self):
+        svc = self._make_service([
+            {
+                "url": "https://example.com/ai-search-roundup",
+                "title": "Best AI search tools",
+                "snippet": "Perplexity, ChatGPT, and Claude are leading AI answer engines.",
+            },
+        ])
+        candidates = svc.discover_competitors("AI search tools", "ai_search")
+        names = {c.name for c in candidates}
+        assert {"Perplexity", "ChatGPT", "Claude"} <= names
+
+    def test_discover_competitors_extracts_known_design_products(self):
+        svc = self._make_service([
+            {
+                "url": "https://example.com/design-roundup",
+                "title": "Best design tools",
+                "snippet": "Canva, Figma, and Adobe Express are common design platforms.",
+            },
+        ])
+        candidates = svc.discover_competitors("design tools", "design_tools")
+        names = {c.name for c in candidates}
+        assert {"Canva", "Figma", "Adobe Express"} <= names
+
     def test_industry_vendor_names_are_not_competitors(self):
         from app.services.search_service import _score_competitor_relevance
 

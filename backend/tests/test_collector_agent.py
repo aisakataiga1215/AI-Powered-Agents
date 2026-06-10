@@ -91,6 +91,59 @@ def test_collector_records_agent_run(db_session):
     assert runs[0].status == "success"
 
 
+def test_collector_converts_research_inputs_to_manual_sources(db_session):
+    sources = collector_agent.run(
+        db=db_session,
+        project_id="proj_test",
+        competitors=[{"name": "Cursor", "url": "https://cursor.com"}],
+        goals=["user_personas"],
+        research_inputs=[
+            {
+                "title": "Interview notes",
+                "source_kind": "interview",
+                "competitor_name": "Cursor",
+                "content": "Developers like Cursor for repository-wide context.",
+            }
+        ],
+    )
+    manual_sources = [s for s in sources if s.source_type is SourceType.manual_input]
+    assert len(manual_sources) == 1
+    assert manual_sources[0].competitor_name == "Cursor"
+    assert manual_sources[0].data_source == "manual"
+    assert "repository-wide context" in manual_sources[0].content
+
+    run_row = (
+        db_session.query(models.AgentRun)
+        .filter(models.AgentRun.project_id == "proj_test")
+        .order_by(models.AgentRun.created_at.desc())
+        .first()
+    )
+    assert '"manual_source_count": 1' in (run_row.output_json or "")
+
+
+def test_collector_applies_global_research_input_to_each_competitor(db_session):
+    sources = collector_agent.run(
+        db=db_session,
+        project_id="proj_test",
+        competitors=[
+            {"name": "Cursor", "url": "https://cursor.com"},
+            {"name": "Trae", "url": "https://www.trae.ai"},
+        ],
+        goals=["user_personas"],
+        research_inputs=[
+            {
+                "title": "Survey summary",
+                "source_kind": "survey",
+                "content": "Respondents want clearer pricing and privacy controls.",
+            }
+        ],
+    )
+    manual_competitors = {
+        s.competitor_name for s in sources if s.source_type is SourceType.manual_input
+    }
+    assert manual_competitors == {"Cursor", "Trae"}
+
+
 def test_collector_handles_repeat_runs_with_distinct_projects(db_session):
     """Fixture source_ids are static (e.g. src_cursor_001); ensure that
     running the workflow for two different projects against the shared

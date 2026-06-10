@@ -43,6 +43,7 @@ class IssueType(str, Enum):
     missing_market_background = "missing_market_background"
     missing_feature_insights = "missing_feature_insights"
     missing_operation_monetization = "missing_operation_monetization"
+    weak_data_signal = "weak_data_signal"
 
 
 class QAIssue(BaseModel):

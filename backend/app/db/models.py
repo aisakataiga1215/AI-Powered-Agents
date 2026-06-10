@@ -35,6 +35,7 @@ class Project(Base):
     industry_type = Column(String, nullable=False, default="general")
     analysis_purpose = Column(String, nullable=False, default="general")
     custom_dimensions = Column(String, nullable=False, default="[]")   # JSON list
+    research_inputs = Column(Text, nullable=False, default="[]")   # JSON list
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
         DateTime,
@@ -89,6 +90,7 @@ class Competitor(Base):
     url = Column(String, nullable=False)
     description = Column(Text, nullable=False, default="")
     role = Column(String, nullable=False, default="direct_competitor")
+    extra_urls = Column(Text, nullable=False, default="[]")
 
     project = relationship("Project", back_populates="competitors")
 

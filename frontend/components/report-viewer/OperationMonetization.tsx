@@ -26,7 +26,14 @@ function MotionBadge({ motion }: { motion: string }) {
 }
 
 export default function OperationMonetization({ data }: Props) {
-  if (!data || (!data.gtm_profiles?.length && !data.monetization_patterns?.length)) {
+  if (
+    !data ||
+    (!data.gtm_profiles?.length &&
+      !data.monetization_patterns?.length &&
+      !Object.keys(data.free_paid_boundaries ?? {}).length &&
+      !Object.keys(data.willingness_to_pay ?? {}).length &&
+      !Object.keys(data.experience_risks ?? {}).length)
+  ) {
     return null
   }
 
@@ -84,6 +91,42 @@ export default function OperationMonetization({ data }: Props) {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {(Object.keys(data.free_paid_boundaries ?? {}).length > 0 ||
+        Object.keys(data.willingness_to_pay ?? {}).length > 0 ||
+        Object.keys(data.experience_risks ?? {}).length > 0) && (
+        <section>
+          <h4 className="mb-2 text-sm font-semibold text-gray-700">Commercialization Details</h4>
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">Competitor</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">Free/Paid Boundary</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">Why Users Pay</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600">Experience Risk</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(
+                  new Set([
+                    ...Object.keys(data.free_paid_boundaries ?? {}),
+                    ...Object.keys(data.willingness_to_pay ?? {}),
+                    ...Object.keys(data.experience_risks ?? {}),
+                  ])
+                ).map((name) => (
+                  <tr key={name} className="border-b border-gray-100 last:border-0">
+                    <td className="px-3 py-2 font-medium text-gray-700">{name}</td>
+                    <td className="px-3 py-2 text-gray-600">{data.free_paid_boundaries?.[name] ?? '—'}</td>
+                    <td className="px-3 py-2 text-gray-600">{data.willingness_to_pay?.[name] ?? '—'}</td>
+                    <td className="px-3 py-2 text-gray-600">{data.experience_risks?.[name] ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 

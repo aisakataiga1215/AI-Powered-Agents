@@ -6,8 +6,8 @@ engine kwargs auto-adapt when ``DATABASE_URL`` points to PostgreSQL.
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -24,36 +24,58 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def _add_column_if_missing(ddl: str) -> None:
+def _add_column_if_missing(table_name: str, column_name: str, ddl: str) -> None:
     with engine.connect() as conn:
         try:
-            conn.execute(text(ddl))
-            conn.commit()
-        except OperationalError as exc:
-            if "duplicate column" in str(exc).lower():
-                pass
-            else:
-                raise
+            existing_columns = {column["name"] for column in inspect(conn).get_columns(table_name)}
+        except NoSuchTableError:
+            return
+        if column_name in existing_columns:
+            return
+        conn.execute(text(ddl))
+        conn.commit()
 
 
 def _apply_migrations() -> None:
     _add_column_if_missing(
+        "projects",
+        "data_mode",
         "ALTER TABLE projects ADD COLUMN data_mode TEXT DEFAULT 'demo'"
     )
     _add_column_if_missing(
+        "sources",
+        "data_source",
         "ALTER TABLE sources ADD COLUMN data_source TEXT DEFAULT 'demo'"
     )
     _add_column_if_missing(
+        "projects",
+        "industry_type",
         "ALTER TABLE projects ADD COLUMN industry_type TEXT DEFAULT 'general'"
     )
     _add_column_if_missing(
+        "projects",
+        "analysis_purpose",
         "ALTER TABLE projects ADD COLUMN analysis_purpose TEXT DEFAULT 'general'"
     )
     _add_column_if_missing(
+        "projects",
+        "custom_dimensions",
         "ALTER TABLE projects ADD COLUMN custom_dimensions TEXT DEFAULT '[]'"
     )
     _add_column_if_missing(
+        "projects",
+        "research_inputs",
+        "ALTER TABLE projects ADD COLUMN research_inputs TEXT DEFAULT '[]'"
+    )
+    _add_column_if_missing(
+        "competitors",
+        "role",
         "ALTER TABLE competitors ADD COLUMN role TEXT DEFAULT 'direct_competitor'"
+    )
+    _add_column_if_missing(
+        "competitors",
+        "extra_urls",
+        "ALTER TABLE competitors ADD COLUMN extra_urls TEXT DEFAULT '[]'"
     )
 
 

@@ -3,7 +3,9 @@
 import pytest
 
 from app.agents.qa_agent import check_pm_sections
+from app.agents.qa_agent import check_data_signals
 from app.schemas.pm_sections import (
+    DataSignal,
     FeatureInsights,
     GtmProfile,
     MarketBackground,
@@ -30,7 +32,20 @@ def test_check_pm_sections_all_absent_returns_three_medium_issues():
 
 def test_check_pm_sections_all_populated_returns_no_issues():
     report = _make_report(
-        market_background=MarketBackground(market_overview="Competitive AI market."),
+        market_background=MarketBackground(
+            market_overview="Competitive AI market.",
+            data_signals=[
+                DataSignal(
+                    metric_name="Pricing",
+                    competitor_name="Cursor",
+                    value="$20/month",
+                    signal_type="pricing",
+                    source_ids=["src_pricing"],
+                    confidence="high",
+                    is_estimate=False,
+                )
+            ],
+        ),
         feature_insights=FeatureInsights(table_stakes=["Code completion"]),
         operation_monetization=OperationMonetization(
             gtm_profiles=[GtmProfile(competitor_name="Cursor", motion="PLG")]
@@ -94,3 +109,53 @@ def test_check_pm_sections_called_in_run():
     # All three are medium severity — do not flip pass/fail on their own
     pm_issues = [i for i in result.issues if i.issue_type in pm_types]
     assert all(i.severity == IssueSeverity.medium for i in pm_issues)
+
+
+def test_check_data_signals_flags_missing_source_and_estimate_notes():
+    report = _make_report(
+        market_background=MarketBackground(
+            market_overview="Competitive AI market.",
+            data_signals=[
+                DataSignal(
+                    metric_name="Traffic",
+                    competitor_name="Cursor",
+                    value="High",
+                    signal_type="traffic",
+                    source_ids=[],
+                    confidence="low",
+                    is_estimate=True,
+                    notes="",
+                )
+            ],
+        )
+    )
+
+    issues = check_data_signals(report, source_ids={"src_ok"})
+
+    assert len(issues) == 1
+    assert issues[0].issue_type == IssueType.weak_data_signal
+    assert issues[0].severity == IssueSeverity.medium
+    assert "missing source_ids" in issues[0].message
+    assert "estimate has no notes" in issues[0].message
+
+
+def test_check_data_signals_accepts_sourced_estimates():
+    report = _make_report(
+        market_background=MarketBackground(
+            market_overview="Competitive AI market.",
+            data_signals=[
+                DataSignal(
+                    metric_name="Community heat",
+                    competitor_name="Figma",
+                    value="Active plugin ecosystem",
+                    signal_type="community_heat",
+                    source_ids=["src_figma_plugins"],
+                    confidence="medium",
+                    is_estimate=True,
+                    notes="Inferred from official plugin/community pages.",
+                )
+            ],
+        )
+    )
+
+    assert check_data_signals(report, source_ids={"src_figma_plugins"}) == []

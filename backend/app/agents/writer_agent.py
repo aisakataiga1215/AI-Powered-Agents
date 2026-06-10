@@ -139,6 +139,33 @@ def _build_user_message(
             '  "differentiation_opportunities": [{"opportunity": str, "rationale": str}]\n'
             '}\n'
         )
+    elif analysis_purpose == "industry_landscape":
+        purpose_instruction += (
+            '\n"purpose_sections": {\n'
+            '  "market_map": [{"segment": str, "competitors": [str], "rationale": str, "evidence": [src_ids]}],\n'
+            '  "leader_challenger_niche": {"leaders": [str], "challengers": [str], "niche_players": [str]},\n'
+            '  "3c_summary": {"company": str, "customer": str, "competitor": str},\n'
+            '  "landscape_takeaways": [{"takeaway": str, "evidence": [src_ids]}]\n'
+            '}\n'
+        )
+    elif analysis_purpose == "competitor_success":
+        purpose_instruction += (
+            '\n"purpose_sections": {\n'
+            '  "success_drivers": [{"competitor_name": str, "driver": str, "evidence": [src_ids]}],\n'
+            '  "growth_events": [{"competitor_name": str, "event": str, "impact": str, "evidence": [src_ids]}],\n'
+            '  "moat_analysis": {<comp_name>: "product, distribution, data, brand, ecosystem, or switching-cost moat"},\n'
+            '  "failure_risks": [{"competitor_name": str, "risk": str, "evidence": [src_ids]}]\n'
+            '}\n'
+        )
+    elif analysis_purpose == "improve_product":
+        purpose_instruction += (
+            '\n"purpose_sections": {\n'
+            '  "user_pain_points": [{"pain": str, "affected_segment": str, "evidence": [src_ids]}],\n'
+            '  "feature_gap_backlog": [{"initiative": str, "priority": "high"|"medium"|"low", "rationale": str, "evidence": [src_ids]}],\n'
+            '  "workflow_improvements": [{"current_friction": str, "recommended_change": str, "evidence": [src_ids]}],\n'
+            '  "risk_tradeoffs": [{"tradeoff": str, "mitigation": str}]\n'
+            '}\n'
+        )
 
     dims_instruction = ""
     if custom_dimensions:
@@ -172,6 +199,13 @@ def _build_user_message(
 
 
 _PM_SECTIONS_INSTRUCTION = """
+PM analysis flow:
+1. State the analysis objective before conclusions.
+2. Explain competitor selection based on direct competitors, indirect competitors,
+   inspiration products, or benchmark leaders.
+3. Then analyze data signals, features, operations, and commercialization.
+Use PM frameworks where useful: SWOT, 3C, AARRR, and A+B+C feature module decomposition.
+
 Output these three PM-framework sections in addition to existing fields:
 
 "market_background": {
@@ -179,14 +213,34 @@ Output these three PM-framework sections in addition to existing fields:
   "market_size_notes": "any TAM/SAM estimates found in sources, or qualitative market size description",
   "trends": [{"trend": "trend description", "evidence": ["src_xxx"]}],
   "key_drivers": ["growth driver 1", "growth driver 2"],
-  "key_challenges": ["market challenge 1"]
+  "key_challenges": ["market challenge 1"],
+  "data_signals": [{
+    "metric_name": "traffic | downloads | users | pricing | release cadence | reviews | review keywords | growth event | version update | community heat | search trend",
+    "competitor_name": "name or empty for market-level signal",
+    "value": "observed value or qualitative signal",
+    "signal_type": "traffic|downloads|users|pricing|release_cadence|reviews|review_keywords|growth_event|version_update|community_heat|search_trend",
+    "source_ids": ["src_xxx"],
+    "confidence": "high|medium|low|unknown",
+    "is_estimate": true,
+    "notes": "why this is an estimate or what the source actually supports"
+  }]
 }
 
 "feature_insights": {
   "table_stakes": ["feature all or most competitors offer"],
   "differentiators": [{"feature": "feature name", "competitors": ["CompetitorA"]}],
   "gaps": ["feature category no competitor addresses — potential market opportunity"],
-  "cross_competitor_patterns": ["cross-cutting pattern or trend observed across competitors"]
+  "cross_competitor_patterns": ["cross-cutting pattern or trend observed across competitors"],
+  "module_breakdown": [{
+    "module_name": "base module in A+B+C decomposition",
+    "user_pain": "what pain this module solves",
+    "core_or_auxiliary": "core|auxiliary|unknown",
+    "competitors": ["CompetitorA"],
+    "evidence": ["src_xxx"]
+  }],
+  "user_path_notes": {
+    "CompetitorA": "what the user path appears to be, whether it is smooth, and where friction may exist"
+  }
 }
 
 "operation_monetization": {
@@ -205,10 +259,15 @@ Output these three PM-framework sections in addition to existing fields:
     "retention": {"CompetitorA": "stickiness and retention mechanics"},
     "referral": {"CompetitorA": "referral / virality / word-of-mouth"},
     "revenue": {"CompetitorA": "revenue model and expansion levers"}
-  }
+  },
+  "free_paid_boundaries": {"CompetitorA": "free tier limits and paid upgrade boundary"},
+  "willingness_to_pay": {"CompetitorA": "why users would pay and what value is monetized"},
+  "experience_risks": {"CompetitorA": "whether monetization could harm UX or adoption"}
 }
 
 Use only evidence from provided sources. If a field cannot be determined, omit it or use an empty array — do not guess.
+For all data_signals, include source_ids when available. If the value is inferred or approximate, set is_estimate=true and confidence to low or unknown.
+Never present estimates, missing pricing, missing traffic, or unknown user counts as confirmed facts.
 """
 
 

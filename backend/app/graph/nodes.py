@@ -48,6 +48,7 @@ def collect_sources_node(state: WorkflowState) -> dict:
             rework_hints=state.get("rework_hints", []),
             data_mode=state.get("data_mode", "demo"),
             industry_type=state.get("industry_type", "general"),
+            research_inputs=state.get("research_inputs", []),
         )
         return {"sources": sources}
     finally:

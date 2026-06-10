@@ -121,12 +121,19 @@ def classify(url: str, title: str, content: str) -> SourceType:
     if any(seg in path for seg in ("/download", "/terms", "/legal", "/policy", "/blog")):
         return SourceType.unknown
 
-    title_lower = title.lower()
-    if any(kw in title_lower for kw in ("pricing", "plans", "price")):
+    combined = f"{title} {content}".lower()
+    pricing_signals = sum(
+        1
+        for kw in _CONTENT_VALIDATORS[SourceType.pricing_page]
+        if kw in combined
+    )
+    if "pricing" in combined and ("per month" in combined or "per user" in combined or "subscription" in combined):
         return SourceType.pricing_page
-    if any(kw in title_lower for kw in ("features", "product", "overview")):
+    if "our plans" in combined and pricing_signals >= 3:
+        return SourceType.pricing_page
+    if any(kw in combined for kw in _CONTENT_VALIDATORS[SourceType.features_page]):
         return SourceType.features_page
-    if any(kw in title_lower for kw in ("documentation", "docs", "api reference", "developer guide")):
+    if any(kw in combined for kw in _CONTENT_VALIDATORS[SourceType.docs]):
         return SourceType.docs
 
     return SourceType.unknown

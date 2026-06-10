@@ -21,6 +21,32 @@ _INDUSTRY_PATHS: dict[str, tuple[str, ...]] = {
         "/api",
         "/integrations",
     ),
+    "ai_search": (
+        "/pricing",
+        "/plans",
+        "/pro",
+        "/enterprise",
+        "/features",
+        "/search",
+        "/chat",
+        "/api",
+        "/docs",
+        "/help",
+        "/privacy",
+        "/security",
+    ),
+    "design_tools": (
+        "/pricing",
+        "/plans",
+        "/features",
+        "/templates",
+        "/enterprise",
+        "/teams",
+        "/education",
+        "/help",
+        "/resources",
+        "/security",
+    ),
     "ecommerce": (
         # ordered by analysis value — transactional/seller pages first
         "/seller",
@@ -53,6 +79,19 @@ _INDUSTRY_PATHS: dict[str, tuple[str, ...]] = {
         "/pricing",
         "/consumer",
     ),
+    "open_source": (
+        "/about",
+        "/mission",
+        "/projects",
+        "/community",
+        "/foundation",
+        "/membership",
+        "/support",
+        "/donate",
+        "/docs",
+        "/governance",
+        "/privacy",
+    ),
     "general": (
         "/about",
         "/pricing",
@@ -77,9 +116,12 @@ _INDUSTRY_PATHS: dict[str, tuple[str, ...]] = {
 
 _INDUSTRY_MAX_PAGES: dict[str, int] = {
     "ai_saas": 5,
+    "ai_search": 8,
+    "design_tools": 8,
     "general": 5,
     "ecommerce": 8,
     "local_services": 8,
+    "open_source": 8,
     "social": 6,
 }
 

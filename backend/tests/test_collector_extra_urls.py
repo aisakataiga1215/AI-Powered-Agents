@@ -197,3 +197,44 @@ class TestCollectorExtraUrls:
         rejected = stats.get("rejected_extra_urls", [])
         assert any(r["url"] == blocked for r in rejected)
         assert all("reason" in r for r in rejected)
+
+    def test_extra_urls_reject_private_hosts(self):
+        """Private network targets are rejected before crawl."""
+        from app.agents import collector_agent
+
+        blocked = "http://127.0.0.1:8000/admin"
+        captured_output = {}
+
+        def capture_update(db, run_id, **kwargs):
+            if "output" in kwargs:
+                captured_output.update(kwargs["output"])
+
+        class _NullSearch:
+            def discover_urls(self, *a, **kw):
+                return []
+
+        with (
+            patch.object(collector_agent.source_discovery, "discover_pages", return_value=[]),
+            patch.object(collector_agent.crawler_service, "crawl_page", return_value=None) as mock_crawl,
+            patch.object(collector_agent.crawler_service, "fixture_exists", return_value=False),
+            patch.object(collector_agent.source_service, "save_sources"),
+            patch.object(collector_agent.trace_service, "save_agent_run"),
+            patch.object(collector_agent.trace_service, "update_agent_run", side_effect=capture_update),
+        ):
+            collector_agent.run(
+                db=_make_db(),
+                project_id="proj_test",
+                competitors=[{
+                    "name": "Cursor",
+                    "url": "https://cursor.com",
+                    "extra_urls": [blocked],
+                }],
+                goals=[],
+                data_mode="live_with_fallback",
+                _search_service=_NullSearch(),
+            )
+
+        crawled_urls = [c.args[0] for c in mock_crawl.call_args_list]
+        assert blocked not in crawled_urls
+        stats = captured_output.get("collection_stats_by_competitor", {}).get("Cursor", {})
+        assert any(r["url"] == blocked for r in stats.get("rejected_extra_urls", []))

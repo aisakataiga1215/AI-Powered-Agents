@@ -187,6 +187,52 @@ class TestCollectorAgentLive:
         assert cursor_stats["fallback_used"] is True
         assert cursor_stats["fallback_attempted"] is True
 
+    def test_live_mode_records_mixed_live_and_demo_fallback(self):
+        from app.agents import collector_agent
+
+        live_home = _make_page("https://fakeai.example", "Home", "AI product homepage")
+        demo_pricing = _make_source("FakeAI", SourceType.pricing_page, data_source="demo")
+        demo_docs = _make_source("FakeAI", SourceType.docs, data_source="demo")
+
+        with (
+            patch.object(
+                collector_agent.source_discovery,
+                "discover_pages",
+                return_value=["https://fakeai.example", "https://fakeai.example/pricing"],
+            ),
+            patch.object(
+                collector_agent.crawler_service,
+                "crawl_page",
+                side_effect=[live_home, None],
+            ),
+            patch.object(collector_agent.crawler_service, "fixture_exists", return_value=True),
+            patch.object(
+                collector_agent.crawler_service,
+                "load_demo_fixtures",
+                return_value=[demo_pricing, demo_docs],
+            ),
+            patch.object(collector_agent.source_service, "save_sources"),
+            patch.object(collector_agent.trace_service, "save_agent_run"),
+            patch.object(collector_agent.trace_service, "update_agent_run") as mock_update,
+            patch.object(collector_agent.settings, "enable_live_search", False),
+        ):
+            result = collector_agent.run(
+                db=_make_db(),
+                project_id="proj_1",
+                competitors=[{"name": "FakeAI", "url": "https://fakeai.example"}],
+                goals=["pricing_analysis", "feature_comparison"],
+                data_mode="live_with_fallback",
+            )
+
+        assert any(s.data_source == "live" for s in result)
+        assert any(s.data_source == "demo" for s in result)
+
+        call_kwargs = mock_update.call_args[1]
+        stats = call_kwargs["output"]["collection_stats_by_competitor"]["FakeAI"]
+        assert stats["live_source_count"] == 1
+        assert stats["fallback_used"] is True
+        assert stats["fallback_source_count"] == 2
+
     def test_save_sources_receives_data_source_field(self):
         from app.agents import collector_agent
 

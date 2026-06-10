@@ -250,3 +250,22 @@ class TestCheckBrandConsistency:
         issues: list = []
         check_brand_consistency(knowledge, [source], issues)
         assert len(issues) == 0
+
+    def test_review_comparison_mentions_other_competitor_not_flagged(self):
+        knowledge = [
+            _minimal_knowledge("Windsurf", "https://windsurf.com"),
+            _minimal_knowledge("Cursor", "https://cursor.com"),
+        ]
+        source = SourceEvidence(
+            competitor_name="Windsurf",
+            source_type=SourceType.review,
+            url="https://reddit.example/windsurf-vs-cursor",
+            title="Switched from Cursor to Windsurf",
+            content=(
+                "Cursor is faster for tab completion. Cursor pricing pushed me "
+                "to Windsurf, where Cascade is good enough."
+            ),
+        )
+        issues: list = []
+        check_brand_consistency(knowledge, [source], issues)
+        assert issues == []

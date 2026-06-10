@@ -74,6 +74,9 @@ export const api = {
   getSource: (sourceId: string) =>
     request<SourceEvidence>(`/api/sources/${sourceId}`),
 
+  getSearchStatus: () =>
+    request<{ search_available: boolean }>('/api/search/status'),
+
   searchSources: (payload: {
     competitor_name: string
     website: string

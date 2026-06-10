@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/formatDateTime'
-import type { AgentRun, ProjectStatus } from '@/lib/types'
+import type { AgentRun, ProjectStatus, QAIssue, QATraceOutput } from '@/lib/types'
 import { AgentDAG } from '@/components/agent-flow/AgentDAG'
 
 const POLL_INTERVAL_MS = 3000
@@ -74,6 +74,12 @@ export default function ProjectExecutionPage({ params }: PageProps) {
     }
     return Array.from(map.values())
   }, [traces])
+
+  const failedRun = useMemo(
+    () => [...traces].reverse().find((r) => r.status === 'failed' || r.error_message),
+    [traces],
+  )
+  const latestQA = useMemo(() => extractLatestQA(traces), [traces])
 
   return (
     <div className="space-y-6">
@@ -157,6 +163,16 @@ export default function ProjectExecutionPage({ params }: PageProps) {
         </section>
       )}
 
+      {projectQuery.data && ['failed', 'qa_failed'].includes(projectQuery.data.status) && (
+        <FailureSummary
+          status={projectQuery.data.status}
+          failedRun={failedRun}
+          qaIssues={latestQA?.issues ?? []}
+          qaScore={latestQA?.score}
+          projectId={id}
+        />
+      )}
+
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold tracking-wider text-gray-700 uppercase">
@@ -209,6 +225,93 @@ export default function ProjectExecutionPage({ params }: PageProps) {
       </section>
     </div>
   )
+}
+
+function FailureSummary({
+  status,
+  failedRun,
+  qaIssues,
+  qaScore,
+  projectId,
+}: {
+  status: ProjectStatus
+  failedRun?: AgentRun
+  qaIssues: QAIssue[]
+  qaScore?: number
+  projectId: string
+}) {
+  return (
+    <section className="rounded-xl border border-orange-200 bg-orange-50 p-5 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-orange-900">
+            {status === 'qa_failed' ? 'QA failed — report needs review' : 'Workflow failed'}
+          </h2>
+          <p className="mt-1 text-orange-800">
+            {status === 'qa_failed'
+              ? 'The workflow produced a partial report, but QA found blocking issues.'
+              : 'The workflow stopped before a final report was produced.'}
+          </p>
+        </div>
+        {qaScore !== undefined && (
+          <span className="rounded-full border border-orange-300 bg-white px-2.5 py-1 text-xs font-semibold text-orange-800">
+            QA {qaScore}/100
+          </span>
+        )}
+      </div>
+
+      {failedRun?.error_message && (
+        <div className="mt-3 rounded-md border border-orange-200 bg-white px-3 py-2">
+          <div className="text-xs font-medium text-orange-700">
+            {failedRun.agent_name} error
+          </div>
+          <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-gray-700">
+            {failedRun.error_message}
+          </pre>
+        </div>
+      )}
+
+      {qaIssues.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {qaIssues.slice(0, 5).map((issue, index) => (
+            <li
+              key={issue.issue_id ?? index}
+              className="rounded-md border border-orange-200 bg-white px-3 py-2 text-xs"
+            >
+              <span className="font-semibold uppercase text-orange-700">
+                {issue.severity}
+              </span>
+              <span className="ml-2 text-gray-500">
+                {issue.target_agent} · {issue.issue_type}
+              </span>
+              <p className="mt-1 text-gray-800">{issue.message}</p>
+              {issue.suggested_action && (
+                <p className="mt-1 text-gray-500">Action: {issue.suggested_action}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Link
+        href={`/projects/${projectId}/traces`}
+        className="mt-3 inline-flex rounded-md border border-orange-200 bg-white px-3 py-1.5 text-xs font-medium text-orange-800 hover:bg-orange-100"
+      >
+        Inspect full trace
+      </Link>
+    </section>
+  )
+}
+
+function extractLatestQA(traces: AgentRun[]): { score: number; issues: QAIssue[] } | undefined {
+  const qaRun = [...traces].reverse().find((t) => t.agent_name.includes('QA'))
+  if (!qaRun) return undefined
+  const out = qaRun.output as Partial<QATraceOutput>
+  if (typeof out?.score !== 'number') return undefined
+  return {
+    score: out.score,
+    issues: out.issues ?? [],
+  }
 }
 
 function Breadcrumb({ industry, id }: { industry?: string; id: string }) {

@@ -6,9 +6,11 @@ import ReactFlow, {
   Handle,
   Position,
   type Edge,
+  type EdgeTypes,
   type Node,
   type NodeProps,
   type EdgeProps,
+  type NodeTypes,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
@@ -148,8 +150,8 @@ function ReworkEdge({ sourceX, sourceY, targetX, targetY, data }: EdgeProps) {
 
 // ── React Flow type registries ────────────────────────────────────────────────
 
-const nodeTypes = { agent: AgentNode }
-const edgeTypes = { rework: ReworkEdge }
+const NODE_TYPES: NodeTypes = Object.freeze({ agent: AgentNode })
+const EDGE_TYPES: EdgeTypes = Object.freeze({ rework: ReworkEdge })
 
 // ── AgentDAG ──────────────────────────────────────────────────────────────────
 
@@ -279,8 +281,8 @@ export function AgentDAG({ traces, projectStatus }: { traces: AgentRun[]; projec
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         fitView
         fitViewOptions={{ padding: 0.25 }}
         nodesDraggable={false}

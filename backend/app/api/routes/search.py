@@ -43,6 +43,14 @@ def _search_configured() -> bool:
     return bool(settings.enable_live_search and settings.tavily_api_key)
 
 
+@router.get("/search/status")
+def search_status() -> dict:
+    """Expose whether live search is configured so the UI can choose sane defaults."""
+    return {
+        "search_available": _search_configured(),
+    }
+
+
 @router.post("/search/sources")
 def search_sources(payload: SourceSearchRequest) -> dict:
     """Candidate source URLs for user selection. Snippet is discovery hint, not evidence."""

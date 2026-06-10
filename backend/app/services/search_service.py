@@ -5,6 +5,7 @@ URLs, deduplicates, and returns up to _SEARCH_MAX_URLS candidates.
 Tavily title/snippet are used for discovery only — never stored as evidence.
 """
 
+import ipaddress
 import re
 from urllib.parse import urlparse
 
@@ -22,6 +23,18 @@ _QUERY_TEMPLATES: dict[str, list[str]] = {
         "{name} features overview",
         "{name} official help",
     ],
+    "ai_search": [
+        "{name} official pricing plans",
+        "{name} product features",
+        "{name} API documentation",
+        "{name} official help center",
+    ],
+    "design_tools": [
+        "{name} official pricing plans",
+        "{name} product features",
+        "{name} templates official",
+        "{name} enterprise security",
+    ],
     "ecommerce": [
         "{name} seller fees official",
         "{name} store subscription fees",
@@ -32,6 +45,12 @@ _QUERY_TEMPLATES: dict[str, list[str]] = {
         "{name} driver partner program",
         "{name} delivery fees",
         "{name} official help",
+    ],
+    "open_source": [
+        "{name} official about mission",
+        "{name} documentation",
+        "{name} foundation membership",
+        "{name} donate support",
     ],
     "social": [
         "{name} advertising business",
@@ -89,6 +108,9 @@ _BLOCKED_DOMAINS: frozenset[str] = frozenset({
     "bit.ly", "t.co", "goo.gl", "tinyurl.com",
 })
 
+_ALLOWED_URL_SCHEMES: frozenset[str] = frozenset({"http", "https"})
+_BLOCKED_HOSTS: frozenset[str] = frozenset({"localhost", "metadata.google.internal"})
+
 # M16.2: known AI coding product domains — used to boost relevance score for confirmed products
 _AI_CODING_PRODUCT_DOMAINS: frozenset[str] = frozenset({
     "cursor.com", "github.com",  # Cursor, GitHub Copilot
@@ -131,10 +153,29 @@ _AI_CODING_PRODUCTS: tuple[tuple[str, str, str], ...] = (
 
 _KNOWN_PRODUCTS_BY_INDUSTRY: dict[str, tuple[tuple[str, str, str], ...]] = {
     "ai_saas": _AI_CODING_PRODUCTS,
+    "ai_search": (
+        ("Perplexity", "https://www.perplexity.ai", "perplexity.ai"),
+        ("ChatGPT", "https://chatgpt.com", "chatgpt.com"),
+        ("Claude", "https://claude.ai", "claude.ai"),
+        ("Gemini", "https://gemini.google.com", "gemini.google.com"),
+        ("Microsoft Copilot", "https://copilot.microsoft.com", "copilot.microsoft.com"),
+        ("You.com", "https://you.com", "you.com"),
+    ),
+    "design_tools": (
+        ("Canva", "https://www.canva.com", "canva.com"),
+        ("Figma", "https://www.figma.com", "figma.com"),
+        ("Adobe Express", "https://www.adobe.com/express", "adobe.com"),
+        ("Sketch", "https://www.sketch.com", "sketch.com"),
+        ("Framer", "https://www.framer.com", "framer.com"),
+        ("Miro", "https://miro.com", "miro.com"),
+    ),
     "ecommerce": (
         ("Amazon", "https://www.amazon.com", "amazon.com"),
         ("eBay", "https://www.ebay.com", "ebay.com"),
         ("Etsy", "https://www.etsy.com", "etsy.com"),
+        ("JD.com", "https://www.jd.com", "jd.com"),
+        ("Taobao", "https://www.taobao.com", "taobao.com"),
+        ("Pinduoduo", "https://www.pinduoduo.com", "pinduoduo.com"),
         ("Walmart Marketplace", "https://marketplace.walmart.com", "walmart.com"),
         ("AliExpress", "https://www.aliexpress.com", "aliexpress.com"),
         ("Mercado Libre", "https://www.mercadolibre.com", "mercadolibre.com"),
@@ -143,6 +184,8 @@ _KNOWN_PRODUCTS_BY_INDUSTRY: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("DoorDash", "https://www.doordash.com", "doordash.com"),
         ("Uber Eats", "https://www.ubereats.com", "ubereats.com"),
         ("Grubhub", "https://www.grubhub.com", "grubhub.com"),
+        ("Meituan", "https://www.meituan.com", "meituan.com"),
+        ("Ele.me", "https://www.ele.me", "ele.me"),
         ("Deliveroo", "https://deliveroo.com", "deliveroo.com"),
         ("Just Eat", "https://www.just-eat.com", "just-eat.com"),
         ("Instacart", "https://www.instacart.com", "instacart.com"),
@@ -165,6 +208,11 @@ _KNOWN_PRODUCTS_BY_INDUSTRY: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("Basecamp", "https://basecamp.com", "basecamp.com"),
         ("Smartsheet", "https://www.smartsheet.com", "smartsheet.com"),
     ),
+    "open_source": (
+        ("Wikipedia", "https://www.wikipedia.org", "wikipedia.org"),
+        ("Mozilla", "https://www.mozilla.org", "mozilla.org"),
+        ("Linux Foundation", "https://www.linuxfoundation.org", "linuxfoundation.org"),
+    ),
 }
 
 _INDUSTRY_NEGATIVE_NAME_TERMS: dict[str, tuple[str, ...]] = {
@@ -174,6 +222,8 @@ _INDUSTRY_NEGATIVE_NAME_TERMS: dict[str, tuple[str, ...]] = {
     ),
     "local_services": ("software solution", "data & intelligence", "development", "white label"),
     "social": ("development", "builder", "app builder", "development company", "clone"),
+    "ai_search": ("seo agency", "marketing agency", "search optimization"),
+    "design_tools": ("design agency", "template marketplace", "course"),
 }
 
 _INDUSTRY_NEGATIVE_DOMAINS: dict[str, tuple[str, ...]] = {
@@ -194,6 +244,30 @@ _PRODUCT_DOMAIN_ALIASES: dict[str, list[str]] = {
     "tabnine": ["tabnine.com"],
     "replit": ["replit.com"],
     "qodo": ["qodo.ai"],
+    "perplexity": ["perplexity.ai"],
+    "chatgpt": ["chatgpt.com", "openai.com"],
+    "claude": ["claude.ai", "anthropic.com"],
+    "canva": ["canva.com"],
+    "figma": ["figma.com"],
+    "adobe express": ["adobe.com"],
+    "wikipedia": ["wikipedia.org"],
+    "mozilla": ["mozilla.org"],
+    "linux foundation": ["linuxfoundation.org"],
+    "amazon": ["amazon.com"],
+    "ebay": ["ebay.com"],
+    "etsy": ["etsy.com"],
+    "doordash": ["doordash.com"],
+    "uber eats": ["ubereats.com"],
+    "instacart": ["instacart.com"],
+    "meituan": ["meituan.com"],
+    "饿了么": ["ele.me"],
+    "ele.me": ["ele.me"],
+    "京东": ["jd.com"],
+    "淘宝": ["taobao.com"],
+    "拼多多": ["pinduoduo.com"],
+    "通义灵码": ["lingma.aliyun.com"],
+    "豆包 marscode": ["marscode.com"],
+    "marscode": ["marscode.com"],
 }
 
 # M15B: discovery-specific blocked domains (aggregators/listings/news, not competitors)
@@ -280,6 +354,18 @@ _DISCOVERY_TEMPLATES: dict[str, list[str]] = {
         "AI IDE alternatives",
         "developer AI coding assistants",
     ],
+    "ai_search": [
+        "{industry} answer engine official",
+        "{industry} AI search official",
+        "{industry} chat assistant official",
+        "Perplexity ChatGPT Claude official websites",
+    ],
+    "design_tools": [
+        "{industry} design tool official",
+        "{industry} creative platform official",
+        "{industry} visual design software official",
+        "Canva Figma Adobe Express official websites",
+    ],
     "ecommerce": [
         "{industry} official ecommerce platform",
         "{industry} SaaS platform official",
@@ -289,6 +375,11 @@ _DISCOVERY_TEMPLATES: dict[str, list[str]] = {
         "{industry} official app platform",
         "{industry} service companies official",
         "{industry} marketplace platform official",
+    ],
+    "open_source": [
+        "{industry} foundation official",
+        "{industry} nonprofit project official",
+        "{industry} documentation community official",
     ],
     "social": [
         "{industry} app official website",
@@ -416,9 +507,29 @@ def _score_competitor_relevance(
     return min(score, 100), "appears to be a product/company"
 
 
+def _is_blocked_host(hostname: str) -> bool:
+    host = hostname.strip().lower().removeprefix("www.")
+    if not host or host in _BLOCKED_HOSTS:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return any((
+        ip.is_private,
+        ip.is_loopback,
+        ip.is_link_local,
+        ip.is_multicast,
+        ip.is_reserved,
+        ip.is_unspecified,
+    ))
+
+
 def _is_crawlable(url: str) -> bool:
-    """Return False for URLs with unsupported file extensions or blocked domains."""
+    """Return False for unsupported, blocked, or unsafe crawl targets."""
     parsed = urlparse(url.lower())
+    if parsed.scheme not in _ALLOWED_URL_SCHEMES or _is_blocked_host(parsed.hostname or ""):
+        return False
     if any(parsed.path.endswith(ext) for ext in _UNSUPPORTED_EXTENSIONS):
         return False
     netloc = parsed.netloc.removeprefix("www.")

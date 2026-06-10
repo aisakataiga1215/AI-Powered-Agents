@@ -14,12 +14,24 @@ class MarketTrend(BaseModel):
     evidence: list[str] = Field(default_factory=list)  # source_ids
 
 
+class DataSignal(BaseModel):
+    metric_name: str = ""
+    competitor_name: str = ""
+    value: str = ""
+    signal_type: str = ""
+    source_ids: list[str] = Field(default_factory=list)
+    confidence: str = "unknown"  # high | medium | low | unknown
+    is_estimate: bool = True
+    notes: str = ""
+
+
 class MarketBackground(BaseModel):
     market_overview: str = ""
     market_size_notes: str = ""  # TAM/SAM estimates or qualitative description
     trends: list[MarketTrend] = Field(default_factory=list)
     key_drivers: list[str] = Field(default_factory=list)
     key_challenges: list[str] = Field(default_factory=list)
+    data_signals: list[DataSignal] = Field(default_factory=list)
 
 
 class FeatureInsights(BaseModel):
@@ -27,6 +39,9 @@ class FeatureInsights(BaseModel):
     differentiators: list[dict] = Field(default_factory=list)  # [{feature, competitors:[]}]
     gaps: list[str] = Field(default_factory=list)
     cross_competitor_patterns: list[str] = Field(default_factory=list)
+    # PM lens: A+B+C module decomposition and user journey notes.
+    module_breakdown: list[dict] = Field(default_factory=list)
+    user_path_notes: dict = Field(default_factory=dict)
 
 
 class GtmProfile(BaseModel):
@@ -42,3 +57,6 @@ class OperationMonetization(BaseModel):
     gtm_profiles: list[GtmProfile] = Field(default_factory=list)
     monetization_patterns: list[str] = Field(default_factory=list)
     aarrr_notes: dict = Field(default_factory=dict)  # {stage: {competitor: notes}}
+    free_paid_boundaries: dict = Field(default_factory=dict)
+    willingness_to_pay: dict = Field(default_factory=dict)
+    experience_risks: dict = Field(default_factory=dict)

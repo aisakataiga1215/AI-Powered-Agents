@@ -26,6 +26,19 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 
 @pytest.fixture()
+def workflow_calls(monkeypatch):
+    calls = []
+
+    def fake_run_workflow_background(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    import app.api.routes.projects as projects_route
+
+    monkeypatch.setattr(projects_route, "run_workflow_background", fake_run_workflow_background)
+    return calls
+
+
+@pytest.fixture()
 def client(monkeypatch):
     # Use a shared in-memory engine via StaticPool so the FastAPI app
     # and the test fixture see the same data.
@@ -50,9 +63,11 @@ def client(monkeypatch):
     monkeypatch.setattr(db_session, "SessionLocal", TestingSessionLocal)
     monkeypatch.setattr(main_module, "engine", engine)
 
-    # Prevent background tasks from making real LLM calls in unit tests.
+    # Prevent background tasks from making real LLM calls in unit tests unless a test
+    # already patched the route to capture workflow arguments.
     import app.api.routes.projects as projects_route
-    monkeypatch.setattr(projects_route, "run_workflow_background", lambda *a, **kw: None)
+    if projects_route.run_workflow_background is not None:
+        monkeypatch.setattr(projects_route, "run_workflow_background", lambda *a, **kw: None)
 
     models.Base.metadata.create_all(bind=engine)
 
@@ -254,3 +269,206 @@ def test_analysis_purpose_and_custom_dimensions_round_trip(client):
     body = response.json()
     assert body["analysis_purpose"] == "build_product"
     assert body["custom_dimensions"] == ["pricing transparency"]
+    assert body["competitors"][0]["role"] == "inspiration_product"
+
+
+def test_competitor_extra_urls_round_trip_through_create_and_get(client):
+    payload = {
+        "industry": "AI Coding Tools",
+        "competitors": [
+            {
+                "name": "Cursor",
+                "url": "https://cursor.com",
+                "extra_urls": [
+                    "https://cursor.com/pricing",
+                    "https://docs.cursor.com",
+                ],
+            },
+        ],
+        "goals": ["pricing_analysis"],
+    }
+    create = client.post("/api/projects", json=payload)
+    assert create.status_code == 200
+    project_id = create.json()["project_id"]
+
+    response = client.get(f"/api/projects/{project_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["competitors"] == [
+        {
+            "name": "Cursor",
+            "url": "https://cursor.com",
+            "role": "direct_competitor",
+            "extra_urls": [
+                "https://cursor.com/pricing",
+                "https://docs.cursor.com",
+            ],
+        }
+    ]
+
+
+def test_project_create_normalizes_competitor_urls_and_deduplicates(client):
+    payload = {
+        "industry": "AI Coding Tools",
+        "competitors": [
+            {"name": "Cursor", "url": "cursor.com"},
+            {"name": "Cursor", "url": "https://cursor.com"},
+            {"name": "Trae", "url": "www.trae.ai"},
+            {"name": "Cursor Pricing", "url": "https://cursor.com/pricing"},
+        ],
+        "goals": ["feature_comparison"],
+    }
+    create = client.post("/api/projects", json=payload)
+    assert create.status_code == 200
+    project_id = create.json()["project_id"]
+
+    response = client.get(f"/api/projects/{project_id}")
+    assert response.status_code == 200
+    assert response.json()["competitors"] == [
+        {
+            "name": "Cursor",
+            "url": "https://cursor.com",
+            "role": "direct_competitor",
+            "extra_urls": [],
+        },
+        {
+            "name": "Trae",
+            "url": "https://www.trae.ai",
+            "role": "direct_competitor",
+            "extra_urls": [],
+        },
+        {
+            "name": "Cursor Pricing",
+            "url": "https://cursor.com/pricing",
+            "role": "direct_competitor",
+            "extra_urls": [],
+        },
+    ]
+
+
+def test_project_create_rejects_empty_competitor_url(client):
+    response = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [{"name": "Cursor", "url": ""}],
+            "goals": ["feature_comparison"],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_project_create_rejects_private_competitor_url(client):
+    response = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [{"name": "Local", "url": "http://127.0.0.1:8000"}],
+            "goals": ["feature_comparison"],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_research_inputs_round_trip_through_create_and_get(client):
+    payload = {
+        "industry": "AI Coding Tools",
+        "competitors": [{"name": "Cursor", "url": "https://cursor.com"}],
+        "goals": ["user_personas"],
+        "research_inputs": [
+            {
+                "title": "Developer interview notes",
+                "source_kind": "interview",
+                "competitor_name": "Cursor",
+                "content": "Interviewees value codebase-aware chat but worry about privacy.",
+            }
+        ],
+    }
+    create = client.post("/api/projects", json=payload)
+    assert create.status_code == 200
+    project_id = create.json()["project_id"]
+
+    response = client.get(f"/api/projects/{project_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["research_inputs"] == payload["research_inputs"]
+
+
+def test_project_create_rejects_private_extra_url(client):
+    response = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [
+                {
+                    "name": "Cursor",
+                    "url": "https://cursor.com",
+                    "extra_urls": ["http://127.0.0.1:8000/admin"],
+                }
+            ],
+            "goals": ["pricing_analysis"],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_run_project_passes_extra_urls_to_workflow(client, workflow_calls):
+    create = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [
+                {
+                    "name": "Cursor",
+                    "url": "https://cursor.com",
+                    "role": "direct_competitor",
+                    "extra_urls": ["https://cursor.com/pricing"],
+                }
+            ],
+            "goals": ["pricing_analysis"],
+        },
+    )
+    assert create.status_code == 200
+    project_id = create.json()["project_id"]
+
+    response = client.post(f"/api/projects/{project_id}/run")
+    assert response.status_code == 200
+    assert len(workflow_calls) == 1
+    args, _ = workflow_calls[0]
+    competitors_payload = args[1]
+    assert competitors_payload == [
+        {
+            "name": "Cursor",
+            "url": "https://cursor.com",
+            "role": "direct_competitor",
+            "extra_urls": ["https://cursor.com/pricing"],
+        }
+    ]
+
+
+def test_run_project_passes_research_inputs_to_workflow(client, workflow_calls):
+    research_inputs = [
+        {
+            "title": "Survey summary",
+            "source_kind": "survey",
+            "competitor_name": "",
+            "content": "Survey respondents prefer simple onboarding and transparent pricing.",
+        }
+    ]
+    create = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [{"name": "Cursor", "url": "https://cursor.com"}],
+            "goals": ["user_personas"],
+            "research_inputs": research_inputs,
+        },
+    )
+    assert create.status_code == 200
+    project_id = create.json()["project_id"]
+
+    response = client.post(f"/api/projects/{project_id}/run")
+    assert response.status_code == 200
+    assert len(workflow_calls) == 1
+    args, _ = workflow_calls[0]
+    assert args[9] == research_inputs

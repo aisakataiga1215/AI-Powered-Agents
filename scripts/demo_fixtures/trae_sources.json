@@ -26,6 +26,19 @@
     "reliability": "high"
   },
   {
+    "source_id": "src_trae_004",
+    "project_id": "",
+    "competitor_id": "",
+    "competitor_name": "Trae",
+    "source_type": "docs",
+    "url": "https://docs.trae.ai/ide/builder-mode",
+    "title": "Trae Documentation - Builder Mode and MCP",
+    "snippet": "Trae documentation describes Builder Mode for multi-file agentic edits, codebase chat, inline completion, and MCP tool integration.",
+    "content": "Trae documentation describes the product's core developer workflow. Builder Mode is the agentic feature for larger engineering tasks: users describe an implementation goal, review a generated plan, and let Trae edit multiple files with a visible diff. The documentation recommends using Builder Mode for endpoint creation, refactors, UI changes, and bug fixes that require project-wide context.\n\nTrae also documents codebase-aware chat, inline completion, quick fixes, terminal-aware assistance, and model selection. The IDE can reference project files and explain proposed changes before applying them. MCP support lets users connect external tools and services to the agent loop through standard tool schemas, which is relevant for teams that want observable tool use rather than opaque natural-language-only automation.\n\nThe documentation emphasizes guardrails: users can inspect plans, approve diffs, and stop the agent before changes are applied. Configuration covers workspace indexing, ignored files, model preferences, and privacy-related settings. These capabilities position Trae as a full AI IDE rather than a lightweight autocomplete plugin.",
+    "retrieved_at": "2025-05-27T10:28:00",
+    "reliability": "high"
+  },
+  {
     "source_id": "src_trae_003",
     "project_id": "",
     "competitor_id": "",

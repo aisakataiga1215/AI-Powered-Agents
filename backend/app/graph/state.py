@@ -29,6 +29,7 @@ class WorkflowState(TypedDict, total=False):
     industry_type: str  # "ai_saas" | "ecommerce" | "local_services" | "social" | "general"
     analysis_purpose: str  # "general" | "build_product" | "choose_product"
     custom_dimensions: list[str]
+    research_inputs: list[dict]
     sources: list[SourceEvidence]
     competitor_knowledge: list[CompetitorKnowledge]
     report: Optional[CompetitiveReport]

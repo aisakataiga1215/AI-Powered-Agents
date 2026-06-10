@@ -17,6 +17,7 @@ trace timeline can replay the execution.
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse, urlencode, parse_qsl
 
 from sqlalchemy.orm import Session
@@ -166,6 +167,67 @@ def _infer_drop_reason(stats: dict, data_mode: str) -> str:
     return "Weak coverage — insufficient for analysis"
 
 
+def _slug(value: str) -> str:
+    return value.strip().lower().replace(" ", "_")
+
+
+def _build_manual_sources(
+    project_id: str,
+    competitors: list[dict],
+    research_inputs: list[dict] | None,
+) -> list[SourceEvidence]:
+    """Convert user-supplied surveys/interviews/notes into traceable evidence.
+
+    Inputs with ``competitor_name`` are attached only to that competitor.
+    Global inputs are copied to every competitor so downstream analysis remains
+    grouped by product instead of creating a fake "research" competitor.
+    """
+    if not research_inputs:
+        return []
+
+    competitor_names = [
+        str(c.get("name", "")).strip()
+        for c in competitors
+        if isinstance(c, dict) and str(c.get("name", "")).strip()
+    ]
+    by_name = {name.lower(): name for name in competitor_names}
+    manual_sources: list[SourceEvidence] = []
+
+    for idx, item in enumerate(research_inputs, start=1):
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("content", "")).strip()
+        if not content:
+            continue
+        source_kind = str(item.get("source_kind", "notes") or "notes").strip()
+        title = str(item.get("title", "") or "User research notes").strip()
+        requested_name = str(item.get("competitor_name", "") or "").strip()
+        target_names = (
+            [by_name[requested_name.lower()]]
+            if requested_name.lower() in by_name
+            else competitor_names
+        )
+
+        for competitor_name in target_names:
+            manual_sources.append(
+                SourceEvidence(
+                    project_id=project_id,
+                    competitor_id=_slug(competitor_name),
+                    competitor_name=competitor_name,
+                    source_type=SourceType.manual_input,
+                    url=f"manual://{source_kind}/{idx}",
+                    title=title,
+                    snippet=content[:300],
+                    content=f"Research type: {source_kind}\n\n{content}",
+                    retrieved_at=datetime.now(timezone.utc).isoformat(),
+                    reliability=Reliability.medium,
+                    data_source="manual",
+                )
+            )
+
+    return manual_sources
+
+
 def _collect_live(
     competitor_name: str,
     website: str,
@@ -306,6 +368,7 @@ def run(
     rework_hints: list[str] | None = None,
     data_mode: str = "demo",
     industry_type: str = "general",
+    research_inputs: list[dict] | None = None,
     _search_service: SearchService | None = None,
 ) -> list[SourceEvidence]:
     """Load source evidence for all competitors and persist them.
@@ -318,6 +381,7 @@ def run(
         rework_hints: Optional QA hints from a previous failed run.
         data_mode: ``"demo"`` or ``"live_with_fallback"``.
         industry_type: Industry context for source discovery path selection.
+        research_inputs: Optional user-supplied survey/interview/questionnaire notes.
         _search_service: Optional SearchService for test injection; created
             from config when None and conditions are met.
 
@@ -338,6 +402,7 @@ def run(
             "demo_scenario": settings.demo_scenario,
             "data_mode": data_mode,
             "industry_type": industry_type,
+            "research_input_count": len(research_inputs or []),
         },
         status=AgentRunStatus.running,
     )
@@ -420,6 +485,14 @@ def run(
 
             all_sources.extend(sources)
 
+        manual_sources = _build_manual_sources(project_id, competitors, research_inputs)
+        if manual_sources:
+            all_sources.extend(manual_sources)
+            for source in manual_sources:
+                stats = collection_stats.setdefault(source.competitor_name, {"source_count": 0})
+                stats["source_count"] = int(stats.get("source_count", 0)) + 1
+                stats["manual_source_count"] = int(stats.get("manual_source_count", 0)) + 1
+
         if all_sources:
             source_service.save_sources(db, project_id, all_sources)
 
@@ -468,6 +541,7 @@ def run(
                 "data_mode": data_mode,
                 "industry_type": industry_type,
                 "source_count": len(all_sources),
+                "manual_source_count": len(manual_sources),
                 "failed_urls": all_failed_urls,
                 "source_coverage_by_competitor": coverage_by_competitor,
                 "collection_stats_by_competitor": collection_stats,

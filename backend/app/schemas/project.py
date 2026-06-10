@@ -10,10 +10,26 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.schemas.competitor import CompetitorInput
+from app.schemas.competitor import CompetitorInput, CompetitorRole
 
-IndustryType = Literal["ai_saas", "ecommerce", "local_services", "social", "general"]
-AnalysisPurpose = Literal["general", "build_product", "choose_product"]
+IndustryType = Literal[
+    "ai_saas",
+    "ai_search",
+    "design_tools",
+    "ecommerce",
+    "local_services",
+    "open_source",
+    "social",
+    "general",
+]
+AnalysisPurpose = Literal[
+    "build_product",
+    "choose_product",
+    "industry_landscape",
+    "competitor_success",
+    "improve_product",
+    "general",
+]
 
 
 class ProjectStatus(str, Enum):
@@ -27,6 +43,15 @@ class ProjectStatus(str, Enum):
 class CompetitorInProject(BaseModel):
     name: str
     url: str
+    role: CompetitorRole = "direct_competitor"
+    extra_urls: list[str] = Field(default_factory=list)
+
+
+class ResearchInput(BaseModel):
+    title: str = Field(default="User research notes", max_length=160)
+    content: str = Field(min_length=1, max_length=12000)
+    source_kind: Literal["survey", "interview", "questionnaire", "desk_research", "notes"] = "notes"
+    competitor_name: str = ""
 
 
 class ProjectCreate(BaseModel):
@@ -39,6 +64,7 @@ class ProjectCreate(BaseModel):
     output_language: str = "en"
     report_depth: str = "standard"
     data_mode: Literal["demo", "live_with_fallback"] = "demo"
+    research_inputs: list[ResearchInput] = Field(default_factory=list)
 
 
 class ProjectResponse(BaseModel):
@@ -53,4 +79,5 @@ class ProjectResponse(BaseModel):
     created_at: str
     updated_at: str
     data_mode: str = "demo"
+    research_inputs: list[ResearchInput] = []
     competitors: list[CompetitorInProject] = []

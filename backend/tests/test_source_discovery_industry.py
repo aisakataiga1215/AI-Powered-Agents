@@ -32,6 +32,21 @@ class TestIndustryPaths:
         for expected in ("/pricing", "/enterprise", "/integrations"):
             assert expected in paths, f"ai_saas paths missing {expected}"
 
+    def test_ai_search_paths_include_answer_engine_pages(self):
+        paths = _INDUSTRY_PATHS["ai_search"]
+        for expected in ("/pricing", "/pro", "/api", "/docs", "/privacy"):
+            assert expected in paths, f"ai_search paths missing {expected}"
+
+    def test_design_tool_paths_include_templates_and_enterprise(self):
+        paths = _INDUSTRY_PATHS["design_tools"]
+        for expected in ("/pricing", "/templates", "/enterprise", "/teams"):
+            assert expected in paths, f"design_tools paths missing {expected}"
+
+    def test_open_source_paths_include_nonprofit_context(self):
+        paths = _INDUSTRY_PATHS["open_source"]
+        for expected in ("/mission", "/community", "/membership", "/donate"):
+            assert expected in paths, f"open_source paths missing {expected}"
+
     def test_unknown_industry_type_falls_back_to_general_no_crash(self):
         urls = discover_pages("https://example.com", industry_type="unknown_industry")
         assert isinstance(urls, list)
@@ -50,6 +65,11 @@ class TestIndustryMaxPages:
 
     def test_general_max_pages_is_5(self):
         assert _INDUSTRY_MAX_PAGES["general"] == 5
+
+    def test_new_industry_max_pages_are_8(self):
+        assert _INDUSTRY_MAX_PAGES["ai_search"] == 8
+        assert _INDUSTRY_MAX_PAGES["design_tools"] == 8
+        assert _INDUSTRY_MAX_PAGES["open_source"] == 8
 
     def test_explicit_max_pages_respected_over_industry_default(self):
         urls = discover_pages("https://example.com", max_pages=3, industry_type="ecommerce")

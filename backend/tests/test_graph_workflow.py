@@ -190,7 +190,16 @@ def test_rework_cycle_collector_repairs_missing_pricing(rework_db, monkeypatch):
     # --- Collector fake -----------------------------------------------------
     collector_calls: list[dict] = []
 
-    def fake_collector(db, project_id, competitors, goals, rework_hints=None, data_mode="demo", industry_type="general"):
+    def fake_collector(
+        db,
+        project_id,
+        competitors,
+        goals,
+        rework_hints=None,
+        data_mode="demo",
+        industry_type="general",
+        research_inputs=None,
+    ):
         call = {
             "attempt": len(collector_calls) + 1,
             "rework_hints": list(rework_hints or []),
@@ -377,7 +386,16 @@ def test_rework_budget_exhaustion_marks_project_qa_failed(
 
     home_src = _make_source("src_home_01", SourceType.official_website)
 
-    def fake_collector(db, project_id, competitors, goals, rework_hints=None, data_mode="demo", industry_type="general"):
+    def fake_collector(
+        db,
+        project_id,
+        competitors,
+        goals,
+        rework_hints=None,
+        data_mode="demo",
+        industry_type="general",
+        research_inputs=None,
+    ):
         return [home_src]
 
     def fake_analyst(db, project_id, sources, goals, rework_hints=None, **kwargs):
