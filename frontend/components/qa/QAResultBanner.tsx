@@ -12,13 +12,9 @@ const SEVERITY_STYLE: Record<IssueSeverity, string> = {
 }
 
 const SEVERITY_BADGE_LABEL: Record<IssueSeverity, string> = {
-  high: 'blocking',
-  medium: 'warning',
-  low: 'advisory',
-}
-
-function pluralise(n: number, singular: string, plural: string): string {
-  return `${n} ${n === 1 ? singular : plural}`
+  high: '阻塞',
+  medium: '警告',
+  low: '提示',
 }
 
 function buildSummary(
@@ -28,10 +24,10 @@ function buildSummary(
   passed: boolean,
 ): string {
   const parts: string[] = []
-  if (!passed && blockingCount > 0) parts.push(pluralise(blockingCount, 'blocking issue', 'blocking issues'))
-  if (warningCount > 0) parts.push(pluralise(warningCount, 'warning', 'warnings'))
-  if (advisoryCount > 0) parts.push(pluralise(advisoryCount, 'advisory', 'advisories'))
-  return parts.length > 0 ? parts.join(' · ') : 'No issues raised.'
+  if (!passed && blockingCount > 0) parts.push(`${blockingCount} 个阻塞问题`)
+  if (warningCount > 0) parts.push(`${warningCount} 个警告`)
+  if (advisoryCount > 0) parts.push(`${advisoryCount} 个提示`)
+  return parts.length > 0 ? parts.join(' · ') : '没有发现问题。'
 }
 
 export function QAResultBanner({ result }: QAResultBannerProps) {
@@ -52,11 +48,11 @@ export function QAResultBanner({ result }: QAResultBannerProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wider opacity-80">
-            QA Verdict
+            QA 结论
           </p>
           <h2 className="mt-1 text-xl font-semibold">
-            {result.passed ? '✓ QA Passed' : '✗ QA Failed'}{' '}
-            <span className="font-mono">· Score {result.score}/100</span>
+            {result.passed ? '✓ QA 通过' : '✗ QA 未通过'}{' '}
+            <span className="font-mono">· 评分 {result.score}/100</span>
           </h2>
         </div>
         <span className="text-sm opacity-80">
@@ -67,7 +63,7 @@ export function QAResultBanner({ result }: QAResultBannerProps) {
       {blockingIssues.length > 0 && (
         <>
           <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider opacity-70">
-            Blocking Issues
+            阻塞问题
           </h3>
           <ul className="mt-2 space-y-2">
             {blockingIssues.map((issue, i) => (
@@ -80,7 +76,7 @@ export function QAResultBanner({ result }: QAResultBannerProps) {
       {warnings.length > 0 && (
         <>
           <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider opacity-70">
-            Warnings
+            警告
           </h3>
           <ul className="mt-2 space-y-2">
             {warnings.map((issue, i) => (
@@ -93,7 +89,7 @@ export function QAResultBanner({ result }: QAResultBannerProps) {
       {advisories.length > 0 && (
         <>
           <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider opacity-70">
-            Advisories
+            提示
           </h3>
           <ul className="mt-2 space-y-2">
             {advisories.map((issue, i) => (
@@ -104,8 +100,7 @@ export function QAResultBanner({ result }: QAResultBannerProps) {
       )}
 
       <p className="mt-4 text-xs text-gray-600">
-        A QA score of 100 does not guarantee factual accuracy — always
-        verify claims with the cited sources.
+        QA 100 分不代表事实一定正确，仍需对照引用来源核验关键结论。
       </p>
     </section>
   )
@@ -131,7 +126,7 @@ function IssueRow({ issue }: { issue: QAResult['issues'][number] }) {
       <p className="mt-1 text-sm font-medium text-gray-900">{issue.message}</p>
       {issue.suggested_action && (
         <p className="mt-1 text-xs text-gray-600">
-          Suggested action: {issue.suggested_action}
+          建议：{issue.suggested_action}
         </p>
       )}
     </li>

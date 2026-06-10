@@ -29,11 +29,6 @@ import type { DroppedCompetitor } from '@/components/report-viewer/DroppedCompet
 import { FeatureComparisonTable } from '@/components/report-viewer/FeatureComparisonTable'
 import { InsufficientDataView } from '@/components/report-viewer/InsufficientDataView'
 import { PricingComparisonTable } from '@/components/report-viewer/PricingComparisonTable'
-import PurposeSections from '@/components/report-viewer/PurposeSections'
-import ScoringMatrix from '@/components/report-viewer/ScoringMatrix'
-import MarketBackground from '@/components/report-viewer/MarketBackground'
-import FeatureInsights from '@/components/report-viewer/FeatureInsights'
-import OperationMonetization from '@/components/report-viewer/OperationMonetization'
 import { SWOTView } from '@/components/report-viewer/SWOTView'
 import { TabsBar, type TabItem } from '@/components/report-viewer/TabsBar'
 import { QaStatusBanner } from '@/components/qa/QaStatusBanner'
@@ -44,18 +39,7 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-type TabValue = 'summary' | 'pricing' | 'features' | 'market' | 'swot' | 'recommendations' | 'markdown' | 'qa' | 'purpose'
-
-function purposeTabLabel(purpose?: string): string | null {
-  if (!purpose) return null
-  const labels: Record<string, string> = {
-    build_similar_product: 'Build Insights',
-    choose_product_to_use: 'Decision Guide',
-    market_research: 'Market Research',
-    competitor_success_analysis: 'Success Analysis',
-  }
-  return labels[purpose] ?? null
-}
+type TabValue = 'summary' | 'pricing' | 'features' | 'swot' | 'recommendations' | 'markdown' | 'qa'
 
 export default function ReportPage({ params }: PageProps) {
   const { id } = use(params)
@@ -109,45 +93,38 @@ export default function ReportPage({ params }: PageProps) {
     const highCount   = allIssues.filter((i) => i.severity === 'high').length
     const mediumCount = allIssues.filter((i) => i.severity === 'medium').length
     const lowCount    = allIssues.filter((i) => i.severity === 'low').length
-    const purpose = reportQuery.data?.analysis_purpose
-    const purposeLabel = purposeTabLabel(purpose)
-    const purposeTab: TabItem | null = purposeLabel
-      ? { value: 'purpose', label: purposeLabel }
-      : null
     const baseTabs: TabItem[] = [
-      { value: 'summary', label: 'Summary' },
-      { value: 'pricing', label: 'Pricing' },
-      { value: 'features', label: 'Features' },
-      { value: 'market', label: 'Market & Ops' },
+      { value: 'summary', label: '摘要' },
+      { value: 'pricing', label: '定价' },
+      { value: 'features', label: '功能' },
       { value: 'swot', label: 'SWOT' },
-      { value: 'recommendations', label: 'Recommendations' },
+      { value: 'recommendations', label: '建议' },
       { value: 'markdown', label: 'Markdown' },
       {
         value: 'qa',
-        label: 'QA Result',
+        label: 'QA 结果',
         badge:
           qaResult && !qaResult.passed ? (
             <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
-              {highCount} blocking
+              {highCount} 阻塞
             </span>
           ) : qaResult?.passed && mediumCount > 0 ? (
             <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
-              {mediumCount} warn
+              {mediumCount} 警告
             </span>
           ) : qaResult?.passed && lowCount > 0 ? (
             <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-              {lowCount} adv
+              {lowCount} 提示
             </span>
           ) : qaResult?.passed ? (
             <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
-              ok
+              通过
             </span>
           ) : null,
       },
     ]
-    if (purposeTab) baseTabs.splice(6, 0, purposeTab)
     return baseTabs
-  }, [qaResult, reportQuery.data?.analysis_purpose])
+  }, [qaResult])
 
   if (reportQuery.isLoading) {
     return <ReportSkeleton id={id} />
@@ -158,15 +135,14 @@ export default function ReportPage({ params }: PageProps) {
       <div className="space-y-4">
         <Breadcrumb id={id} />
         <div className="rounded-md border border-red-200 bg-red-50 p-6 text-sm text-red-700">
-          Failed to load report.{' '}
-          {reportQuery.error instanceof Error ? reportQuery.error.message : 'Unknown error.'} The
-          workflow may not have produced one yet.
+          报告加载失败。{' '}
+          {reportQuery.error instanceof Error ? reportQuery.error.message : '未知错误。'} 工作流可能还没有生成报告。
         </div>
         <Link
           href={`/projects/${id}`}
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
-          &larr; Back to project
+          &larr; 返回项目
         </Link>
       </div>
     )
@@ -179,7 +155,6 @@ export default function ReportPage({ params }: PageProps) {
   const summaryLen = report.executive_summary?.length ?? 0
   const isInsufficientData =
     citedSources === 0 || summaryLen === 0 || qaScore < 30 || analysedCount < 2
-
   return (
     <div className="space-y-5">
       {/* Breadcrumb hidden in print */}
@@ -189,9 +164,8 @@ export default function ReportPage({ params }: PageProps) {
 
       {isFallback && (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
-          <span className="font-semibold">⚠ Fallback mode: </span>
-          Report generated without a successful LLM call. Executive summary and strategic
-          recommendations may be incomplete or generic.
+          <span className="font-semibold">⚠ 兜底模式： </span>
+          报告是在 LLM 调用未成功的情况下生成的，摘要和战略建议可能不完整或偏通用。
         </div>
       )}
 
@@ -201,23 +175,23 @@ export default function ReportPage({ params }: PageProps) {
 
       <header className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <p className="text-xs font-medium tracking-wider text-blue-700 uppercase print:hidden">
-          Competitive analysis
+          竞品分析
         </p>
         <h1 className="mt-1 text-2xl font-semibold text-gray-900">{report.title}</h1>
         <p className="mt-2 text-xs text-gray-500">
-          Generated {formatDateTime(report.created_at)} · Project {report.project_id}
+          生成时间：{formatDateTime(report.created_at)} · 项目：{report.project_id}
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-600">
           {droppedCompetitors.length > 0 ? (
             <span className="text-orange-600">
-              {report.competitor_overview?.length ?? 0} of {requestedCompetitors.length} analysed
-              ({droppedCompetitors.length} dropped)
+              已分析 {report.competitor_overview?.length ?? 0} / {requestedCompetitors.length} 个竞品
+              （{droppedCompetitors.length} 个被剔除）
             </span>
           ) : (
-            <span>{report.competitor_overview?.length ?? 0} competitors</span>
+            <span>{report.competitor_overview?.length ?? 0} 个竞品</span>
           )}
           <SourceCountChip sourceList={report.source_list ?? []} />
-          <span>{report.executive_summary?.length ?? 0} summary claims</span>
+          <span>{report.executive_summary?.length ?? 0} 条摘要结论</span>
         </div>
       </header>
 
@@ -256,49 +230,34 @@ export default function ReportPage({ params }: PageProps) {
               <ClaimList
                 claims={report.executive_summary}
                 sourceList={report.source_list}
-                emptyMessage="No executive summary available."
+                emptyMessage="暂无执行摘要。"
               />
             </>
           )}
           {activeTab === 'pricing' && (
             <PricingComparisonTable
               data={normalizeStringMap(report.pricing_comparison)}
-              emptyMessage="No pricing data."
+              emptyMessage="暂无定价数据。"
             />
           )}
           {activeTab === 'features' && (
             <FeatureComparisonTable
               data={normalizeStringMap(report.feature_comparison)}
-              emptyMessage="No feature data."
+              emptyMessage="暂无功能数据。"
             />
-          )}
-          {activeTab === 'market' && (
-            <div className="space-y-8">
-              {report.market_background && (
-                <MarketBackground data={report.market_background} />
-              )}
-              {report.feature_insights && (
-                <FeatureInsights data={report.feature_insights} />
-              )}
-              {report.operation_monetization && (
-                <OperationMonetization data={report.operation_monetization} />
-              )}
-              {!report.market_background && !report.feature_insights && !report.operation_monetization && (
-                <p className="text-sm text-gray-400 italic">PM-framework sections not available for this report.</p>
-              )}
-            </div>
           )}
           {activeTab === 'swot' && (
             <SWOTView
               swotComparison={report.swot_comparison ?? {}}
               competitorOverview={report.competitor_overview ?? []}
+              sourceList={report.source_list ?? []}
             />
           )}
           {activeTab === 'recommendations' && (
             <ClaimList
               claims={report.strategic_recommendations}
               sourceList={report.source_list}
-              emptyMessage="No strategic recommendations available."
+              emptyMessage="暂无战略建议。"
             />
           )}
           {activeTab === 'markdown' && (
@@ -310,30 +269,13 @@ export default function ReportPage({ params }: PageProps) {
                 <QAResultBanner result={qaResult} />
               ) : (
                 <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">
-                  QA result not available yet.
+                  暂无 QA 结果。
                 </p>
               )}
               {droppedCompetitors.length > 0 && (
                 <DroppedCompetitorsList dropped={droppedCompetitors} className="mt-4" />
               )}
             </>
-          )}
-          {activeTab === 'purpose' && purposeTabLabel(report.analysis_purpose) && (
-            <div className="space-y-8">
-              <ScoringMatrix
-                analysisPurpose={report.analysis_purpose}
-                competitorScores={report.competitor_scores}
-                opportunityScore={report.opportunity_score}
-              />
-              <PurposeSections
-                analysisPurpose={report.analysis_purpose}
-                purposeSections={report.purpose_sections ?? {}}
-                sourceList={report.source_list ?? []}
-              />
-              {report.custom_dimension_analysis && Object.keys(report.custom_dimension_analysis).length > 0 && (
-                <CustomDimensionTable analysis={report.custom_dimension_analysis} />
-              )}
-            </div>
           )}
         </section>
           </>
@@ -346,20 +288,20 @@ export default function ReportPage({ params }: PageProps) {
           href={`/projects/${id}`}
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
-          &larr; Back to project
+          &larr; 返回项目
         </Link>
         <Link
           href={`/projects/${id}/traces`}
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
-          View Agent traces
+          查看 Agent Trace
         </Link>
         <button
           type="button"
           onClick={() => exportMarkdown(report.markdown_content, report.title, report.source_list ?? [])}
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
-          Export MD
+          导出 MD
         </button>
         <Link
           href={`/projects/${id}/print`}
@@ -367,7 +309,7 @@ export default function ReportPage({ params }: PageProps) {
           rel="noopener noreferrer"
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
-          {projectStatus === 'qa_failed' ? 'Export Partial PDF' : 'Export PDF'}
+          {projectStatus === 'qa_failed' ? '导出部分 PDF' : '导出 PDF'}
         </Link>
       </div>
 
@@ -384,14 +326,14 @@ function SourceCountChip({ sourceList }: { sourceList: SourceEvidence[] }) {
   const demoCount = sourceList.filter((s) => s.data_source === 'demo').length
   const hasDataSource = liveCount > 0 || demoCount > 0 || searchCount > 0
 
-  if (!hasDataSource) return <span>{total} sources cited</span>
-  if (liveCount === 0 && searchCount === 0) return <span>{total} sources cited (demo)</span>
+  if (!hasDataSource) return <span>{total} 个引用来源</span>
+  if (liveCount === 0 && searchCount === 0) return <span>{total} 个引用来源（Demo）</span>
 
   const parts: string[] = []
-  if (liveCount > 0) parts.push(`${liveCount} live`)
-  if (searchCount > 0) parts.push(`${searchCount} search`)
-  if (demoCount > 0) parts.push(`${demoCount} demo`)
-  return <span>{total} sources cited · {parts.join(' · ')}</span>
+  if (liveCount > 0) parts.push(`${liveCount} 个真实来源`)
+  if (searchCount > 0) parts.push(`${searchCount} 个搜索来源`)
+  if (demoCount > 0) parts.push(`${demoCount} 个 Demo`)
+  return <span>{total} 个引用来源 · {parts.join(' · ')}</span>
 }
 
 function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: SourceEvidence[] }) {
@@ -444,11 +386,11 @@ function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: S
             {processedMarkdown}
           </ReactMarkdown>
         ) : (
-          <p className="text-sm text-gray-500">No markdown content.</p>
+          <p className="text-sm text-gray-500">暂无 Markdown 内容。</p>
         )}
       </div>
       <hr className="my-6 border-gray-200" />
-      <h2 className="mb-3 text-base font-semibold text-gray-900">Sources</h2>
+      <h2 className="mb-3 text-base font-semibold text-gray-900">来源</h2>
       {sourceList && sourceList.length > 0 ? (
         <ol className="space-y-2 text-sm">
           {sourceList.map((s, i) => (
@@ -467,14 +409,14 @@ function MarkdownTab({ markdown, sourceList }: { markdown: string; sourceList: S
                   {s.title || s.url}
                 </a>
                 <div className="text-xs text-gray-500">
-                  {s.competitor_name} · {s.source_type} · retrieved {formatDateTime(s.retrieved_at)}
+                  {s.competitor_name} · {s.source_type} · 获取时间 {formatDateTime(s.retrieved_at)}
                 </div>
               </div>
             </li>
           ))}
         </ol>
       ) : (
-        <p className="text-sm text-gray-500">No sources listed.</p>
+        <p className="text-sm text-gray-500">暂无来源列表。</p>
       )}
     </article>
   )
@@ -484,14 +426,14 @@ function Breadcrumb({ id, title }: { id: string; title?: string }) {
   return (
     <nav className="text-sm text-gray-500">
       <Link href="/projects" className="hover:text-gray-900">
-        Projects
+        项目
       </Link>
       <span className="mx-1">/</span>
       <Link href={`/projects/${id}`} className="hover:text-gray-900">
         {id}
       </Link>
       <span className="mx-1">/</span>
-      <span className="text-gray-900">{title ?? 'Report'}</span>
+      <span className="text-gray-900">{title ?? '报告'}</span>
     </nav>
   )
 }
@@ -503,42 +445,6 @@ function ReportSkeleton({ id }: { id: string }) {
       <div className="h-28 animate-pulse rounded-xl border border-gray-200 bg-white" />
       <div className="h-12 animate-pulse rounded-md bg-white" />
       <div className="h-60 animate-pulse rounded-xl border border-gray-200 bg-white" />
-    </div>
-  )
-}
-
-function CustomDimensionTable({ analysis }: { analysis: Record<string, Record<string, unknown>> }) {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-gray-900">Custom Dimension Analysis</h3>
-      {Object.entries(analysis).map(([dim, compData]) => (
-        <div key={dim} className="overflow-x-auto rounded-lg border border-gray-200">
-          <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 capitalize">
-            {dim.replace(/_/g, ' ')}
-          </div>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="px-3 py-2 text-left font-medium text-gray-500">Competitor</th>
-                <th className="px-3 py-2 text-center font-medium text-gray-500">Score</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-500">Rationale</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(compData).map(([name, val]) => {
-                const cell = val as { score?: number | string; rationale?: string } | undefined
-                return (
-                  <tr key={name} className="border-b border-gray-100 last:border-0">
-                    <td className="px-3 py-2 font-medium text-gray-700">{name}</td>
-                    <td className="px-3 py-2 text-center text-gray-600">{cell?.score ?? '—'}</td>
-                    <td className="px-3 py-2 text-gray-600">{cell?.rationale ?? ''}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ))}
     </div>
   )
 }
@@ -639,17 +545,17 @@ function inferDropReason(
 ): string {
   try {
     const hostname = new URL(url).hostname
-    if (failedUrls.some((u) => u.includes(hostname))) return 'Homepage failed or unreachable'
+    if (failedUrls.some((u) => u.includes(hostname))) return '官网失败或不可访问'
   } catch {
     // ignore invalid URL
   }
 
   const cov = coverageMap[name]
   if (cov !== undefined) {
-    if (cov.score === 0) return 'No usable sources collected'
-    if (cov.score < 40) return `Weak coverage (score ${cov.score}/100)`
+    if (cov.score === 0) return '未采集到可用来源'
+    if (cov.score < 40) return `来源覆盖较弱（${cov.score}/100）`
   }
 
-  if (dataMode === 'demo') return 'No demo fixture found'
-  return 'Insufficient sources for analysis'
+  if (dataMode === 'demo') return '未找到 Demo fixture'
+  return '可用于分析的来源不足'
 }

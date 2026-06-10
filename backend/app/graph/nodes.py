@@ -14,11 +14,12 @@ from app.agents import analyst_agent
 from app.agents import collector_agent
 from app.agents import qa_agent
 from app.agents import writer_agent
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.graph.state import WorkflowState
 from app.schemas.project import DEFAULT_ANALYSIS_PURPOSE, ProjectStatus
 from app.schemas.qa import IssueSeverity, QAResult
-from app.services import project_service, report_service
+from app.services import project_service, report_service, trace_service
 
 logger = get_logger(__name__)
 
@@ -146,6 +147,35 @@ def handle_rework_node(state: WorkflowState) -> dict:
         rework_target,
         len(hints),
     )
+    db = _make_db()
+    try:
+        trace_service.record_workflow_event(
+            db,
+            project_id=state["project_id"],
+            event_name="qa_rework_route",
+            input_payload={
+                "qa_passed": bool(qa_result.passed) if qa_result else None,
+                "qa_score": qa_result.score if qa_result else None,
+                "rework_count": rework_count,
+            },
+            output_payload={
+                "decision_summary": (
+                    f"QA failed; routing repair attempt {rework_count} to {rework_target}."
+                ),
+                "route": "rework",
+                "rework_target": rework_target,
+                "rework_hints": hints,
+                "remaining_repair_budget": max(settings.max_repair_loops - rework_count, 0),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "handle_rework: failed to record WorkflowRouter trace for project=%s: %s",
+            state.get("project_id"),
+            exc,
+        )
+    finally:
+        db.close()
     return {
         "rework_count": rework_count,
         "rework_target": rework_target,

@@ -22,25 +22,9 @@ import { FeatureComparisonTable } from '@/components/report-viewer/FeatureCompar
 import { PricingComparisonTable } from '@/components/report-viewer/PricingComparisonTable'
 import { DroppedCompetitorsList } from '@/components/report-viewer/DroppedCompetitorsList'
 import type { DroppedCompetitor } from '@/components/report-viewer/DroppedCompetitorsList'
-import ScoringMatrix from '@/components/report-viewer/ScoringMatrix'
-import PurposeSections from '@/components/report-viewer/PurposeSections'
-import MarketBackground from '@/components/report-viewer/MarketBackground'
-import FeatureInsights from '@/components/report-viewer/FeatureInsights'
-import OperationMonetization from '@/components/report-viewer/OperationMonetization'
 
 interface PageProps {
   params: Promise<{ id: string }>
-}
-
-function purposeSectionTitle(purpose?: string): string | null {
-  if (!purpose) return null
-  const labels: Record<string, string> = {
-    build_similar_product: 'Build Insights',
-    choose_product_to_use: 'Decision Guide',
-    market_research: 'Market Research',
-    competitor_success_analysis: 'Success Analysis',
-  }
-  return labels[purpose] ?? null
 }
 
 export default function PrintPage({ params }: PageProps) {
@@ -101,15 +85,13 @@ export default function PrintPage({ params }: PageProps) {
   if (reportQuery.isError || !report) {
     return (
       <div className="p-8 text-sm text-red-700">
-        Failed to load report:{' '}
-        {reportQuery.error instanceof Error ? reportQuery.error.message : 'Unknown error.'}
+        报告加载失败：{' '}
+        {reportQuery.error instanceof Error ? reportQuery.error.message : '未知错误。'}
       </div>
     )
   }
 
   const { index: citationIndex, usedIds, unusedIds } = citationData
-
-  const purposeTitle = purposeSectionTitle(report.analysis_purpose)
 
   const usedSources = usedIds
     .map((sid) => report.source_list.find((s) => s.source_id === sid))
@@ -132,14 +114,14 @@ export default function PrintPage({ params }: PageProps) {
             href={`/projects/${id}/report`}
             className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
           >
-            ← Back to Report
+            ← 返回报告
           </Link>
           <button
             type="button"
             onClick={() => window.print()}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
           >
-            Print / Save as PDF
+            打印 / 保存为 PDF
           </button>
         </div>
 
@@ -147,16 +129,16 @@ export default function PrintPage({ params }: PageProps) {
         {(projectStatus === 'qa_failed' || projectStatus === 'failed') && (
           <div className="mb-6 rounded border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900">
             <strong>
-              {projectStatus === 'qa_failed' ? '⚠ Partial Report — QA Failed' : '✗ Workflow Failed'}
+              {projectStatus === 'qa_failed' ? '⚠ 部分报告 - QA 未通过' : '✗ 工作流失败'}
             </strong>
             <p className="mt-1 text-xs">
               {projectStatus === 'qa_failed'
-                ? `This report did not pass quality checks. Some sources are missing or weak.${
+                ? `这份报告没有通过质量检查，部分来源缺失或较弱。${
                     droppedCompetitors.length
-                      ? ` ${droppedCompetitors.length} competitor${droppedCompetitors.length > 1 ? 's' : ''} could not be fully analysed.`
+                      ? ` ${droppedCompetitors.length} 个竞品未能完整分析。`
                       : ''
-                  } Treat results with caution and verify claims against cited sources.`
-                : 'The analysis workflow encountered an error. This report may be incomplete.'}
+                  } 请谨慎使用结果，并对照引用来源核验结论。`
+                : '分析工作流遇到错误，报告可能不完整。'}
             </p>
           </div>
         )}
@@ -164,16 +146,16 @@ export default function PrintPage({ params }: PageProps) {
         {/* Report header */}
         <header className="mb-8 border-b border-gray-200 pb-6">
           <p className="text-xs font-medium uppercase tracking-wider text-blue-700">
-            Competitive Analysis
+            竞品分析
           </p>
           <h1 className="mt-1 text-3xl font-bold text-gray-900">{report.title}</h1>
           <p className="mt-2 text-sm text-gray-500">
-            Generated {formatDateTime(report.created_at)} · Project {report.project_id}
+            生成时间：{formatDateTime(report.created_at)} · 项目：{report.project_id}
           </p>
           <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-600">
-            <span>{report.competitor_overview?.length ?? 0} competitors</span>
-            <span>{usedSources.length} cited sources</span>
-            <span>{report.executive_summary?.length ?? 0} summary claims</span>
+            <span>{report.competitor_overview?.length ?? 0} 个竞品</span>
+            <span>{usedSources.length} 个引用来源</span>
+            <span>{report.executive_summary?.length ?? 0} 条摘要结论</span>
           </div>
         </header>
 
@@ -191,14 +173,14 @@ export default function PrintPage({ params }: PageProps) {
           <>
         {/* Executive Summary */}
         {(report.executive_summary?.length ?? 0) > 0 && (
-          <PrintSection title="Executive Summary">
+          <PrintSection title="执行摘要">
             <PrintClaimList claims={report.executive_summary} citationIndex={citationIndex} />
           </PrintSection>
         )}
 
         {/* Competitor Overview */}
         {(report.competitor_overview?.length ?? 0) > 0 && (
-          <PrintSection title="Competitor Overview">
+          <PrintSection title="竞品概览">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {report.competitor_overview.map((comp) => (
                 <CompetitorCard
@@ -212,34 +194,34 @@ export default function PrintPage({ params }: PageProps) {
 
         {/* Feature Comparison */}
         {Object.keys(report.feature_comparison ?? {}).length > 0 && (
-          <PrintSection title="Feature Comparison" breakBefore>
+          <PrintSection title="功能对比" breakBefore>
             <FeatureComparisonTable
               data={normalizeStringMap(report.feature_comparison)}
-              emptyMessage="No feature data."
+              emptyMessage="暂无功能数据。"
             />
           </PrintSection>
         )}
 
         {/* Pricing Comparison */}
         {Object.keys(report.pricing_comparison ?? {}).length > 0 && (
-          <PrintSection title="Pricing Comparison" breakBefore>
+          <PrintSection title="定价对比" breakBefore>
             <PricingComparisonTable
               data={normalizeStringMap(report.pricing_comparison)}
-              emptyMessage="No pricing data."
+              emptyMessage="暂无定价数据。"
             />
           </PrintSection>
         )}
 
         {/* User Persona Comparison */}
         {(report.competitor_overview ?? []).some((c) => (c.user_personas?.length ?? 0) > 0) && (
-          <PrintSection title="User Persona Comparison" breakBefore>
+          <PrintSection title="用户画像对比" breakBefore>
             <PrintPersonaSection competitors={report.competitor_overview} />
           </PrintSection>
         )}
 
         {/* SWOT Analysis */}
         {hasSwot && (
-          <PrintSection title="SWOT Analysis" breakBefore>
+          <PrintSection title="SWOT 分析" breakBefore>
             <PrintSWOTSection
               swotComparison={report.swot_comparison ?? {}}
               competitorOverview={report.competitor_overview ?? []}
@@ -250,7 +232,7 @@ export default function PrintPage({ params }: PageProps) {
 
         {/* Strategic Recommendations */}
         {(report.strategic_recommendations?.length ?? 0) > 0 && (
-          <PrintSection title="Strategic Recommendations">
+          <PrintSection title="战略建议">
             <PrintClaimList
               claims={report.strategic_recommendations}
               citationIndex={citationIndex}
@@ -258,68 +240,23 @@ export default function PrintPage({ params }: PageProps) {
           </PrintSection>
         )}
 
-        {/* Purpose-specific scoring and sections */}
-        {purposeTitle && (
-          <>
-            <PrintSection title={purposeTitle}>
-              <ScoringMatrix
-                analysisPurpose={report.analysis_purpose}
-                competitorScores={report.competitor_scores}
-                opportunityScore={report.opportunity_score}
-              />
-            </PrintSection>
-            {report.purpose_sections && Object.keys(report.purpose_sections).length > 0 && (
-              <PrintSection title="Purpose Analysis">
-                <PurposeSections
-                  analysisPurpose={report.analysis_purpose}
-                  purposeSections={report.purpose_sections}
-                  sourceList={report.source_list ?? []}
-                />
-              </PrintSection>
-            )}
-            {report.custom_dimension_analysis &&
-              Object.keys(report.custom_dimension_analysis).length > 0 && (
-                <PrintSection title="Custom Dimension Analysis">
-                  <PrintCustomDimensionTable analysis={report.custom_dimension_analysis} />
-                </PrintSection>
-              )}
-          </>
-        )}
-
         {/* QA Result */}
         {qaResult && (
-          <PrintSection title="QA Result">
+          <PrintSection title="QA 结果">
             <PrintQAResult result={qaResult} />
-          </PrintSection>
-        )}
-
-        {/* PM-framework sections (M13B) */}
-        {report.market_background && (
-          <PrintSection title="Market & Background">
-            <MarketBackground data={report.market_background} />
-          </PrintSection>
-        )}
-        {report.feature_insights && (
-          <PrintSection title="Feature Insights">
-            <FeatureInsights data={report.feature_insights} />
-          </PrintSection>
-        )}
-        {report.operation_monetization && (
-          <PrintSection title="Operations & Monetization">
-            <OperationMonetization data={report.operation_monetization} />
           </PrintSection>
         )}
 
         {/* Dropped Competitors */}
         {droppedCompetitors.length > 0 && (
-          <PrintSection title="Dropped / Insufficient Competitors">
+          <PrintSection title="已剔除 / 数据不足的竞品">
             <DroppedCompetitorsList dropped={droppedCompetitors} />
           </PrintSection>
         )}
 
         {/* References */}
         {(usedSources.length > 0 || unusedSources.length > 0) && (
-          <PrintSection title="References" breakBefore>
+          <PrintSection title="参考来源" breakBefore>
             {usedSources.length > 0 && (
               <ol className="space-y-3 text-sm">
                 {usedSources.map((s, i) => (
@@ -329,8 +266,8 @@ export default function PrintPage({ params }: PageProps) {
                       <div className="font-medium text-gray-900">{s.title || s.url}</div>
                       <div className="break-all text-gray-600">{s.url}</div>
                       <div className="mt-0.5 text-xs text-gray-400">
-                        Source ID: {s.source_id} · {s.competitor_name} · {s.source_type} ·
-                        retrieved {formatDateTime(s.retrieved_at)}
+                        来源 ID：{s.source_id} · {s.competitor_name} · {s.source_type} ·
+                        获取时间 {formatDateTime(s.retrieved_at)}
                       </div>
                     </div>
                   </li>
@@ -340,7 +277,7 @@ export default function PrintPage({ params }: PageProps) {
             {unusedSources.length > 0 && (
               <div className="mt-6">
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  Additional Sources
+                  补充来源
                 </h3>
                 <ul className="space-y-2 text-sm">
                   {unusedSources.map((s) => (
@@ -349,7 +286,7 @@ export default function PrintPage({ params }: PageProps) {
                       <div>
                         <div className="font-medium text-gray-800">{s.title || s.url}</div>
                         <div className="break-all">{s.url}</div>
-                        <div className="text-xs text-gray-400">Source ID: {s.source_id}</div>
+                        <div className="text-xs text-gray-400">来源 ID：{s.source_id}</div>
                       </div>
                     </li>
                   ))}
@@ -408,26 +345,26 @@ function PrintInsufficientDataSection({
   return (
     <div className="mb-8 rounded border border-amber-300 bg-amber-50 p-6">
       <h2 className="mb-2 text-lg font-semibold text-amber-900">
-        Insufficient Data — Report Cannot Be Generated
+        数据不足，无法生成可靠报告
       </h2>
       <div className="mb-4 flex flex-wrap gap-4 text-sm text-amber-800">
-        <span>Cited sources: {citedSources}</span>
-        <span>Summary claims: {summaryLen}</span>
-        <span>QA score: {qaScore}/100</span>
+        <span>引用来源：{citedSources}</span>
+        <span>摘要结论：{summaryLen}</span>
+        <span>QA 评分：{qaScore}/100</span>
       </div>
 
       {requestedCompetitors.length > 0 && (
         <div className="mb-4">
           <h3 className="mb-2 text-sm font-semibold text-amber-900">
-            Per-competitor collection
+            按竞品采集情况
           </h3>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-amber-200 text-left text-amber-700">
-                <th className="pb-1.5 pr-3 font-semibold">Competitor</th>
-                <th className="pb-1.5 pr-3 font-semibold">Sources</th>
+                <th className="pb-1.5 pr-3 font-semibold">竞品</th>
+                <th className="pb-1.5 pr-3 font-semibold">来源数</th>
                 <th className="pb-1.5 pr-3 font-semibold">Live / Demo</th>
-                <th className="pb-1.5 font-semibold">Status</th>
+                <th className="pb-1.5 font-semibold">状态</th>
               </tr>
             </thead>
             <tbody>
@@ -453,7 +390,7 @@ function PrintInsufficientDataSection({
 
       {droppedCompetitors.length > 0 && (
         <div className="mb-4">
-          <h3 className="mb-2 text-sm font-semibold text-amber-900">Dropped competitors</h3>
+          <h3 className="mb-2 text-sm font-semibold text-amber-900">已剔除竞品</h3>
           <DroppedCompetitorsList dropped={droppedCompetitors} />
         </div>
       )}
@@ -477,7 +414,7 @@ function PrintInsufficientDataSection({
                 </span>
                 <p className="mt-0.5 text-gray-800">{issue.message}</p>
                 {issue.suggested_action && (
-                  <p className="mt-0.5 text-gray-500">Action: {issue.suggested_action}</p>
+                  <p className="mt-0.5 text-gray-500">建议：{issue.suggested_action}</p>
                 )}
               </li>
             ))}
@@ -514,16 +451,16 @@ function PrintInsufficientDataSection({
       )}
 
       <div>
-        <h3 className="mb-1.5 text-sm font-semibold text-amber-900">Suggested next steps</h3>
+        <h3 className="mb-1.5 text-sm font-semibold text-amber-900">建议下一步</h3>
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-amber-800">
           {dataMode === 'demo' && (
-            <li>Switch to &ldquo;Live crawl with fallback&rdquo; for non-SaaS competitors.</li>
+            <li>非 SaaS 竞品建议切换到“真实采集 + Demo 兜底”。</li>
           )}
           {dataMode === 'live_with_fallback' && (
-            <li>Check that competitor websites are publicly accessible.</li>
+            <li>检查竞品网站是否可公开访问。</li>
           )}
-          <li>Select the correct Industry Type when creating the project.</li>
-          <li>Verify that the competitor URLs are correct and reachable.</li>
+          <li>创建项目时选择正确的行业类型。</li>
+          <li>确认竞品 URL 正确且可访问。</li>
         </ul>
       </div>
     </div>
@@ -532,21 +469,21 @@ function PrintInsufficientDataSection({
 
 function formatSourceBreakdown(stats: CompetitorCollectionStats, dataMode: string): string {
   if (dataMode === 'demo') {
-    return stats.demo_source_count !== undefined ? `${stats.demo_source_count} demo` : '—'
+    return stats.demo_source_count !== undefined ? `${stats.demo_source_count} 个 Demo` : '—'
   }
   const live = stats.live_source_count ?? 0
   const demo = stats.fallback_source_count ?? 0
-  if (live === 0 && demo === 0) return '0 live'
-  if (demo === 0) return `${live} live`
-  return `${live} live · ${demo} demo`
+  if (live === 0 && demo === 0) return '0 个真实来源'
+  if (demo === 0) return `${live} 个真实来源`
+  return `${live} 个真实来源 · ${demo} 个 Demo`
 }
 
 function formatFallbackStatus(stats: CompetitorCollectionStats, dataMode: string): string {
-  if (dataMode === 'demo') return 'demo'
-  if (!stats.fallback_attempted) return 'live ok'
-  if (stats.fallback_attempted && !stats.fallback_available) return 'No demo fallback available'
-  if (stats.fallback_used) return 'fallback used'
-  return 'fallback attempted'
+  if (dataMode === 'demo') return 'Demo'
+  if (!stats.fallback_attempted) return '真实采集成功'
+  if (stats.fallback_attempted && !stats.fallback_available) return '无可用 Demo 兜底'
+  if (stats.fallback_used) return '已使用兜底'
+  return '已尝试兜底'
 }
 
 function PrintSection({
@@ -578,7 +515,7 @@ function PrintClaimList({
   citationIndex: Map<string, number>
 }) {
   if (!claims?.length) {
-    return <p className="text-sm text-gray-500">No items.</p>
+    return <p className="text-sm text-gray-500">暂无条目。</p>
   }
   return (
     <ol className="space-y-3">
@@ -634,8 +571,8 @@ function CompetitorCard({ competitor }: { competitor: CompetitorKnowledge }) {
       <dl className="mt-3 space-y-1 text-xs">
         {featureCategoryCount > 0 && (
           <div className="flex gap-1.5">
-            <dt className="font-medium text-gray-700">Features:</dt>
-            <dd className="text-gray-500">{featureCategoryCount} categories</dd>
+            <dt className="font-medium text-gray-700">功能：</dt>
+            <dd className="text-gray-500">{featureCategoryCount} 个类别</dd>
           </div>
         )}
         {plans.length > 0 && (
@@ -662,7 +599,7 @@ function CompetitorCard({ competitor }: { competitor: CompetitorKnowledge }) {
 function PrintPersonaSection({ competitors }: { competitors: CompetitorKnowledge[] }) {
   const withPersonas = competitors.filter((c) => (c.user_personas?.length ?? 0) > 0)
   if (withPersonas.length === 0) {
-    return <p className="text-sm text-gray-500">No user persona data available.</p>
+    return <p className="text-sm text-gray-500">暂无用户画像数据。</p>
   }
   return (
     <div className="space-y-6">
@@ -680,13 +617,13 @@ function PrintPersonaSection({ competitors }: { competitors: CompetitorKnowledge
                 )}
                 {(persona.needs?.length ?? 0) > 0 && (
                   <p className="mt-1.5 text-xs text-gray-500">
-                    <span className="font-medium text-gray-600">Needs: </span>
+                    <span className="font-medium text-gray-600">需求： </span>
                     {persona.needs.join(', ')}
                   </p>
                 )}
                 {(persona.pain_points?.length ?? 0) > 0 && (
                   <p className="mt-0.5 text-xs text-gray-500">
-                    <span className="font-medium text-gray-600">Pain points: </span>
+                    <span className="font-medium text-gray-600">痛点： </span>
                     {persona.pain_points.join(', ')}
                   </p>
                 )}
@@ -705,10 +642,10 @@ type SwotQuadrant = 'strengths' | 'weaknesses' | 'opportunities' | 'threats'
 
 const SWOT_QUADRANTS: { key: SwotQuadrant; label: string; borderClass: string; headingClass: string }[] =
   [
-    { key: 'strengths', label: 'Strengths', borderClass: 'border-green-200', headingClass: 'text-green-800' },
-    { key: 'weaknesses', label: 'Weaknesses', borderClass: 'border-red-200', headingClass: 'text-red-800' },
-    { key: 'opportunities', label: 'Opportunities', borderClass: 'border-blue-200', headingClass: 'text-blue-800' },
-    { key: 'threats', label: 'Threats', borderClass: 'border-orange-200', headingClass: 'text-orange-800' },
+    { key: 'strengths', label: '优势', borderClass: 'border-green-200', headingClass: 'text-green-800' },
+    { key: 'weaknesses', label: '劣势', borderClass: 'border-red-200', headingClass: 'text-red-800' },
+    { key: 'opportunities', label: '机会', borderClass: 'border-blue-200', headingClass: 'text-blue-800' },
+    { key: 'threats', label: '威胁', borderClass: 'border-orange-200', headingClass: 'text-orange-800' },
   ]
 
 function PrintSWOTSection({
@@ -722,7 +659,7 @@ function PrintSWOTSection({
 }) {
   const swots = collectSwots(swotComparison, competitorOverview)
   if (swots.length === 0) {
-    return <p className="text-sm text-gray-500">No SWOT data available.</p>
+    return <p className="text-sm text-gray-500">暂无 SWOT 数据。</p>
   }
   return (
     <div className="space-y-8">
@@ -740,7 +677,7 @@ function PrintSWOTSection({
                     {q.label}
                   </h4>
                   {items.length === 0 ? (
-                    <p className="text-xs text-gray-400">No items.</p>
+                    <p className="text-xs text-gray-400">暂无条目。</p>
                   ) : (
                     <ul className="space-y-1.5">
                       {items.map((claim, i) => (
@@ -770,9 +707,9 @@ function PrintSWOTSection({
 // ─── QA result (simplified, no progress bar) ─────────────────────────────────
 
 const SEVERITY_LABEL: Record<string, string> = {
-  high:   'Blocking Issue',
-  medium: 'Warning',
-  low:    'Advisory',
+  high:   '阻塞问题',
+  medium: '警告',
+  low:    '提示',
 }
 
 function PrintQAResult({ result }: { result: QAResult }) {
@@ -789,33 +726,33 @@ function PrintQAResult({ result }: { result: QAResult }) {
             result.passed ? 'font-semibold text-green-700' : 'font-semibold text-red-700'
           }
         >
-          {result.passed ? '✓ Passed' : '✗ Failed'}
+          {result.passed ? '✓ 通过' : '✗ 未通过'}
         </span>
-        <span className="text-gray-600">Score: {result.score}/100</span>
+        <span className="text-gray-600">评分：{result.score}/100</span>
         {blockingIssues.length > 0 && (
           <span className="text-gray-500">
-            {blockingIssues.length} blocking issue{blockingIssues.length !== 1 ? 's' : ''}
+            {blockingIssues.length} 个阻塞问题
           </span>
         )}
         {warnings.length > 0 && (
           <span className="text-gray-500">
-            {warnings.length} warning{warnings.length !== 1 ? 's' : ''}
+            {warnings.length} 个警告
           </span>
         )}
         {advisories.length > 0 && (
           <span className="text-gray-500">
-            {advisories.length} advisor{advisories.length !== 1 ? 'ies' : 'y'}
+            {advisories.length} 个提示
           </span>
         )}
         {blockingIssues.length === 0 && warnings.length === 0 && advisories.length === 0 && (
-          <span className="text-gray-500">No issues</span>
+          <span className="text-gray-500">没有问题</span>
         )}
       </div>
 
       {blockingIssues.length > 0 && (
         <>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-600">
-            Blocking Issues
+            阻塞问题
           </h3>
           <ul className="mb-4 space-y-2">
             {blockingIssues.map((issue, i) => (
@@ -830,7 +767,7 @@ function PrintQAResult({ result }: { result: QAResult }) {
                 </div>
                 <p className="text-sm text-gray-900">{issue.message}</p>
                 {issue.suggested_action && (
-                  <p className="mt-1 text-xs text-gray-500">Action: {issue.suggested_action}</p>
+                  <p className="mt-1 text-xs text-gray-500">建议：{issue.suggested_action}</p>
                 )}
               </li>
             ))}
@@ -841,7 +778,7 @@ function PrintQAResult({ result }: { result: QAResult }) {
       {warnings.length > 0 && (
         <>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-600">
-            Warnings
+            警告
           </h3>
           <ul className="mb-4 space-y-2">
             {warnings.map((issue, i) => (
@@ -856,7 +793,7 @@ function PrintQAResult({ result }: { result: QAResult }) {
                 </div>
                 <p className="text-sm text-gray-900">{issue.message}</p>
                 {issue.suggested_action && (
-                  <p className="mt-1 text-xs text-gray-500">Action: {issue.suggested_action}</p>
+                  <p className="mt-1 text-xs text-gray-500">建议：{issue.suggested_action}</p>
                 )}
               </li>
             ))}
@@ -867,14 +804,14 @@ function PrintQAResult({ result }: { result: QAResult }) {
       {advisories.length > 0 && (
         <>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-            Advisories
+            提示
           </h3>
           <ul className="space-y-2">
             {advisories.map((issue, i) => (
               <li key={issue.issue_id ?? i} className="print-card rounded border border-gray-100 p-3">
                 <div className="mb-1 flex items-center gap-2">
                   <span className="text-xs font-semibold uppercase text-gray-500">
-                    Advisory
+                    提示
                   </span>
                   <span className="text-xs text-gray-400">
                     {issue.target_agent} · {issue.issue_type}
@@ -882,7 +819,7 @@ function PrintQAResult({ result }: { result: QAResult }) {
                 </div>
                 <p className="text-sm text-gray-700">{issue.message}</p>
                 {issue.suggested_action && (
-                  <p className="mt-1 text-xs text-gray-400">Action: {issue.suggested_action}</p>
+                  <p className="mt-1 text-xs text-gray-400">建议：{issue.suggested_action}</p>
                 )}
               </li>
             ))}
@@ -891,77 +828,10 @@ function PrintQAResult({ result }: { result: QAResult }) {
       )}
 
       <p className="mt-3 text-xs text-gray-400">
-        A QA score of 100 does not guarantee factual accuracy — always verify claims with cited
-        sources.
+        QA 100 分不代表事实一定正确，仍需对照引用来源核验关键结论。
       </p>
     </div>
   )
-}
-
-interface PrintCustomDimensionCell {
-  score?: number | string
-  rationale?: string
-  evidence?: unknown
-  source_confidence?: string
-  confidence?: string
-}
-
-function PrintCustomDimensionTable({
-  analysis,
-}: {
-  analysis: Record<string, Record<string, unknown>>
-}) {
-  return (
-    <div className="space-y-4">
-      {Object.entries(analysis).map(([dimension, competitorData]) => {
-        const entries = isRecord(competitorData) ? Object.entries(competitorData) : []
-        return (
-          <div key={dimension} className="overflow-x-auto rounded-lg border border-gray-200 print:overflow-visible">
-            <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700">
-              {dimension.replace(/_/g, ' ')}
-            </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-gray-100 text-left text-gray-500">
-                  <th className="px-3 py-2 font-medium">Competitor</th>
-                  <th className="px-3 py-2 text-center font-medium">Score</th>
-                  <th className="px-3 py-2 font-medium">Rationale</th>
-                  <th className="px-3 py-2 font-medium">Evidence</th>
-                  <th className="px-3 py-2 font-medium">Confidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map(([competitorName, value]) => {
-                  const cell = isRecord(value) ? (value as PrintCustomDimensionCell) : undefined
-                  return (
-                    <tr key={competitorName} className="border-b border-gray-100 last:border-0">
-                      <td className="px-3 py-2 font-medium text-gray-700">{competitorName}</td>
-                      <td className="px-3 py-2 text-center text-gray-600">{cell?.score ?? '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{cell?.rationale ?? '—'}</td>
-                      <td className="px-3 py-2 font-mono text-[11px] text-gray-500">
-                        {formatEvidenceList(cell?.evidence)}
-                      </td>
-                      <td className="px-3 py-2 text-gray-500">
-                        {cell?.source_confidence ?? cell?.confidence ?? '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function formatEvidenceList(evidence: unknown): string {
-  return Array.isArray(evidence) && evidence.length > 0 ? evidence.join(', ') : '—'
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -1112,7 +982,7 @@ function collectSwots(
   for (const c of competitorOverview ?? []) {
     if (c.swot) {
       out.push({
-        name: c.competitor_name || c.competitor_id || 'Competitor',
+        name: c.competitor_name || c.competitor_id || '竞品',
         swot: {
           strengths: toClaimArray(c.swot.strengths),
           weaknesses: toClaimArray(c.swot.weaknesses),
@@ -1169,10 +1039,10 @@ function inferDropReason(
 
   const cov = coverageMap[name]
   if (cov !== undefined) {
-    if (cov.score === 0) return 'No usable sources collected'
-    if (cov.score < 40) return `Weak coverage (score ${cov.score}/100)`
+    if (cov.score === 0) return '未采集到可用来源'
+    if (cov.score < 40) return `来源覆盖较弱（${cov.score}/100）`
   }
 
-  if (dataMode === 'demo') return 'No demo fixture found'
-  return 'Insufficient sources for analysis'
+  if (dataMode === 'demo') return '未找到 Demo fixture'
+  return '可用于分析的来源不足'
 }

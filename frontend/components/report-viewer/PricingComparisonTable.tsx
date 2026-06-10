@@ -56,7 +56,7 @@ export function PricingComparisonTable({ data, emptyMessage }: PricingComparison
               scope="col"
               className="w-36 px-4 py-3 text-left text-xs font-semibold tracking-wider text-gray-500 uppercase"
             >
-              Plan
+              套餐
             </th>
             {parsed.map(({ competitor }) => (
               <th

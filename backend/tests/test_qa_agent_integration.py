@@ -21,7 +21,6 @@ from app.schemas.knowledge import (
     ProductProfile,
     SWOTAnalysis,
 )
-from app.schemas.pm_sections import FeatureInsights, GtmProfile, MarketBackground, OperationMonetization
 from app.schemas.report import CompetitiveReport
 from app.schemas.source import Reliability, SourceEvidence, SourceType
 
@@ -124,11 +123,6 @@ def _passing_report(source_id: str = "src_qaaaaaa1") -> CompetitiveReport:
             Claim(text="Bundle SKU", evidence=[source_id])
         ],
         source_list=[_source(source_id)],
-        market_background=MarketBackground(market_overview="Competitive AI coding tools market."),
-        feature_insights=FeatureInsights(table_stakes=["Code completion", "AI chat"]),
-        operation_monetization=OperationMonetization(
-            gtm_profiles=[GtmProfile(competitor_name="Cursor", motion="PLG")]
-        ),
     )
 
 

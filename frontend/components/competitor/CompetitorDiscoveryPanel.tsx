@@ -28,8 +28,8 @@ export default function CompetitorDiscoveryPanel({
   industry,
   industryType,
   onAdd,
-  label = 'Discover competitors',
-  emptyLabel = 'No candidates found.',
+  label = '发现竞品',
+  emptyLabel = '没有找到候选竞品。',
 }: CompetitorDiscoveryPanelProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -89,7 +89,7 @@ export default function CompetitorDiscoveryPanel({
         <span className="inline-block rounded border border-gray-200 bg-gray-50 px-2 py-0.5">
           Discovery unavailable
         </span>
-        <span>Set ENABLE_LIVE_SEARCH=true and TAVILY_API_KEY to enable</span>
+        <span>设置 ENABLE_LIVE_SEARCH=true 并配置 TAVILY_API_KEY 后可用</span>
       </div>
     )
   }
@@ -102,7 +102,7 @@ export default function CompetitorDiscoveryPanel({
         disabled={loading || !industry.trim()}
         className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400 underline"
       >
-        {loading ? 'Discovering…' : label}
+        {loading ? '查找中…' : label}
       </button>
 
       {error && (
@@ -116,7 +116,7 @@ export default function CompetitorDiscoveryPanel({
       {open && candidates.length > 0 && (
         <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2">
           <p className="mb-1 text-xs text-gray-500 italic">
-            Suggested roles are heuristic — edit name and URL after adding.
+            角色建议仅供参考，添加后仍可编辑名称和 URL。
           </p>
           <ul className="space-y-1">
             {candidates.map((c) => {
@@ -151,7 +151,7 @@ export default function CompetitorDiscoveryPanel({
                         </span>
                       )}
                       <span className="text-[10px] text-blue-500 italic">
-                        Suggested role: Direct Competitor
+                        建议角色：直接竞品
                       </span>
                     </div>
                     <p className="truncate text-[10px] text-blue-600">{c.website}</p>
@@ -178,7 +178,7 @@ export default function CompetitorDiscoveryPanel({
                 onClick={handleAdd}
                 className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
               >
-                Add {selected.size} selected
+                添加已选 {selected.size} 项
               </button>
             </div>
           )}

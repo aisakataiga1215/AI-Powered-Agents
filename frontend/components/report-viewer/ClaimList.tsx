@@ -17,7 +17,7 @@ export function ClaimList({ claims, sourceList, emptyMessage }: ClaimListProps) 
   if (!claims || claims.length === 0) {
     return (
       <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">
-        {emptyMessage ?? 'No data available.'}
+        {emptyMessage ?? '暂无数据。'}
       </p>
     )
   }
@@ -32,7 +32,7 @@ export function ClaimList({ claims, sourceList, emptyMessage }: ClaimListProps) 
           <p className="text-sm leading-relaxed text-gray-800">{c.text || '—'}</p>
           {(c.evidence?.length ?? 0) > 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] tracking-wider text-gray-400 uppercase">Sources:</span>
+              <span className="text-[10px] tracking-wider text-gray-400 uppercase">来源：</span>
               {c.evidence!.map((srcId) => {
                 const num = sourceIndex.get(srcId)
                 return (
@@ -52,7 +52,7 @@ export function ClaimList({ claims, sourceList, emptyMessage }: ClaimListProps) 
             c.is_hypothesis && (
               <div className="mt-3">
                 <span className="rounded border border-yellow-200 bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-800">
-                  hypothesis · unverified
+                  假设 · 未验证
                 </span>
               </div>
             )

@@ -28,6 +28,21 @@ const STATUS_PILLS: Record<ProjectStatus, string> = {
   failed: 'bg-red-50 text-red-700 border-red-200',
 }
 
+const STATUS_LABELS: Record<ProjectStatus, string> = {
+  created: '待运行',
+  running: '运行中',
+  completed: '已完成',
+  qa_failed: 'QA 未通过',
+  failed: '失败',
+}
+
+const GOAL_LABELS: Record<string, string> = {
+  feature_comparison: '功能对比',
+  pricing_analysis: '定价分析',
+  user_personas: '用户画像',
+  swot: 'SWOT',
+}
+
 interface PageProps {
   params: Promise<{ id: string }>
 }
@@ -89,8 +104,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
 
       {projectQuery.isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Failed to load project.{' '}
-          {projectQuery.error instanceof Error ? projectQuery.error.message : 'Unknown error.'}
+          项目加载失败。{projectQuery.error instanceof Error ? projectQuery.error.message : '未知错误。'}
         </div>
       )}
 
@@ -98,7 +112,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
         <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">Project</p>
+              <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">项目</p>
               <h1 className="mt-1 text-2xl font-semibold text-gray-900">
                 {projectQuery.data.industry}
               </h1>
@@ -113,16 +127,16 @@ export default function ProjectExecutionPage({ params }: PageProps) {
                   {isRunning && (
                     <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
                   )}
-                  {projectQuery.data.status.replace('_', ' ')}
+                  {STATUS_LABELS[projectQuery.data.status] ?? projectQuery.data.status}
                 </span>
                 {projectQuery.data.goals.map((g) => (
                   <span key={g} className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                    {g}
+                    {GOAL_LABELS[g] ?? g}
                   </span>
                 ))}
               </div>
               <p className="mt-2 text-xs text-gray-500">
-                Created {formatDateTime(projectQuery.data.created_at)} · Updated{' '}
+                创建于 {formatDateTime(projectQuery.data.created_at)} · 更新于{' '}
                 {formatDateTime(projectQuery.data.updated_at)}
               </p>
             </div>
@@ -144,18 +158,18 @@ export default function ProjectExecutionPage({ params }: PageProps) {
                     aria-hidden
                   />
                 )}
-                {runMutation.isPending ? 'Starting...' : 'Run workflow'}
+                {runMutation.isPending ? '启动中...' : '运行工作流'}
               </button>
               {projectQuery.data.status !== 'created' && (
                 <p className="text-xs text-gray-500">
-                  Workflow already triggered for this project.
+                  该项目已触发工作流。
                 </p>
               )}
               {runMutation.isError && (
                 <p className="text-xs text-red-600">
                   {runMutation.error instanceof Error
                     ? runMutation.error.message
-                    : 'Failed to start workflow.'}
+                    : '工作流启动失败。'}
                 </p>
               )}
             </div>
@@ -176,10 +190,10 @@ export default function ProjectExecutionPage({ params }: PageProps) {
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold tracking-wider text-gray-700 uppercase">
-            Agent workflow
+            Agent 工作流
           </h2>
           {isRunning && (
-            <span className="text-xs text-blue-700">Workflow running... polling every 3s</span>
+            <span className="text-xs text-blue-700">工作流运行中，每 3 秒刷新一次</span>
           )}
         </div>
         <AgentDAG traces={traces} projectStatus={projectQuery.data?.status} />
@@ -202,24 +216,24 @@ export default function ProjectExecutionPage({ params }: PageProps) {
           href={`/projects/${id}/traces`}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
         >
-          <span className="text-blue-600">Trace timeline</span>
-          <span className="text-gray-400">Inspect inputs, outputs, latency, and retries</span>
+          <span className="text-blue-600">Trace 时间线</span>
+          <span className="text-gray-400">查看输入、输出、耗时和重试</span>
         </Link>
         {reportAvailable ? (
           <Link
             href={`/projects/${id}/report`}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
           >
-            <span className="text-blue-600">Final report</span>
-            <span className="text-gray-400">View structured output and citations</span>
+            <span className="text-blue-600">最终报告</span>
+            <span className="text-gray-400">查看结构化输出和引用来源</span>
           </Link>
         ) : (
           <span
             className="inline-flex items-center gap-2 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-400"
-            title="Report becomes available once the workflow finishes."
+            title="工作流完成后可查看报告。"
           >
-            <span>Final report</span>
-            <span>(available after workflow finishes)</span>
+            <span>最终报告</span>
+            <span>（工作流完成后可用）</span>
           </span>
         )}
       </section>
@@ -245,12 +259,12 @@ function FailureSummary({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-orange-900">
-            {status === 'qa_failed' ? 'QA failed — report needs review' : 'Workflow failed'}
+            {status === 'qa_failed' ? 'QA 未通过，报告需要复核' : '工作流失败'}
           </h2>
           <p className="mt-1 text-orange-800">
             {status === 'qa_failed'
-              ? 'The workflow produced a partial report, but QA found blocking issues.'
-              : 'The workflow stopped before a final report was produced.'}
+              ? '工作流已生成部分报告，但 QA 发现阻塞问题。'
+              : '工作流在生成最终报告前停止。'}
           </p>
         </div>
         {qaScore !== undefined && (
@@ -263,7 +277,7 @@ function FailureSummary({
       {failedRun?.error_message && (
         <div className="mt-3 rounded-md border border-orange-200 bg-white px-3 py-2">
           <div className="text-xs font-medium text-orange-700">
-            {failedRun.agent_name} error
+            {failedRun.agent_name} 错误
           </div>
           <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-gray-700">
             {failedRun.error_message}
@@ -286,7 +300,7 @@ function FailureSummary({
               </span>
               <p className="mt-1 text-gray-800">{issue.message}</p>
               {issue.suggested_action && (
-                <p className="mt-1 text-gray-500">Action: {issue.suggested_action}</p>
+                <p className="mt-1 text-gray-500">建议：{issue.suggested_action}</p>
               )}
             </li>
           ))}
@@ -297,7 +311,7 @@ function FailureSummary({
         href={`/projects/${projectId}/traces`}
         className="mt-3 inline-flex rounded-md border border-orange-200 bg-white px-3 py-1.5 text-xs font-medium text-orange-800 hover:bg-orange-100"
       >
-        Inspect full trace
+        查看完整 Trace
       </Link>
     </section>
   )
@@ -318,7 +332,7 @@ function Breadcrumb({ industry, id }: { industry?: string; id: string }) {
   return (
     <nav className="text-sm text-gray-500">
       <Link href="/projects" className="hover:text-gray-900">
-        Projects
+        项目
       </Link>
       <span className="mx-1">/</span>
       <span className="text-gray-900">{industry ?? id}</span>

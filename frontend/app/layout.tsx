@@ -4,14 +4,14 @@ import './globals.css'
 import { ClientProviders } from '@/components/ClientProviders'
 
 export const metadata: Metadata = {
-  title: 'AgentInsight — Competitive Analysis',
+  title: 'AgentInsight — 竞品分析',
   description:
-    'AI-powered competitive analysis multi-agent system. Collect public information, extract structured knowledge, and generate cited reports.',
+    '基于多 Agent 的竞品分析系统：采集公开信息、抽取结构化知识，并生成带来源的报告。',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full" suppressHydrationWarning>
+    <html lang="zh-CN" className="h-full" suppressHydrationWarning>
       <body className="min-h-full bg-gray-50 text-gray-900 antialiased" suppressHydrationWarning>
         <ClientProviders>
           <div className="flex min-h-screen flex-col">
@@ -29,18 +29,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     AgentInsight
                   </Link>
                   <span className="hidden text-sm text-gray-400 sm:inline">
-                    Competitive Analysis
+                    竞品分析
                   </span>
                 </div>
                 <nav className="flex items-center gap-5 text-sm text-gray-600">
                   <Link href="/projects" className="transition-colors hover:text-gray-900">
-                    Projects
+                    项目
                   </Link>
                   <Link
                     href="/"
                     className="rounded-md bg-gray-900 px-3 py-1.5 text-white transition-colors hover:bg-gray-700"
                   >
-                    New Analysis
+                    新建分析
                   </Link>
                 </nav>
               </div>
@@ -48,8 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
             <footer className="border-t border-gray-200 bg-white print:hidden">
               <div className="mx-auto max-w-6xl px-6 py-4 text-xs text-gray-500">
-                AgentInsight MVP — multi-agent competitive analysis with source-traceable claims.
-                Verify cited evidence before sharing generated reports externally.
+                AgentInsight MVP — 多 Agent 竞品分析系统。对外分享报告前，请先核验引用来源。
               </div>
             </footer>
           </div>

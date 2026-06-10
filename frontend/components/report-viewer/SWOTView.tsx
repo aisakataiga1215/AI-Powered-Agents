@@ -10,11 +10,12 @@
  */
 
 import { useSourcePanel } from '@/lib/store'
-import type { Claim, CompetitorKnowledge, SWOTAnalysis } from '@/lib/types'
+import type { Claim, CompetitorKnowledge, SourceEvidence, SWOTAnalysis } from '@/lib/types'
 
 interface SWOTViewProps {
   swotComparison: Record<string, unknown>
   competitorOverview: CompetitorKnowledge[]
+  sourceList?: SourceEvidence[]
 }
 
 type Quadrant = 'strengths' | 'weaknesses' | 'opportunities' | 'threats'
@@ -22,32 +23,33 @@ type Quadrant = 'strengths' | 'weaknesses' | 'opportunities' | 'threats'
 const QUADRANTS: { key: Quadrant; label: string; tone: string }[] = [
   {
     key: 'strengths',
-    label: 'Strengths',
+    label: '优势',
     tone: 'border-green-200 bg-green-50 text-green-900',
   },
   {
     key: 'weaknesses',
-    label: 'Weaknesses',
+    label: '劣势',
     tone: 'border-red-200 bg-red-50 text-red-900',
   },
   {
     key: 'opportunities',
-    label: 'Opportunities',
+    label: '机会',
     tone: 'border-blue-200 bg-blue-50 text-blue-900',
   },
   {
     key: 'threats',
-    label: 'Threats',
+    label: '威胁',
     tone: 'border-orange-200 bg-orange-50 text-orange-900',
   },
 ]
 
-export function SWOTView({ swotComparison, competitorOverview }: SWOTViewProps) {
+export function SWOTView({ swotComparison, competitorOverview, sourceList = [] }: SWOTViewProps) {
   const swots = collectSwots(swotComparison, competitorOverview)
+  const sourceIndex = new Map(sourceList.map((s, i) => [s.source_id, i + 1]))
   if (swots.length === 0) {
     return (
       <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">
-        No SWOT data available.
+        暂无 SWOT 数据。
       </p>
     )
   }
@@ -59,7 +61,13 @@ export function SWOTView({ swotComparison, competitorOverview }: SWOTViewProps) 
           <h3 className="mb-2 text-base font-semibold text-gray-900">{name}</h3>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {QUADRANTS.map((q) => (
-              <Quadrant key={q.key} tone={q.tone} label={q.label} items={swot[q.key]} />
+              <Quadrant
+                key={q.key}
+                tone={q.tone}
+                label={q.label}
+                items={swot[q.key]}
+                sourceIndex={sourceIndex}
+              />
             ))}
           </div>
         </div>
@@ -72,10 +80,12 @@ function Quadrant({
   label,
   tone,
   items,
+  sourceIndex,
 }: {
   label: string
   tone: string
   items: Claim[]
+  sourceIndex: Map<string, number>
 }) {
   const openSource = useSourcePanel((s) => s.openSource)
   return (
@@ -87,30 +97,60 @@ function Quadrant({
         {label}
       </h4>
       {(!items || items.length === 0) && (
-        <p className="text-sm opacity-70">No items.</p>
+        <p className="text-sm opacity-70">暂无条目。</p>
       )}
       <ul className="space-y-2">
         {(items ?? []).map((claim, i) => (
           <li key={claim.claim_id ?? i} className="text-sm leading-relaxed">
             <p>{claim.text}</p>
-            {(claim.evidence?.length ?? 0) > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {claim.evidence!.map((srcId) => (
-                  <button
-                    key={srcId}
-                    type="button"
-                    onClick={() => openSource(srcId)}
-                    className="rounded border border-white/40 bg-white/60 px-1.5 py-0.5 font-mono text-[10px] text-gray-800 hover:bg-white"
-                  >
-                    {srcId}
-                  </button>
-                ))}
-              </div>
-            )}
+            <SourceBadges
+              evidence={claim.evidence}
+              sourceIndex={sourceIndex}
+              onOpen={openSource}
+            />
           </li>
         ))}
       </ul>
     </section>
+  )
+}
+
+function SourceBadges({
+  evidence,
+  sourceIndex,
+  onOpen,
+}: {
+  evidence?: string[]
+  sourceIndex: Map<string, number>
+  onOpen: (sourceId: string) => void
+}) {
+  const ids = evidence ?? []
+  if (ids.length === 0) return null
+  const visible = ids.slice(0, 3)
+  const hiddenCount = Math.max(ids.length - visible.length, 0)
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+      <span className="text-gray-500/80">来源</span>
+      {visible.map((srcId) => {
+        const num = sourceIndex.get(srcId)
+        return (
+          <button
+            key={srcId}
+            type="button"
+            onClick={() => onOpen(srcId)}
+            title={srcId}
+            className="rounded border border-gray-200 bg-white/80 px-1.5 py-0.5 font-mono font-semibold text-gray-700 shadow-sm hover:bg-white"
+          >
+            [{num ?? '?'}]
+          </button>
+        )
+      })}
+      {hiddenCount > 0 && (
+        <span className="rounded bg-white/60 px-1.5 py-0.5 text-gray-500">
+          +{hiddenCount}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -192,7 +232,7 @@ function collectSwots(
   for (const c of competitorOverview ?? []) {
     if (c.swot) {
       out.push({
-        name: c.competitor_name || c.competitor_id || 'Competitor',
+        name: c.competitor_name || c.competitor_id || '竞品',
         swot: {
           strengths: toClaimArray(c.swot.strengths),
           weaknesses: toClaimArray(c.swot.weaknesses),

@@ -1,3 +1,14 @@
+---
+title: AI-Powered Competitive Analysis Agents
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: Multi-agent competitive analysis backend (FastAPI + LangGraph)
+---
+
 # AI-Powered Competitive Analysis Agents
 
 Multi-agent system that researches competitors, generates structured analysis, and produces traceable reports via a LangGraph DAG workflow.

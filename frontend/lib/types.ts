@@ -56,85 +56,6 @@ export interface DimensionScore {
   source_confidence: SourceConfidence
 }
 
-export interface CompetitorScore {
-  competitor_name: string
-  overall_score: number
-  dimensions: DimensionScore[]
-  scoring_note?: string
-}
-
-export interface OpportunityDimension {
-  dimension_name: string
-  score: number
-  rationale: string
-  evidence: string[]
-  source_confidence: SourceConfidence
-}
-
-export interface OpportunityScore {
-  overall_score: number
-  dimensions: OpportunityDimension[]
-  scoring_note?: string
-}
-
-export interface MarketTrend {
-  trend: string
-  evidence: string[]
-}
-
-export interface DataSignal {
-  metric_name: string
-  competitor_name: string
-  value: string
-  signal_type: string
-  source_ids: string[]
-  confidence: SourceConfidence
-  is_estimate: boolean
-  notes: string
-}
-
-export interface MarketBackground {
-  market_overview: string
-  market_size_notes: string
-  trends: MarketTrend[]
-  key_drivers: string[]
-  key_challenges: string[]
-  data_signals?: DataSignal[]
-}
-
-export interface FeatureInsights {
-  table_stakes: string[]
-  differentiators: Array<{ feature: string; competitors: string[] }>
-  gaps: string[]
-  cross_competitor_patterns: string[]
-  module_breakdown?: Array<{
-    module_name: string
-    user_pain: string
-    core_or_auxiliary: string
-    competitors: string[]
-    evidence: string[]
-  }>
-  user_path_notes?: Record<string, string>
-}
-
-export interface GtmProfile {
-  competitor_name: string
-  motion: string
-  acquisition_channels: string[]
-  pricing_strategy: string
-  expansion_model: string
-  evidence: string[]
-}
-
-export interface OperationMonetization {
-  gtm_profiles: GtmProfile[]
-  monetization_patterns: string[]
-  aarrr_notes: Record<string, Record<string, string>>
-  free_paid_boundaries?: Record<string, string>
-  willingness_to_pay?: Record<string, string>
-  experience_risks?: Record<string, string>
-}
-
 export interface CompetitorInput {
   name: string
   url: string
@@ -385,14 +306,6 @@ export interface CompetitiveReport {
   analysis_purpose?: string
   analysis_objective?: string
   competitor_selection_rationale?: Record<string, string>
-  purpose_sections?: Record<string, unknown>
-  competitor_scores?: Record<string, CompetitorScore>
-  opportunity_score?: OpportunityScore | null
-  custom_dimension_analysis?: Record<string, Record<string, unknown>>
-  // M13B: PM-framework sections
-  market_background?: MarketBackground | null
-  feature_insights?: FeatureInsights | null
-  operation_monetization?: OperationMonetization | null
 }
 
 /**

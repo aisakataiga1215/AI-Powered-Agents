@@ -39,6 +39,12 @@ logger = get_logger(__name__)
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "analyst.md"
 _MAX_CONTENT_CHARS = 2000
 _RAW_LOG_CHARS = 1000
+_TRACE_PREVIEW_CHARS = 1200
+
+
+def _preview(text: str, limit: int = _TRACE_PREVIEW_CHARS) -> str:
+    normalized = " ".join((text or "").split())
+    return normalized[:limit] + ("…" if len(normalized) > limit else "")
 
 
 def _load_prompt() -> str:
@@ -253,6 +259,7 @@ def run(
             "rework_hints": rework_hints or [],
             "analysis_purpose": analysis_purpose,
             "custom_dimensions": custom_dimensions or [],
+            "decision_summary": "Extract normalized competitor knowledge from collected evidence.",
         },
         status=AgentRunStatus.running,
     )
@@ -270,6 +277,9 @@ def run(
 
         results: list[CompetitorKnowledge] = []
         total_usage = TokenUsage()
+        prompt_previews: dict[str, str] = {}
+        llm_output_previews: dict[str, str] = {}
+        parse_status_by_competitor: dict[str, str] = {}
 
         for competitor_name, comp_sources in grouped.items():
             user_message = _build_user_message(
@@ -286,12 +296,17 @@ def run(
                 HumanMessage(content=user_message),
             ]
             source_ids = [s.source_id for s in comp_sources]
+            prompt_previews[competitor_name] = _preview(user_message)
 
             raw_extraction: RawCompetitorExtraction | None = None
             try:
                 response = llm.invoke(messages)
                 content = getattr(response, "content", "") or ""
+                llm_output_previews[competitor_name] = _preview(str(content))
                 raw_extraction = _parse_raw_extraction(content, competitor_name)
+                parse_status_by_competitor[competitor_name] = (
+                    "parsed" if raw_extraction is not None else "fallback_empty"
+                )
                 # Accumulate token usage across all per-competitor LLM calls.
                 usage_meta = getattr(response, "usage_metadata", None)
                 if usage_meta and isinstance(usage_meta, dict):
@@ -310,6 +325,7 @@ def run(
                             total_tokens=total_usage.total_tokens + int(usage.get("total_tokens", 0)),
                         )
             except Exception as exc:  # noqa: BLE001
+                parse_status_by_competitor[competitor_name] = "llm_error_fallback_empty"
                 logger.error(
                     "AnalystAgent: LLM call failed for '%s': %s; using empty knowledge.",
                     competitor_name,
@@ -339,6 +355,10 @@ def run(
             output={
                 "knowledge_count": len(results),
                 "competitors": [k.competitor_name for k in results],
+                "decision_summary": f"Generated structured knowledge for {len(results)} competitors.",
+                "prompt_preview": prompt_previews,
+                "llm_output_preview": llm_output_previews,
+                "parse_status": parse_status_by_competitor,
             },
             latency_ms=elapsed_ms,
             token_usage=total_usage,

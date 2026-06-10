@@ -39,22 +39,22 @@ const GOAL_OPTIONS: GoalOption[] = [
   {
     value: 'feature_comparison',
     label: '功能对比',
-    description: 'Map feature coverage across competitors.',
+    description: '对比各竞品的功能覆盖。',
   },
   {
     value: 'pricing_analysis',
     label: '定价分析',
-    description: 'Compare plan structure and price points.',
+    description: '对比套餐结构和价格点。',
   },
   {
     value: 'user_personas',
     label: '用户画像',
-    description: 'Identify each product’s primary audiences.',
+    description: '识别各产品的主要用户群。',
   },
   {
     value: 'swot',
     label: 'SWOT 分析',
-    description: 'Strengths, weaknesses, opportunities, threats.',
+    description: '分析优势、劣势、机会和威胁。',
   },
 ]
 
@@ -65,14 +65,14 @@ interface IndustryTypeOption {
 }
 
 const INDUSTRY_TYPE_OPTIONS: IndustryTypeOption[] = [
-  { value: 'ai_saas', label: 'AI / SaaS', description: 'Software tools, APIs, developer platforms' },
-  { value: 'ai_search', label: 'AI Search / Q&A', description: 'Answer engines, chat assistants, research tools' },
-  { value: 'design_tools', label: 'Design Tools', description: 'Visual design, whiteboards, creative suites' },
-  { value: 'ecommerce', label: 'E-commerce', description: 'Online marketplaces, retail, shopping' },
-  { value: 'local_services', label: 'Local Services', description: 'Delivery, gig economy, on-demand' },
-  { value: 'open_source', label: 'Open Source / Nonprofit', description: 'Foundations, public-good products, communities' },
-  { value: 'social', label: 'Social / Creator', description: 'Social platforms, creator tools, communities' },
-  { value: 'general', label: 'General', description: 'Other industries' },
+  { value: 'ai_saas', label: 'AI / SaaS', description: '软件工具、API、开发者平台' },
+  { value: 'ai_search', label: 'AI 搜索 / 问答', description: '答案引擎、聊天助手、研究工具' },
+  { value: 'design_tools', label: '设计工具', description: '视觉设计、白板、创意套件' },
+  { value: 'ecommerce', label: '电商', description: '电商平台、零售、交易市场' },
+  { value: 'local_services', label: '本地生活', description: '外卖、到家服务、即时履约' },
+  { value: 'open_source', label: '开源 / 非营利', description: '基金会、公共产品、社区项目' },
+  { value: 'social', label: '社交 / 创作者', description: '社交平台、创作者工具、社区' },
+  { value: 'general', label: '通用', description: '其他行业' },
 ]
 
 interface AnalysisPurposeOption {
@@ -88,22 +88,31 @@ const ANALYSIS_PURPOSE_OPTIONS: AnalysisPurposeOption[] = [
   { value: 'competitor_success_analysis', label: '我想分析某个竞品', description: '拆解定位、增长路径、变现和护城河' },
 ]
 
-const CUSTOM_DIMENSION_SUGGESTIONS = ['价格', '隐私', '本地部署', 'API', '企业版', '安全合规']
+const CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY: Record<IndustryType, string[]> = {
+  ai_saas: ['价格', '隐私', '本地部署', 'API', '企业版', '安全合规'],
+  ai_search: ['答案质量', '来源引用', '实时性', '多模态', '隐私', '付费限制'],
+  design_tools: ['协作体验', '模板生态', '品牌资产', '导出格式', '团队权限', '学习成本'],
+  ecommerce: ['商品供给', '价格竞争力', '履约配送', '商家生态', '交易保障', '会员体系'],
+  local_services: ['配送速度', '供给密度', '服务覆盖', '骑手/商家管理', '会员补贴', '售后体验'],
+  open_source: ['社区活跃度', '治理结构', '文档质量', '商业支持', '捐赠/会员', '生态项目'],
+  social: ['内容供给', '创作者激励', '社区氛围', '推荐机制', '互动玩法', '商业化干扰'],
+  general: ['用户体验', '核心功能', '价格', '渠道', '品牌信任', '风险'],
+}
 const MAX_CUSTOM_DIMENSIONS = 8
 
 const COMPETITOR_ROLE_OPTIONS: { value: CompetitorRole; label: string }[] = [
-  { value: 'direct_competitor', label: 'Direct Competitor' },
-  { value: 'indirect_competitor', label: 'Indirect Competitor' },
-  { value: 'inspiration_product', label: 'Inspiration Product' },
-  { value: 'benchmark_leader', label: 'Benchmark Leader' },
+  { value: 'direct_competitor', label: '直接竞品' },
+  { value: 'indirect_competitor', label: '间接竞品' },
+  { value: 'inspiration_product', label: '参考产品' },
+  { value: 'benchmark_leader', label: '标杆产品' },
 ]
 
 const RESEARCH_KIND_OPTIONS: { value: ResearchInputKind; label: string }[] = [
-  { value: 'survey', label: 'Survey results' },
-  { value: 'interview', label: 'Interview notes' },
-  { value: 'questionnaire', label: 'Questionnaire design' },
-  { value: 'desk_research', label: 'Desk research' },
-  { value: 'notes', label: 'Notes' },
+  { value: 'survey', label: '问卷结果' },
+  { value: 'interview', label: '访谈记录' },
+  { value: 'questionnaire', label: '问卷设计' },
+  { value: 'desk_research', label: '桌面研究' },
+  { value: 'notes', label: '备注' },
 ]
 
 const DEFAULT_COMPETITORS: CompetitorInput[] = [
@@ -275,6 +284,9 @@ export default function NewProjectPage() {
   }
 
   const dataMode = selectedDataMode ?? (searchStatusQuery.data?.search_available ? 'live_with_fallback' : 'demo')
+  const customDimensionSuggestions =
+    CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY[industryType] ??
+    CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY.general
   const submitDisabled =
     createMutation.isPending ||
     industry.trim().length === 0 ||
@@ -284,15 +296,13 @@ export default function NewProjectPage() {
     <div className="mx-auto max-w-3xl">
       <header className="mb-8">
         <p className="text-xs font-medium uppercase tracking-wider text-blue-700">
-          New Analysis
+          新建分析
         </p>
         <h1 className="mt-2 text-3xl font-semibold text-gray-900">
-          Create a competitive analysis project
+          创建竞品分析项目
         </h1>
         <p className="mt-2 max-w-xl text-sm text-gray-600">
-          Define the industry, the competitors you want analyzed, and the
-          analytical goals. The Collector, Analyst, Writer, and QA agents
-          will run as a LangGraph workflow once you start the run.
+          先明确分析主题、竞品和目标。启动后，采集、分析、撰写和 QA Agent 会按工作流依次执行。
         </p>
       </header>
 
@@ -301,42 +311,31 @@ export default function NewProjectPage() {
         className="space-y-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
       >
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">Project entry mode</h2>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <h2 className="text-sm font-medium text-gray-900">创建方式</h2>
+          <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 p-1">
             {([
               {
                 value: 'discover' as const,
-                label: 'Mode A · Describe and discover',
-                description: 'Start from a natural-language topic, review candidates, then add selected competitors.',
+                label: '描述后发现',
               },
               {
                 value: 'manual' as const,
-                label: 'Mode B · Manual competitor list',
-                description: 'Enter known competitor names and URLs directly, then select official source pages.',
+                label: '手动填写',
               },
             ]).map((option) => (
-              <label
+              <button
                 key={option.value}
+                type="button"
+                onClick={() => setCreationMode(option.value)}
                 className={cn(
-                  'flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition-colors',
+                  'rounded px-3 py-1.5 text-xs font-medium transition-colors',
                   creationMode === option.value
-                    ? 'border-blue-300 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
                 )}
               >
-                <input
-                  type="radio"
-                  name="creation_mode"
-                  value={option.value}
-                  checked={creationMode === option.value}
-                  onChange={() => setCreationMode(option.value)}
-                  className="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <div className="font-medium text-gray-900">{option.label}</div>
-                  <div className="text-xs text-gray-500">{option.description}</div>
-                </div>
-              </label>
+                {option.label}
+              </button>
             ))}
           </div>
         </section>
@@ -344,7 +343,7 @@ export default function NewProjectPage() {
         {creationMode === 'discover' && (
           <section className="space-y-2 rounded-md border border-blue-100 bg-blue-50/60 p-3">
             <label htmlFor="natural-language-query" className="text-sm font-medium text-gray-900">
-              Natural-language discovery prompt
+              自然语言发现提示
             </label>
             <textarea
               id="natural-language-query"
@@ -354,7 +353,7 @@ export default function NewProjectPage() {
                 setNaturalLanguageQuery(value)
                 setIndustry(value)
               }}
-              placeholder="e.g. 帮我分析一下 AI coding 的竞品"
+              placeholder="例如：帮我分析一下 AI coding 的竞品"
               rows={3}
               className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-shadow focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             />
@@ -362,116 +361,86 @@ export default function NewProjectPage() {
               industry={naturalLanguageQuery}
               industryType={industryType}
               onAdd={handleAddFromDiscovery}
-              label="Find candidates"
-              emptyLabel="No candidates found for this prompt. You can switch to manual mode."
+              label="查找候选竞品"
+              emptyLabel="没有找到候选竞品，可以切换到手动填写。"
             />
             <p className="text-xs text-gray-600">
-              Discovery only proposes competitors. You still choose which candidates enter the project and can edit rows before running.
+              发现功能只负责推荐候选项，最终进入项目的竞品仍由你确认。
             </p>
           </section>
         )}
 
+        {creationMode === 'manual' && (
         <section className="space-y-2">
           <label
             htmlFor="industry"
             className="text-sm font-medium text-gray-900"
           >
-            Industry / Topic
+            行业 / 主题
           </label>
           <input
             id="industry"
             value={industry}
             onChange={(e) => setIndustry(e.target.value)}
-            placeholder="e.g. AI Coding Tools"
+            placeholder="例如：AI Coding Tools"
             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-shadow focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             required
           />
           <p className="text-xs text-gray-500">
-            The agents use this as topical framing across collection,
-            analysis, and writing.
+            Agent 会把它作为采集、分析和撰写时的上下文。
           </p>
         </section>
+        )}
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">Industry type</h2>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label htmlFor="industry-type" className="text-sm font-medium text-gray-900">
+            行业类型
+          </label>
+          <select
+            id="industry-type"
+            value={industryType}
+            onChange={(e) => setIndustryType(e.target.value as IndustryType)}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          >
             {INDUSTRY_TYPE_OPTIONS.map((option) => (
-              <label
-                key={option.value}
-                className={cn(
-                  'flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition-colors',
-                  industryType === option.value
-                    ? 'border-blue-300 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                )}
-              >
-                <input
-                  type="radio"
-                  name="industry_type"
-                  value={option.value}
-                  checked={industryType === option.value}
-                  onChange={() => setIndustryType(option.value)}
-                  className="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <div className="font-medium text-gray-900">{option.label}</div>
-                  <div className="text-xs text-gray-500">{option.description}</div>
-                </div>
-              </label>
+              <option key={option.value} value={option.value}>
+                {option.label} — {option.description}
+              </option>
             ))}
-          </div>
+          </select>
           <p className="text-xs text-gray-500">
-            Selects industry-specific data collection paths for better coverage.
+            用于选择更适合该行业的数据采集路径。
           </p>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">Analysis purpose</h2>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label htmlFor="analysis-purpose" className="text-sm font-medium text-gray-900">
+            分析目的
+          </label>
+          <select
+            id="analysis-purpose"
+            value={analysisPurpose}
+            onChange={(e) => setAnalysisPurpose(e.target.value as AnalysisPurpose)}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          >
             {ANALYSIS_PURPOSE_OPTIONS.map((option) => (
-              <label
-                key={option.value}
-                className={cn(
-                  'flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition-colors',
-                  analysisPurpose === option.value
-                    ? 'border-blue-300 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                )}
-              >
-                <input
-                  type="radio"
-                  name="analysis_purpose"
-                  value={option.value}
-                  checked={analysisPurpose === option.value}
-                  onChange={() => setAnalysisPurpose(option.value)}
-                  className="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <div className="font-medium text-gray-900">{option.label}</div>
-                  <div className="text-xs text-gray-500">{option.description}</div>
-                </div>
-              </label>
+              <option key={option.value} value={option.value}>
+                {option.label} — {option.description}
+              </option>
             ))}
-          </div>
+          </select>
         </section>
 
         <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-gray-900">Competitors</h2>
+            <h2 className="text-sm font-medium text-gray-900">竞品</h2>
             <div className="flex items-center gap-3">
-              {creationMode === 'manual' && (
-                <CompetitorDiscoveryPanel
-                  industry={industry}
-                  industryType={industryType}
-                  onAdd={handleAddFromDiscovery}
-                />
-              )}
               <button
                 type="button"
                 onClick={handleAddCompetitor}
                 className="text-xs font-medium text-blue-700 hover:text-blue-800"
               >
-                + Add competitor
+                + 添加竞品
               </button>
             </div>
           </div>
@@ -484,18 +453,18 @@ export default function NewProjectPage() {
                   <input
                     id={`competitor-name-${index}`}
                     name={`competitor-name-${index}`}
-                    aria-label="Competitor name"
+                    aria-label="竞品名称"
                     value={row.name}
                     onChange={(e) =>
                       handleCompetitorChange(index, 'name', e.target.value)
                     }
-                    placeholder="Name"
+                    placeholder="名称"
                     className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:max-w-[180px]"
                   />
                   <input
                     id={`competitor-url-${index}`}
                     name={`competitor-url-${index}`}
-                    aria-label="Competitor website URL"
+                    aria-label="竞品官网 URL"
                     value={row.url}
                     onChange={(e) =>
                       handleCompetitorChange(index, 'url', e.target.value)
@@ -506,7 +475,7 @@ export default function NewProjectPage() {
                   <select
                     id={`competitor-role-${index}`}
                     name={`competitor-role-${index}`}
-                    aria-label="Competitor role"
+                    aria-label="竞品角色"
                     value={row.role ?? 'direct_competitor'}
                     onChange={(e) => handleCompetitorChange(index, 'role', e.target.value)}
                     className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
@@ -520,9 +489,9 @@ export default function NewProjectPage() {
                     onClick={() => handleRemoveCompetitor(index)}
                     disabled={competitors.length === 1}
                     className="rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label={`Remove ${row.name || 'competitor'}`}
+                    aria-label={`移除 ${row.name || '竞品'}`}
                   >
-                    Remove
+                    移除
                   </button>
                 </div>
                 <CandidateSourcePanel
@@ -541,22 +510,22 @@ export default function NewProjectPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">Research inputs <span className="font-normal text-gray-400">(optional)</span></h2>
+          <h2 className="text-sm font-medium text-gray-900">研究输入 <span className="font-normal text-gray-400">（可选）</span></h2>
           <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_170px]">
               <input
                 id="research-title"
                 name="research-title"
-                aria-label="Research input title"
+                aria-label="研究输入标题"
                 value={researchDraft.title}
                 onChange={(e) => setResearchDraft((prev) => ({ ...prev, title: e.target.value }))}
-                placeholder="e.g. PM workshop interview notes"
+                placeholder="例如：产品访谈记录"
                 className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
               <select
                 id="research-kind"
                 name="research-kind"
-                aria-label="Research input type"
+                aria-label="研究输入类型"
                 value={researchDraft.source_kind}
                 onChange={(e) => setResearchDraft((prev) => ({ ...prev, source_kind: e.target.value as ResearchInputKind }))}
                 className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
@@ -569,12 +538,12 @@ export default function NewProjectPage() {
             <select
               id="research-competitor"
               name="research-competitor"
-              aria-label="Bind research input to competitor"
+              aria-label="绑定到竞品"
               value={researchDraft.competitor_name ?? ''}
               onChange={(e) => setResearchDraft((prev) => ({ ...prev, competitor_name: e.target.value }))}
               className="mt-2 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             >
-              <option value="">Apply to all competitors</option>
+              <option value="">应用到所有竞品</option>
               {competitors
                 .filter((c) => c.name.trim())
                 .map((c) => (
@@ -584,10 +553,10 @@ export default function NewProjectPage() {
             <textarea
               id="research-content"
               name="research-content"
-              aria-label="Research input content"
+              aria-label="研究输入内容"
               value={researchDraft.content}
               onChange={(e) => setResearchDraft((prev) => ({ ...prev, content: e.target.value }))}
-              placeholder="Paste survey findings, questionnaire design, interview notes, or manual research observations."
+              placeholder="粘贴问卷结果、问卷设计、访谈记录或人工研究观察。"
               rows={4}
               className="mt-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             />
@@ -598,7 +567,7 @@ export default function NewProjectPage() {
                 disabled={!researchDraft.content.trim()}
                 className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Add research input
+                添加研究输入
               </button>
             </div>
           </div>
@@ -613,7 +582,7 @@ export default function NewProjectPage() {
                     <div className="truncate text-sm font-medium text-gray-900">{item.title}</div>
                     <div className="mt-0.5 text-xs text-gray-500">
                       {item.source_kind.replace('_', ' ')}
-                      {item.competitor_name ? ` · ${item.competitor_name}` : ' · all competitors'}
+                      {item.competitor_name ? ` · ${item.competitor_name}` : ' · 所有竞品'}
                     </div>
                     <div className="mt-1 line-clamp-2 text-xs text-gray-600">{item.content}</div>
                   </div>
@@ -622,27 +591,27 @@ export default function NewProjectPage() {
                     onClick={() => handleRemoveResearchInput(index)}
                     className="shrink-0 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-900"
                   >
-                    Remove
+                    移除
                   </button>
                 </div>
               ))}
             </div>
           )}
           <p className="text-xs text-gray-500">
-            Added material is stored as manual evidence and appears in source traceability.
+            添加的材料会作为人工证据进入来源追溯。
           </p>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">Analysis goals</h2>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <h2 className="text-sm font-medium text-gray-900">分析目标</h2>
+          <div className="flex flex-wrap gap-2">
             {GOAL_OPTIONS.map((goal) => {
               const checked = goals.includes(goal.value)
               return (
                 <label
                   key={goal.value}
                   className={cn(
-                    'flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition-colors',
+                    'inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                     checked
                       ? 'border-blue-300 bg-blue-50'
                       : 'border-gray-200 bg-white hover:bg-gray-50'
@@ -652,12 +621,9 @@ export default function NewProjectPage() {
                     type="checkbox"
                     checked={checked}
                     onChange={() => handleToggleGoal(goal.value)}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
-                  <div>
-                    <div className="font-medium text-gray-900">{goal.label}</div>
-                    <div className="text-xs text-gray-500">{goal.description}</div>
-                  </div>
+                  <span className="text-gray-900">{goal.label}</span>
                 </label>
               )
             })}
@@ -665,9 +631,9 @@ export default function NewProjectPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">Custom dimensions <span className="text-gray-400 font-normal">(optional)</span></h2>
+          <h2 className="text-sm font-medium text-gray-900">自定义维度 <span className="text-gray-400 font-normal">（可选）</span></h2>
           <div className="flex flex-wrap gap-1.5">
-            {CUSTOM_DIMENSION_SUGGESTIONS.map((suggestion) => {
+            {customDimensionSuggestions.map((suggestion) => {
               const selected = customDimensions.some((dim) => dim.toLowerCase() === suggestion.toLowerCase())
               return (
                 <button
@@ -692,11 +658,11 @@ export default function NewProjectPage() {
             <input
               id="custom-dimension-input"
               name="custom-dimension"
-              aria-label="Add custom dimension"
+              aria-label="添加自定义维度"
               value={dimInput}
               onChange={(e) => setDimInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDimension() } }}
-              placeholder="e.g. API quality, data privacy"
+              placeholder="例如：履约效率、社区活跃度"
               disabled={customDimensions.length >= MAX_CUSTOM_DIMENSIONS}
               className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
             />
@@ -706,7 +672,7 @@ export default function NewProjectPage() {
               disabled={customDimensions.length >= MAX_CUSTOM_DIMENSIONS}
               className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Add
+              添加
             </button>
           </div>
           {customDimensions.length > 0 && (
@@ -721,7 +687,7 @@ export default function NewProjectPage() {
                     type="button"
                     onClick={() => handleRemoveDimension(dim)}
                     className="ml-0.5 text-blue-500 hover:text-blue-800"
-                    aria-label={`Remove ${dim}`}
+                    aria-label={`移除 ${dim}`}
                   >
                     ×
                   </button>
@@ -730,58 +696,37 @@ export default function NewProjectPage() {
             </div>
           )}
           <p className="text-xs text-gray-500">
-            Extra analysis axes the agents will address explicitly. Up to {MAX_CUSTOM_DIMENSIONS} dimensions.
+            推荐项会随行业类型变化，也可以自行添加。最多 {MAX_CUSTOM_DIMENSIONS} 个维度。
           </p>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">Data mode</h2>
-          <div className="space-y-2">
-            {([
-              {
-                value: 'demo' as const,
-                label: 'Demo fixtures',
-                description: 'Stable, offline — uses pre-canned data. Recommended for development.',
-              },
-              {
-                value: 'live_with_fallback' as const,
-                label: 'Live crawl with fallback',
-                description: 'Crawls competitor websites. Slower, requires internet. Falls back to demo when coverage is insufficient.',
-              },
-            ] as const).map((option) => (
-              <label
-                key={option.value}
-                className={cn(
-                  'flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition-colors',
-                  dataMode === option.value
-                    ? 'border-blue-300 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                )}
-              >
-                <input
-                  type="radio"
-                  name="data_mode"
-                  value={option.value}
-                  checked={dataMode === option.value}
-                  onChange={() => {
-                    setSelectedDataMode(option.value)
-                  }}
-                  className="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <div className="font-medium text-gray-900">{option.label}</div>
-                  <div className="text-xs text-gray-500">{option.description}</div>
-                </div>
-              </label>
-            ))}
-          </div>
+          <label htmlFor="data-mode" className="text-sm font-medium text-gray-900">
+            数据模式
+          </label>
+          <select
+            id="data-mode"
+            value={dataMode}
+            onChange={(e) => setSelectedDataMode(e.target.value as 'demo' | 'live_with_fallback')}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          >
+            <option value="live_with_fallback">
+              真实采集并兜底 — 搜索可用时采集真实网页
+            </option>
+            <option value="demo">
+              Demo 数据 — 稳定离线数据，适合开发演示
+            </option>
+          </select>
+          <p className="text-xs text-gray-500">
+            默认跟随后端搜索状态：Tavily 可用时使用真实采集，否则使用 Demo。
+          </p>
         </section>
 
         {createMutation.isError && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {createMutation.error instanceof Error
               ? createMutation.error.message
-              : 'Failed to create project.'}
+              : '项目创建失败。'}
           </div>
         )}
 
@@ -790,7 +735,7 @@ export default function NewProjectPage() {
             href="/projects"
             className="text-sm text-gray-600 hover:text-gray-900"
           >
-            View existing projects &rarr;
+            查看已有项目 &rarr;
           </Link>
           <button
             type="submit"
@@ -808,7 +753,7 @@ export default function NewProjectPage() {
                 aria-hidden
               />
             )}
-            {createMutation.isPending ? 'Creating...' : 'Create project'}
+            {createMutation.isPending ? '创建中...' : '创建项目'}
           </button>
         </div>
       </form>

@@ -123,6 +123,23 @@ def get_project_traces(
     )
 
 
+def record_workflow_event(
+    db: Session,
+    project_id: str,
+    event_name: str,
+    input_payload: dict | None = None,
+    output_payload: dict | None = None,
+) -> models.AgentRun:
+    run = AgentRun(
+        project_id=project_id,
+        agent_name="WorkflowRouter",
+        input={"event_name": event_name, **(input_payload or {})},
+        output=output_payload or {},
+        status=AgentRunStatus.success,
+    )
+    return save_agent_run(db, run)
+
+
 def serialize_agent_run(record: models.AgentRun) -> dict:
     """Serialize an :class:`AgentRun` ORM row into a JSON-friendly dict."""
     try:

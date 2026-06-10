@@ -17,7 +17,7 @@ export function TraceTimeline({ traces }: TraceTimelineProps) {
   if (traces.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
-        No traces yet — run the workflow.
+        暂无 Trace，先运行工作流。
       </div>
     )
   }

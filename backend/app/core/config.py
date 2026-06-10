@@ -4,6 +4,7 @@ Settings are populated from the project root .env file. Defaults are safe
 for local development; production deployments must override secrets.
 """
 
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
     langsmith_tracing: bool = False
     langsmith_api_key: str = ""
     langsmith_project: str = "competitive-agent-system"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     # Search / Data
     enable_live_search: bool = False
@@ -58,5 +60,25 @@ class Settings(BaseSettings):
     max_repair_loops: int = 1
     log_level: str = "INFO"
 
-
 settings = Settings()
+
+
+def configure_langsmith_environment(app_settings: Settings = settings) -> None:
+    if not app_settings.langsmith_tracing or not app_settings.langsmith_api_key:
+        return
+
+    values = {
+        "LANGSMITH_TRACING": "true",
+        "LANGSMITH_API_KEY": app_settings.langsmith_api_key,
+        "LANGSMITH_PROJECT": app_settings.langsmith_project,
+        "LANGSMITH_ENDPOINT": app_settings.langsmith_endpoint,
+        "LANGCHAIN_TRACING_V2": "true",
+        "LANGCHAIN_API_KEY": app_settings.langsmith_api_key,
+        "LANGCHAIN_PROJECT": app_settings.langsmith_project,
+        "LANGCHAIN_ENDPOINT": app_settings.langsmith_endpoint,
+    }
+    for key, value in values.items():
+        os.environ.setdefault(key, value)
+
+
+configure_langsmith_environment()

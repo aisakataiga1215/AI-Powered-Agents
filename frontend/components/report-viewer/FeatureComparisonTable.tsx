@@ -60,7 +60,7 @@ export function FeatureComparisonTable({ data, emptyMessage }: FeatureComparison
               scope="col"
               className="w-36 px-4 py-3 text-left text-xs font-semibold tracking-wider text-gray-500 uppercase"
             >
-              Feature
+              功能
             </th>
             {parsed.map(({ competitor }) => (
               <th
@@ -85,8 +85,8 @@ export function FeatureComparisonTable({ data, emptyMessage }: FeatureComparison
                   <td key={competitor} className="px-4 py-3 align-top text-gray-700">
                     {features && features.length > 0 ? (
                       <ul className="space-y-1">
-                        {features.map((f) => (
-                          <li key={f} className="flex items-start gap-1.5 leading-snug">
+                        {features.map((f, index) => (
+                          <li key={`${cat}-${competitor}-${index}-${f}`} className="flex items-start gap-1.5 leading-snug">
                             <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-400" />
                             {f}
                           </li>

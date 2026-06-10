@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { AgentRun, ProjectResponse, QAIssue, QATraceOutput } from '@/lib/types'
 import { TraceTimeline } from '@/components/trace-panel/TraceTimeline'
+import { QAReworkStory } from '@/components/trace-panel/QAReworkStory'
 
 const POLL_MS = 2000
 
@@ -94,58 +95,58 @@ function buildQAMarkdown(qa: ReturnType<typeof extractQAFromTraces>): string {
     '',
     '---',
     '',
-    '## QA Summary',
+    '## QA 摘要',
     '',
-    `**Score:** ${qa.score}/100 · **Verdict:** ${qa.passed ? 'Passed ✓' : 'Failed ✗'}`,
-    `**Blocking issues:** ${qa.high_severity_count} · **Warnings:** ${qa.medium_severity_count} · **Advisories:** ${qa.advisory_count}`,
+    `**评分：** ${qa.score}/100 · **结论：** ${qa.passed ? '通过 ✓' : '未通过 ✗'}`,
+    `**阻塞问题：** ${qa.high_severity_count} · **警告：** ${qa.medium_severity_count} · **提示：** ${qa.advisory_count}`,
   ]
 
   if (blockingIssues.length > 0) {
-    lines.push('', '### Blocking Issues', '')
+    lines.push('', '### 阻塞问题', '')
     blockingIssues.forEach((issue, i) => {
       lines.push(
-        `#### Issue ${i + 1} — blocking`,
+        `#### 问题 ${i + 1} - 阻塞`,
         '',
-        `- **Type:** ${issue.issue_type}`,
-        `- **Agent:** ${issue.target_agent}`,
-        `- **Message:** ${issue.message}`,
+        `- **类型：** ${issue.issue_type}`,
+        `- **Agent：** ${issue.target_agent}`,
+        `- **信息：** ${issue.message}`,
       )
       if (issue.suggested_action) {
-        lines.push(`- **Action:** ${issue.suggested_action}`)
+        lines.push(`- **建议：** ${issue.suggested_action}`)
       }
       lines.push('')
     })
   }
 
   if (warnings.length > 0) {
-    lines.push('### Warnings', '')
+    lines.push('### 警告', '')
     warnings.forEach((issue, i) => {
       lines.push(
-        `#### Warning ${i + 1}`,
+        `#### 警告 ${i + 1}`,
         '',
-        `- **Type:** ${issue.issue_type}`,
-        `- **Agent:** ${issue.target_agent}`,
-        `- **Message:** ${issue.message}`,
+        `- **类型：** ${issue.issue_type}`,
+        `- **Agent：** ${issue.target_agent}`,
+        `- **信息：** ${issue.message}`,
       )
       if (issue.suggested_action) {
-        lines.push(`- **Action:** ${issue.suggested_action}`)
+        lines.push(`- **建议：** ${issue.suggested_action}`)
       }
       lines.push('')
     })
   }
 
   if (advisories.length > 0) {
-    lines.push('### Advisories', '')
+    lines.push('### 提示', '')
     advisories.forEach((issue, i) => {
       lines.push(
-        `#### Advisory ${i + 1}`,
+        `#### 提示 ${i + 1}`,
         '',
-        `- **Type:** ${issue.issue_type}`,
-        `- **Agent:** ${issue.target_agent}`,
-        `- **Message:** ${issue.message}`,
+        `- **类型：** ${issue.issue_type}`,
+        `- **Agent：** ${issue.target_agent}`,
+        `- **信息：** ${issue.message}`,
       )
       if (issue.suggested_action) {
-        lines.push(`- **Action:** ${issue.suggested_action}`)
+        lines.push(`- **建议：** ${issue.suggested_action}`)
       }
       lines.push('')
     })
@@ -160,19 +161,19 @@ function exportTraceMarkdown(
   projectData?: ProjectResponse
 ) {
   const lines: string[] = [
-    '# Agent Trace Export',
+    '# Agent Trace 导出',
     '',
-    `**Project:** ${projectId}`,
-    `**Exported:** ${new Date().toISOString()}`,
+    `**项目：** ${projectId}`,
+    `**导出时间：** ${new Date().toISOString()}`,
   ]
 
   if (projectData) {
-    if (projectData.industry) lines.push(`**Industry:** ${projectData.industry}`)
-    if (projectData.status) lines.push(`**Status:** ${projectData.status}`)
-    if (projectData.data_mode) lines.push(`**Data mode:** ${projectData.data_mode}`)
+    if (projectData.industry) lines.push(`**行业：** ${projectData.industry}`)
+    if (projectData.status) lines.push(`**状态：** ${projectData.status}`)
+    if (projectData.data_mode) lines.push(`**数据模式：** ${projectData.data_mode}`)
   }
 
-  lines.push(`**Traces:** ${traces.length}`, '')
+  lines.push(`**Trace 数：** ${traces.length}`, '')
 
   for (const trace of traces) {
     lines.push(
@@ -180,24 +181,24 @@ function exportTraceMarkdown(
       '',
       `## ${trace.agent_name} — ${trace.status}`,
       '',
-      `**Run ID:** ${trace.agent_run_id} · **Latency:** ${trace.latency_ms} ms · **Retries:** ${trace.retry_count}`,
-      `**Token usage:** ${fmtTokens(trace.token_usage)}`,
-      `**Created:** ${trace.created_at}`,
+      `**运行 ID：** ${trace.agent_run_id} · **耗时：** ${trace.latency_ms} ms · **重试：** ${trace.retry_count}`,
+      `**Token 用量：** ${fmtTokens(trace.token_usage)}`,
+      `**创建时间：** ${trace.created_at}`,
     )
 
     if (trace.error_message) {
-      lines.push('', `> **Error:** ${trace.error_message}`)
+      lines.push('', `> **错误：** ${trace.error_message}`)
     }
 
     lines.push(
       '',
-      '### Input',
+      '### 输入',
       '',
       '```json',
       JSON.stringify(trace.input, null, 2),
       '```',
       '',
-      '### Output',
+      '### 输出',
       '',
       '```json',
       JSON.stringify(trace.output, null, 2),
@@ -250,41 +251,40 @@ export default function TracesPage({ params }: PageProps) {
     <div className="space-y-6">
       <nav className="text-sm text-gray-500">
         <Link href="/projects" className="hover:text-gray-900">
-          Projects
+          项目
         </Link>
         <span className="mx-1">/</span>
         <Link href={`/projects/${id}`} className="hover:text-gray-900">
           {projectQuery.data?.industry ?? id}
         </Link>
         <span className="mx-1">/</span>
-        <span className="text-gray-900">Traces</span>
+        <span className="text-gray-900">Trace</span>
       </nav>
 
       <header className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-blue-700">
-              Trace Timeline
+              Trace 时间线
             </p>
             <h1 className="mt-1 text-2xl font-semibold text-gray-900">
-              Agent execution log
+              Agent 执行日志
             </h1>
             <p className="mt-1 text-sm text-gray-600">
-              Each entry corresponds to one Agent invocation persisted in the
-              backend <code className="font-mono text-xs">agent_runs</code> table.
-              Expand input/output to inspect the payloads.
+              每条记录对应一次保存在后端 <code className="font-mono text-xs">agent_runs</code> 表中的 Agent 调用。
+              展开输入/输出可查看完整载荷。
             </p>
           </div>
           {isRunning && (
             <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-              Live · polling every 2s
+              实时 · 每 2 秒轮询
             </span>
           )}
         </div>
         <div className="mt-3 flex items-center gap-3 text-xs text-gray-500">
-          <span>{traces.length} runs</span>
-          <span>Project: {projectQuery.data?.industry ?? id}</span>
+          <span>{traces.length} 次运行</span>
+          <span>项目：{projectQuery.data?.industry ?? id}</span>
         </div>
       </header>
 
@@ -301,11 +301,15 @@ export default function TracesPage({ params }: PageProps) {
 
       {tracesQuery.isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Failed to load traces.{' '}
+          Trace 加载失败。{' '}
           {tracesQuery.error instanceof Error
             ? tracesQuery.error.message
-            : 'Unknown error.'}
+            : '未知错误。'}
         </div>
+      )}
+
+      {!tracesQuery.isLoading && !tracesQuery.isError && traces.length > 0 && (
+        <QAReworkStory traces={traces} />
       )}
 
       {!tracesQuery.isLoading && !tracesQuery.isError && (
@@ -317,14 +321,14 @@ export default function TracesPage({ params }: PageProps) {
           href={`/projects/${id}`}
           className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
-          &larr; Back to project
+          &larr; 返回项目
         </Link>
         {reportAvailable && (
           <Link
             href={`/projects/${id}/report`}
             className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
           >
-            View Report &rarr;
+            查看报告 &rarr;
           </Link>
         )}
         {traces.length > 0 && (
@@ -334,14 +338,14 @@ export default function TracesPage({ params }: PageProps) {
               onClick={() => exportTraceJSON(id, traces, projectQuery.data ?? undefined)}
               className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
             >
-              Export Trace JSON
+              导出 Trace JSON
             </button>
             <button
               type="button"
               onClick={() => exportTraceMarkdown(id, traces, projectQuery.data ?? undefined)}
               className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
             >
-              Export Trace Markdown
+              导出 Trace Markdown
             </button>
           </>
         )}

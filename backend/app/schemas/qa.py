@@ -38,12 +38,7 @@ class IssueType(str, Enum):
     weak_source_quality = "weak_source_quality"
     source_type_content_mismatch = "source_type_content_mismatch"
     brand_mismatch = "brand_mismatch"
-    missing_custom_dimension_coverage = "missing_custom_dimension_coverage"
-    missing_score_rationale = "missing_score_rationale"
-    missing_market_background = "missing_market_background"
-    missing_feature_insights = "missing_feature_insights"
-    missing_operation_monetization = "missing_operation_monetization"
-    weak_data_signal = "weak_data_signal"
+    report_consistency_issue = "report_consistency_issue"
 
 
 class QAIssue(BaseModel):

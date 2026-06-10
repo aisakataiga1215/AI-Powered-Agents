@@ -14,6 +14,7 @@ interface AgentStatusBadgeProps {
 
 export function AgentStatusBadge({ status, className }: AgentStatusBadgeProps) {
   const cls = STATUS_COLORS[status] ?? 'bg-gray-100 text-gray-500 border-gray-200'
+  const label = STATUS_LABELS[status] ?? status
   return (
     <span
       className={cn(
@@ -22,7 +23,14 @@ export function AgentStatusBadge({ status, className }: AgentStatusBadgeProps) {
         className
       )}
     >
-      {status}
+      {label}
     </span>
   )
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  success: '成功',
+  failed: '失败',
+  running: '运行中',
+  skipped: '已跳过',
 }

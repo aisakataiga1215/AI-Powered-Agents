@@ -4,6 +4,7 @@ Wires together routers, exception handlers, CORS, and database setup
 for the competitive analysis backend.
 """
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -37,12 +38,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Competitive Analysis API", lifespan=lifespan)
 
-# CORS for the Next.js frontend. The MVP allows all origins so the demo
-# UI can connect from any port; tighten this for production.
+_origins_env = os.getenv("FRONTEND_ORIGINS", "*").strip()
+if _origins_env == "*":
+    _allow_origins = ["*"]
+    _allow_credentials = False
+else:
+    _allow_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+    _allow_credentials = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

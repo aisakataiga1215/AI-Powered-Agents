@@ -15,7 +15,7 @@ export function DroppedCompetitorsList({ dropped, className }: Props) {
       className={`rounded-xl border border-orange-200 bg-orange-50 p-5${className ? ` ${className}` : ''}`}
     >
       <h3 className="mb-3 text-sm font-semibold text-orange-900">
-        Dropped / Insufficient Competitors ({dropped.length})
+        已剔除 / 数据不足的竞品（{dropped.length}）
       </h3>
       <ul className="space-y-2 text-sm">
         {dropped.map((c) => (

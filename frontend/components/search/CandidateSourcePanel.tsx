@@ -109,7 +109,7 @@ export default function CandidateSourcePanel({
         <span className="inline-block rounded border border-gray-200 bg-gray-50 px-2 py-0.5">
           Source search unavailable
         </span>
-        <span>Set ENABLE_LIVE_SEARCH=true and TAVILY_API_KEY to enable</span>
+        <span>设置 ENABLE_LIVE_SEARCH=true 并配置 TAVILY_API_KEY 后可用</span>
       </div>
     )
   }
@@ -122,7 +122,7 @@ export default function CandidateSourcePanel({
         disabled={loading || !competitorName || !website}
         className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400 underline"
       >
-        {loading ? 'Searching…' : 'Search candidate sources'}
+        {loading ? '搜索中…' : '搜索候选来源'}
       </button>
 
       {error && (
@@ -130,14 +130,14 @@ export default function CandidateSourcePanel({
       )}
 
       {open && candidates.length === 0 && !loading && (
-        <p className="mt-1 text-xs text-gray-400">No candidates found.</p>
+        <p className="mt-1 text-xs text-gray-400">没有找到候选来源。</p>
       )}
 
       {open && candidates.length > 0 && (
         <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2">
           <p className="mb-1 text-xs text-gray-500">
-            Selected URLs will be crawled before analysis.{' '}
-            <span className="italic">Suggested types are heuristic — final type is assigned after crawling.</span>
+            选中的 URL 会在分析前被采集。{' '}
+            <span className="italic">来源类型是启发式判断，最终类型会在采集后确认。</span>
           </p>
           <ul className="space-y-1">
             {candidates.map((c) => {
@@ -166,7 +166,7 @@ export default function CandidateSourcePanel({
                       </span>
                       {c.suggested_source_type && (
                         <span className="text-[10px] text-gray-500">
-                          Suggested type: {c.suggested_source_type.replace('_', ' ')}
+                          建议类型：{c.suggested_source_type.replace('_', ' ')}
                         </span>
                       )}
                     </div>

@@ -486,6 +486,7 @@ def check_source_quality(
     Only checks pricing_page and features_page sources with non-empty content.
     """
     checked_types = (SourceType.pricing_page, SourceType.features_page)
+    deduped: dict[tuple[str, SourceType], QAIssue] = {}
     for source in sources:
         if source.source_type not in checked_types:
             continue
@@ -510,21 +511,28 @@ def check_source_quality(
                 f"has weak content (no {source.source_type.value} keywords found)"
             )
 
-        issues.append(
-            QAIssue(
-                severity=severity,
-                issue_type=IssueType.weak_source_quality,
-                target_agent="CollectorAgent",
-                message=(
-                    f"{source.source_type.value} source '{source.title}' "
-                    f"at {source.url} {detail}"
-                ),
-                suggested_action=(
-                    f"Re-collect a valid {source.source_type.value} source "
-                    f"for {source.competitor_name}"
-                ),
-            )
+        issue = QAIssue(
+            severity=severity,
+            issue_type=IssueType.weak_source_quality,
+            target_agent="CollectorAgent",
+            message=(
+                f"{source.source_type.value} source '{source.title}' "
+                f"at {source.url} {detail}"
+            ),
+            suggested_action=(
+                f"Re-collect a valid {source.source_type.value} source "
+                f"for {source.competitor_name}"
+            ),
         )
+        key = (source.competitor_name.lower(), source.source_type)
+        existing = deduped.get(key)
+        if existing is None or (
+            existing.severity is not IssueSeverity.high
+            and issue.severity is IssueSeverity.high
+        ):
+            deduped[key] = issue
+
+    issues.extend(deduped.values())
 
 
 # ---------------------------------------------------------------------------
@@ -593,147 +601,25 @@ def check_brand_consistency(
                 break  # one issue per source max
 
 
-def check_custom_dimensions(
-    report: CompetitiveReport,
-    custom_dimensions: list[str],
-) -> list[QAIssue]:
-    """Advisory check: ensure custom dimensions appear in the report."""
-    if not custom_dimensions:
-        return []
-    content = (report.markdown_content or "").lower()
-    present = set(report.custom_dimension_analysis.keys())
+def check_report_structure(report: CompetitiveReport) -> list[QAIssue]:
+    """Advisory check: report naming should stay consistent across sections."""
     issues: list[QAIssue] = []
-    for dim in custom_dimensions:
-        if dim.lower() not in content and dim not in present:
-            issues.append(
-                QAIssue(
-                    severity=IssueSeverity.medium,
-                    issue_type=IssueType.missing_custom_dimension_coverage,
-                    target_agent="WriterAgent",
-                    message=f"Custom dimension '{dim}' not found in report",
-                    suggested_action=f"Address '{dim}' in the analysis",
-                )
-            )
-    return issues
-
-
-def check_scoring_rationale(
-    report: CompetitiveReport,
-    analysis_purpose: str,
-) -> list[QAIssue]:
-    """Advisory check: ensure scoring sections are present for non-general purposes."""
-    if analysis_purpose == DEFAULT_ANALYSIS_PURPOSE:
-        return []
-    issues: list[QAIssue] = []
-    if analysis_purpose == "choose_product_to_use":
-        if not report.competitor_scores:
-            issues.append(
-                QAIssue(
-                    severity=IssueSeverity.medium,
-                    issue_type=IssueType.missing_score_rationale,
-                    target_agent="WriterAgent",
-                    message="competitor_scores missing for choose_product_to_use",
-                    suggested_action="Add competitor scoring matrix",
-                )
-            )
-        else:
-            for name, cs in report.competitor_scores.items():
-                empty_rationale = [d for d in cs.dimensions if not d.rationale]
-                if empty_rationale:
-                    issues.append(
-                        QAIssue(
-                            severity=IssueSeverity.medium,
-                            issue_type=IssueType.missing_score_rationale,
-                            target_agent="WriterAgent",
-                            message=f"Dimension scores for '{name}' missing rationale",
-                            suggested_action="Add rationale for each dimension score",
-                        )
-                    )
-    elif analysis_purpose == "build_similar_product":
-        if not report.opportunity_score:
-            issues.append(
-                QAIssue(
-                    severity=IssueSeverity.medium,
-                    issue_type=IssueType.missing_score_rationale,
-                    target_agent="WriterAgent",
-                    message="opportunity_score missing for build_similar_product",
-                    suggested_action="Add opportunity scoring matrix",
-                )
-            )
-    return issues
-
-
-def check_pm_sections(report: CompetitiveReport) -> list[QAIssue]:
-    """Advisory check: ensure PM-framework sections are present."""
-    issues: list[QAIssue] = []
-    if not report.market_background or not report.market_background.market_overview:
+    overview_names = {c.competitor_name for c in report.competitor_overview if c.competitor_name}
+    rationale_names = set(report.competitor_selection_rationale.keys())
+    unknown_rationale = sorted(rationale_names - overview_names)
+    if overview_names and unknown_rationale:
         issues.append(
             QAIssue(
                 severity=IssueSeverity.medium,
-                issue_type=IssueType.missing_market_background,
+                issue_type=IssueType.report_consistency_issue,
                 target_agent="WriterAgent",
-                message="market_background section absent or empty",
-                suggested_action="Add market overview, trends, drivers, and challenges",
+                message=(
+                    "competitor_selection_rationale mentions competitors not in "
+                    f"competitor_overview: {', '.join(unknown_rationale)}"
+                ),
+                suggested_action="Keep competitor naming and count consistent across the report",
             )
         )
-    if not report.feature_insights or not report.feature_insights.table_stakes:
-        issues.append(
-            QAIssue(
-                severity=IssueSeverity.medium,
-                issue_type=IssueType.missing_feature_insights,
-                target_agent="WriterAgent",
-                message="feature_insights section absent or table_stakes empty",
-                suggested_action="Identify table-stakes features, differentiators, and gaps",
-            )
-        )
-    if not report.operation_monetization or not report.operation_monetization.gtm_profiles:
-        issues.append(
-            QAIssue(
-                severity=IssueSeverity.medium,
-                issue_type=IssueType.missing_operation_monetization,
-                target_agent="WriterAgent",
-                message="operation_monetization section absent or no GTM profiles",
-                suggested_action="Add GTM profiles and AARRR notes for each competitor",
-            )
-        )
-    return issues
-
-
-def check_data_signals(report: CompetitiveReport, source_ids: set[str]) -> list[QAIssue]:
-    """Advisory check: data claims must expose source, confidence, and estimates."""
-    if not report.market_background or not report.market_background.data_signals:
-        return []
-
-    issues: list[QAIssue] = []
-    valid_confidence = {"high", "medium", "low", "unknown"}
-    for signal in report.market_background.data_signals:
-        label = signal.metric_name or signal.signal_type or "unnamed data signal"
-        missing_source = not signal.source_ids
-        unknown_sources = [sid for sid in signal.source_ids if sid not in source_ids]
-        invalid_confidence = signal.confidence not in valid_confidence
-        estimate_without_context = signal.is_estimate and not signal.notes.strip()
-        if missing_source or unknown_sources or invalid_confidence or estimate_without_context:
-            details: list[str] = []
-            if missing_source:
-                details.append("missing source_ids")
-            if unknown_sources:
-                details.append(f"unknown source_ids: {', '.join(unknown_sources)}")
-            if invalid_confidence:
-                details.append(f"invalid confidence '{signal.confidence}'")
-            if estimate_without_context:
-                details.append("estimate has no notes")
-            issues.append(
-                QAIssue(
-                    severity=IssueSeverity.medium,
-                    issue_type=IssueType.weak_data_signal,
-                    target_agent="WriterAgent",
-                    message=f"Data signal '{label}' is weak: {'; '.join(details)}",
-                    suggested_action=(
-                        "Attach source_ids, confidence, and estimate notes; "
-                        "omit unsupported metrics instead of presenting them as facts"
-                    ),
-                )
-            )
     return issues
 def _build_trace_output(result: QAResult, issues: list[QAIssue]) -> dict:
     """Build the trace output dict for a completed QAAgent run.
@@ -762,6 +648,11 @@ def _build_trace_output(result: QAResult, issues: list[QAIssue]) -> dict:
         "advisory_count": sum(
             1 for i in issues if i.severity == IssueSeverity.low
         ),
+        "decision_summary": (
+            f"QA {'passed' if result.passed else 'failed'} with score {result.score}/100 "
+            f"and {len(issues)} issues."
+        ),
+        "target_agents": sorted({i.target_agent for i in issues if i.target_agent}),
     }
 
 
@@ -809,6 +700,7 @@ def run(
             "goals": goals,
             "analysis_purpose": analysis_purpose,
             "custom_dimensions": custom_dimensions or [],
+            "decision_summary": "Run deterministic QA checks and choose the repair target when needed.",
         },
         status=AgentRunStatus.running,
     )
@@ -829,11 +721,8 @@ def run(
         check_source_coverage(sources, goals, issues)
         check_source_quality(sources, issues)
         check_brand_consistency(knowledge, sources, issues)
-        # Advisory-only checks — medium severity, never change pass/fail threshold.
-        issues.extend(check_custom_dimensions(report, custom_dimensions or []))
-        issues.extend(check_scoring_rationale(report, analysis_purpose))
-        issues.extend(check_pm_sections(report))
-        issues.extend(check_data_signals(report, known_source_ids))
+        # Advisory-only consistency checks — medium severity, never change pass/fail threshold.
+        issues.extend(check_report_structure(report))
 
         score = _score_issues(issues)
         passed = score >= _PASS_THRESHOLD and not _has_high_severity(issues)

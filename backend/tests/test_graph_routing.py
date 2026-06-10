@@ -117,6 +117,74 @@ def test_route_rework_mapping(target, expected):
     assert routing.route_rework(state) == expected
 
 
+def test_handle_rework_records_workflow_router_trace(monkeypatch):
+    saved: list[dict] = []
+
+    class FakeDb:
+        def close(self):
+            saved.append({"closed": True})
+
+    def fake_record_workflow_event(db, project_id, event_name, input_payload, output_payload):
+        saved.append({
+            "db": db,
+            "project_id": project_id,
+            "event_name": event_name,
+            "input_payload": input_payload,
+            "output_payload": output_payload,
+        })
+
+    issue = QAIssue(
+        severity=IssueSeverity.high,
+        issue_type=IssueType.missing_source,
+        target_agent="CollectorAgent",
+        message="missing pricing",
+        suggested_action="Collect pricing page",
+    )
+    state = _state_with_qa(passed=False, issues=[issue], score=40)
+
+    monkeypatch.setattr(nodes, "_make_db", FakeDb)
+    monkeypatch.setattr(nodes.trace_service, "record_workflow_event", fake_record_workflow_event)
+
+    result = nodes.handle_rework_node(state)
+
+    event = saved[0]
+    assert result["rework_target"] == "CollectorAgent"
+    assert result["rework_hints"] == ["Collect pricing page"]
+    assert event["project_id"] == "proj_1"
+    assert event["event_name"] == "qa_rework_route"
+    assert event["input_payload"]["qa_score"] == state["qa_result"].score
+    assert event["output_payload"]["route"] == "rework"
+    assert event["output_payload"]["rework_target"] == "CollectorAgent"
+    assert saved[-1] == {"closed": True}
+
+
+def test_handle_rework_continues_when_workflow_router_trace_fails(monkeypatch):
+    class FakeDb:
+        def close(self):
+            pass
+
+    def fail_record_workflow_event(*args, **kwargs):
+        raise RuntimeError("trace db unavailable")
+
+    issue = QAIssue(
+        severity=IssueSeverity.high,
+        issue_type=IssueType.missing_source,
+        target_agent="CollectorAgent",
+        message="missing pricing",
+        suggested_action="Collect pricing page",
+    )
+    state = _state_with_qa(passed=False, issues=[issue], score=40)
+
+    monkeypatch.setattr(nodes, "_make_db", FakeDb)
+    monkeypatch.setattr(nodes.trace_service, "record_workflow_event", fail_record_workflow_event)
+
+    result = nodes.handle_rework_node(state)
+
+    assert result["rework_count"] == 1
+    assert result["rework_target"] == "CollectorAgent"
+    assert result["rework_hints"] == ["Collect pricing page"]
+
+
 # ---------------------------------------------------------------------------
 # _determine_rework_target
 # ---------------------------------------------------------------------------

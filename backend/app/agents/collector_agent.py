@@ -403,6 +403,10 @@ def run(
             "data_mode": data_mode,
             "industry_type": industry_type,
             "research_input_count": len(research_inputs or []),
+            "decision_summary": (
+                "Collect public source evidence for each competitor; "
+                "use QA hints to repair missing evidence when present."
+            ),
         },
         status=AgentRunStatus.running,
     )
@@ -560,6 +564,14 @@ def run(
                 ],
                 "withheld_pricing_competitors": withheld_competitors,
                 "rework_hints_used": rework_hints or [],
+                "decision_summary": (
+                    f"Collected {len(all_sources)} sources across {len(competitors)} requested competitors."
+                ),
+                "demo_rework_note": (
+                    "Pricing evidence was withheld for the first QA-loop demo pass."
+                    if withheld_competitors
+                    else ""
+                ),
             },
             latency_ms=elapsed_ms,
         )

@@ -58,3 +58,11 @@ Thumbs.db
 # VS Code local history
 # ============================================================
 .history/
+
+# ============================================================
+# Claude Code / Playwright MCP local state
+# ============================================================
+.claude/settings.local.json
+.claude/worktrees/
+.playwright-mcp/
+

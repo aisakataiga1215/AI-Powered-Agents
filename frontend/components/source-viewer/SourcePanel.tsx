@@ -57,18 +57,18 @@ export function SourcePanel() {
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
         role="dialog"
-        aria-label="Source detail"
+        aria-label="来源详情"
       >
         <header className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
           <div>
-            <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">Source</p>
-            <h2 className="text-sm font-semibold text-gray-900">Evidence detail</h2>
+            <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">来源</p>
+            <h2 className="text-sm font-semibold text-gray-900">证据详情</h2>
           </div>
           <button
             type="button"
             onClick={closeSource}
             className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
-            aria-label="Close source panel"
+            aria-label="关闭来源面板"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -89,7 +89,7 @@ export function SourcePanel() {
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {!selectedSourceId && (
-            <p className="text-sm text-gray-500">Select a citation badge to inspect its source.</p>
+            <p className="text-sm text-gray-500">选择引用编号查看对应来源。</p>
           )}
 
           {sourceQuery.isLoading && (
@@ -103,8 +103,7 @@ export function SourcePanel() {
 
           {sourceQuery.isError && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              Failed to load source.{' '}
-              {sourceQuery.error instanceof Error ? sourceQuery.error.message : 'Unknown error.'}
+              来源加载失败。{sourceQuery.error instanceof Error ? sourceQuery.error.message : '未知错误。'}
             </div>
           )}
 
@@ -112,7 +111,7 @@ export function SourcePanel() {
             <article className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {sourceQuery.data.title || 'Untitled source'}
+                  {sourceQuery.data.title || '未命名来源'}
                 </h3>
                 <p className="mt-1 font-mono text-xs text-gray-400">{sourceQuery.data.source_id}</p>
               </div>
@@ -126,7 +125,7 @@ export function SourcePanel() {
                     'border-gray-200 bg-gray-50 text-gray-600'
                   }
                 >
-                  reliability: {sourceQuery.data.reliability}
+                  可靠性：{sourceQuery.data.reliability}
                 </Badge>
                 {sourceQuery.data.data_source && (
                   <Badge
@@ -139,9 +138,9 @@ export function SourcePanel() {
                     }
                   >
                     {sourceQuery.data.data_source === 'live'
-                      ? 'Live'
+                      ? '真实采集'
                       : sourceQuery.data.data_source === 'search'
-                      ? 'Search'
+                      ? '搜索'
                       : 'Demo'}
                   </Badge>
                 )}
@@ -161,7 +160,7 @@ export function SourcePanel() {
               )}
 
               <p className="text-xs text-gray-500">
-                Retrieved {formatDateTime(sourceQuery.data.retrieved_at)}
+                获取时间：{formatDateTime(sourceQuery.data.retrieved_at)}
               </p>
 
               {sourceQuery.data.snippet && (
@@ -173,7 +172,7 @@ export function SourcePanel() {
               {sourceQuery.data.content && (
                 <details className="rounded-md border border-gray-200 bg-gray-50">
                   <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-gray-700 select-none hover:bg-gray-100">
-                    Full content
+                    完整内容
                   </summary>
                   <div className="max-h-[420px] overflow-auto border-t border-gray-200 px-3 py-3 text-xs whitespace-pre-wrap text-gray-700">
                     {sourceQuery.data.content}

@@ -44,6 +44,21 @@ const STATUS_STYLES: Record<ProjectStatus, StatusStyle> = {
   },
 }
 
+const STATUS_LABELS: Record<ProjectStatus, string> = {
+  created: '待运行',
+  running: '运行中',
+  completed: '已完成',
+  qa_failed: 'QA 未通过',
+  failed: '失败',
+}
+
+const GOAL_LABELS: Record<string, string> = {
+  feature_comparison: '功能对比',
+  pricing_analysis: '定价分析',
+  user_personas: '用户画像',
+  swot: 'SWOT',
+}
+
 function StatusBadge({ status }: { status: ProjectStatus }) {
   const style = STATUS_STYLES[status] ?? STATUS_STYLES.created
   return (
@@ -58,7 +73,7 @@ function StatusBadge({ status }: { status: ProjectStatus }) {
       {style.pulse && (
         <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
       )}
-      {status.replace('_', ' ')}
+      {STATUS_LABELS[status] ?? status}
     </span>
   )
 }
@@ -74,10 +89,10 @@ export default function ProjectsListPage() {
     <div>
       <header className="mb-6 flex items-end justify-between">
         <div>
-          <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">Workspace</p>
-          <h1 className="mt-1 text-3xl font-semibold text-gray-900">Projects</h1>
+          <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">工作台</p>
+          <h1 className="mt-1 text-3xl font-semibold text-gray-900">项目</h1>
           <p className="mt-1 text-sm text-gray-600">
-            All competitive analysis runs created in this workspace.
+            查看当前工作区创建过的全部竞品分析任务。
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -87,13 +102,13 @@ export default function ProjectsListPage() {
             className="text-sm text-gray-600 hover:text-gray-900"
             disabled={isFetching}
           >
-            {isFetching ? 'Refreshing...' : 'Refresh'}
+            {isFetching ? '刷新中...' : '刷新'}
           </button>
           <Link
             href="/"
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
           >
-            New project
+            新建项目
           </Link>
         </div>
       </header>
@@ -111,7 +126,7 @@ export default function ProjectsListPage() {
 
       {isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Failed to load projects. {error instanceof Error ? error.message : 'Unknown error.'}
+          项目加载失败。{error instanceof Error ? error.message : '未知错误。'}
         </div>
       )}
 
@@ -142,15 +157,15 @@ function EmptyState() {
           />
         </svg>
       </div>
-      <h2 className="mb-1 text-lg font-semibold text-gray-900">No projects yet</h2>
+      <h2 className="mb-1 text-lg font-semibold text-gray-900">还没有项目</h2>
       <p className="mb-4 max-w-sm text-sm text-gray-600">
-        Create your first competitive analysis project to see the agent workflow in action.
+        创建第一个竞品分析项目，查看多 Agent 工作流如何采集、分析、撰写和质检。
       </p>
       <Link
         href="/"
         className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
       >
-        Create your first project
+        创建第一个项目
       </Link>
     </div>
   )
@@ -163,19 +178,19 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
         <thead className="bg-gray-50">
           <tr>
             <th className="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
-              Industry
+              主题
             </th>
             <th className="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
-              Status
+              状态
             </th>
             <th className="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
-              Goals
+              目标
             </th>
             <th className="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
-              Created
+              创建时间
             </th>
             <th className="px-4 py-3 text-right text-xs font-medium tracking-wider text-gray-500 uppercase">
-              <span className="sr-only">Open</span>
+              <span className="sr-only">打开</span>
             </th>
           </tr>
         </thead>
@@ -184,7 +199,7 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
             <tr key={project.project_id} className="hover:bg-gray-50">
               <td className="px-4 py-3">
                 <div className="text-sm font-medium text-gray-900">
-                  {project.industry || 'Untitled'}
+                  {project.industry || '未命名'}
                 </div>
                 <div className="font-mono text-xs text-gray-400">{project.project_id}</div>
               </td>
@@ -199,7 +214,7 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
                       key={g}
                       className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600"
                     >
-                      {g}
+                      {GOAL_LABELS[g] ?? g}
                     </span>
                   ))}
                 </div>
@@ -210,7 +225,7 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
                   href={`/projects/${project.project_id}`}
                   className="text-sm font-medium text-blue-700 hover:text-blue-800"
                 >
-                  Open &rarr;
+                  打开 &rarr;
                 </Link>
               </td>
             </tr>
