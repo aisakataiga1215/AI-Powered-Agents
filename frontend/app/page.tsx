@@ -99,13 +99,10 @@ const CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY: Record<IndustryType, string[]> =
   general: ['用户体验', '核心功能', '价格', '渠道', '品牌信任', '风险'],
 }
 const MAX_CUSTOM_DIMENSIONS = 8
+const DEFAULT_GOALS = ['feature_comparison', 'user_personas']
 
-function defaultGoalsForIndustryType(industryType: IndustryType): string[] {
-  const goals = GOAL_OPTIONS.map((g) => g.value)
-  if (industryType === 'local_services' || industryType === 'open_source') {
-    return goals.filter((goal) => goal !== 'pricing_analysis')
-  }
-  return goals
+function defaultGoalsForIndustryType(_industryType: IndustryType): string[] {
+  return [...DEFAULT_GOALS]
 }
 
 const COMPETITOR_ROLE_OPTIONS: { value: CompetitorRole; label: string }[] = [
@@ -178,7 +175,7 @@ export default function NewProjectPage() {
     DEFAULT_COMPETITORS
   )
   const [goals, setGoals] = useState<string[]>(
-    GOAL_OPTIONS.map((g) => g.value)
+    DEFAULT_GOALS
   )
   const [researchInputs, setResearchInputs] = useState<ResearchInput[]>([])
   const [researchDraft, setResearchDraft] = useState<ResearchInput>({
@@ -763,10 +760,10 @@ export default function NewProjectPage() {
             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           >
             <option value="live_with_fallback">
-              真实采集并兜底 — 搜索可用时采集真实网页
+              真实采集
             </option>
             <option value="demo">
-              Demo 数据 — 稳定离线数据，适合开发演示
+              Demo
             </option>
           </select>
           <p className="text-xs text-gray-500">
