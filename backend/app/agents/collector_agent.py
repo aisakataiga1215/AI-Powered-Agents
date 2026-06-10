@@ -38,6 +38,11 @@ from app.services.coverage_evaluator import WEAK_THRESHOLD
 from app.services.search_provider import create_search_provider
 from app.services.search_service import SearchService, _SEARCH_MAX_URLS
 from app.services.source_discovery import get_industry_max_pages
+from app.utils.sanitizer import sanitize_text
+
+# Research kinds that may contain PII (interview transcripts, free-text
+# survey answers). Other kinds (``notes``, etc.) are passed through as-is.
+_PII_RESEARCH_KINDS = {"survey", "interview"}
 
 logger = get_logger(__name__)
 
@@ -208,6 +213,16 @@ def _build_manual_sources(
             else competitor_names
         )
 
+        # Survey/interview inputs may contain PII (names, contact info, ID
+        # numbers). Mask before persisting so the original is never stored.
+        if source_kind in _PII_RESEARCH_KINDS:
+            effective_content, contains_pii = sanitize_text(content)
+            desensitized = True
+        else:
+            effective_content = content
+            contains_pii = False
+            desensitized = False
+
         for competitor_name in target_names:
             manual_sources.append(
                 SourceEvidence(
@@ -217,11 +232,13 @@ def _build_manual_sources(
                     source_type=SourceType.manual_input,
                     url=f"manual://{source_kind}/{idx}",
                     title=title,
-                    snippet=content[:300],
-                    content=f"Research type: {source_kind}\n\n{content}",
+                    snippet=effective_content[:300],
+                    content=f"Research type: {source_kind}\n\n{effective_content}",
                     retrieved_at=datetime.now(timezone.utc).isoformat(),
                     reliability=Reliability.medium,
                     data_source="manual",
+                    contains_pii=contains_pii,
+                    desensitized=desensitized,
                 )
             )
 
