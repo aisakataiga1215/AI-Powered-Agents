@@ -253,6 +253,7 @@ def _collect_live(
     industry_type: str = "general",
     search_service: SearchService | None = None,
     extra_urls: list[str] | None = None,
+    rework_hints: list[str] | None = None,
 ) -> _CollectionResult:
     """Crawl a competitor's website using industry-specific paths.
 
@@ -266,7 +267,9 @@ def _collect_live(
     search_urls: list[str] = []
     if search_service is not None:
         try:
-            search_urls = search_service.discover_urls(competitor_name, website, industry_type)
+            search_urls = search_service.discover_urls(
+                competitor_name, website, industry_type, rework_hints=rework_hints,
+            )
         except Exception as exc:
             logger.warning(
                 "CollectorAgent: SearchService failed for '%s': %s — continuing without search URLs",
@@ -457,6 +460,7 @@ def run(
                     name, website, project_id, competitor_id, industry_type,
                     search_service=search_svc,
                     extra_urls=comp.get("extra_urls", []) if isinstance(comp, dict) else [],
+                    rework_hints=rework_hints or None,
                 )
                 all_failed_urls.extend(result.failed_urls)
                 attempted_urls_by_competitor[name] = result.attempted_urls

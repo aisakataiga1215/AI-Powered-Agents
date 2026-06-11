@@ -896,17 +896,41 @@ class SearchService:
     def __init__(self, provider: SearchProvider) -> None:
         self._provider = provider
 
+    _HINT_KEYWORD_QUERIES: dict[str, str] = {
+        "pricing": "{name} official pricing plans subscription cost",
+        "features": "{name} features overview capabilities",
+        "docs": "{name} official documentation docs",
+        "security": "{name} security privacy compliance",
+        "enterprise": "{name} enterprise plan business pricing",
+    }
+
+    def _build_hint_queries(self, competitor_name: str, hints: list[str]) -> list[str]:
+        """Generate extra targeted search queries from QA rework hints."""
+        hint_text = " ".join(hints).lower()
+        queries: list[str] = []
+        for keyword, template in self._HINT_KEYWORD_QUERIES.items():
+            if keyword in hint_text:
+                queries.append(template.format(name=competitor_name))
+        return queries
+
     def discover_urls(
         self,
         competitor_name: str,
         competitor_url: str,
         industry_type: str = "general",
         max_per_query: int = 3,
+        rework_hints: list[str] | None = None,
     ) -> list[str]:
-        """Fire industry-keyed queries, filter, deduplicate, return up to _SEARCH_MAX_URLS URLs."""
+        """Fire industry-keyed queries + optional hint-targeted queries,
+        filter, deduplicate, return up to _SEARCH_MAX_URLS URLs."""
         templates = _QUERY_TEMPLATES.get(industry_type, _QUERY_TEMPLATES["general"])
         seen: set[str] = set()
         result: list[str] = []
+
+        # Prepend hint-targeted queries so they take priority
+        if rework_hints:
+            hint_queries = self._build_hint_queries(competitor_name, rework_hints)
+            templates = hint_queries + templates
 
         for template in templates:
             query = template.format(name=competitor_name)
