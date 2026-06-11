@@ -144,6 +144,16 @@ export function SourcePanel() {
                       : 'Demo'}
                   </Badge>
                 )}
+                {sourceQuery.data.desensitized && (
+                  <Badge className="border-purple-200 bg-purple-50 text-purple-700">
+                    已脱敏
+                  </Badge>
+                )}
+                {sourceQuery.data.contains_pii && (
+                  <Badge className="border-orange-200 bg-orange-50 text-orange-700">
+                    检测到 PII
+                  </Badge>
+                )}
               </div>
 
               {sourceQuery.data.url && (

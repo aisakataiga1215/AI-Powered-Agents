@@ -192,18 +192,34 @@ def _build_function_calling_llm():
 def _extract_token_usage(response: object) -> TokenUsage:
     meta = getattr(response, "usage_metadata", None)
     if meta and isinstance(meta, dict):
+        prompt = int(meta.get("input_tokens", 0))
+        completion = int(meta.get("output_tokens", 0))
+        total = int(meta.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
         return TokenUsage(
-            prompt_tokens=int(meta.get("input_tokens", 0)),
-            completion_tokens=int(meta.get("output_tokens", 0)),
-            total_tokens=int(meta.get("total_tokens", 0)),
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            total_tokens=total,
+            cost_usd=cost,
         )
     resp_meta = getattr(response, "response_metadata", None) or {}
     usage = resp_meta.get("token_usage") or resp_meta.get("usage") or {}
     if usage:
+        prompt = int(usage.get("prompt_tokens", 0))
+        completion = int(usage.get("completion_tokens", 0))
+        total = int(usage.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
         return TokenUsage(
-            prompt_tokens=int(usage.get("prompt_tokens", 0)),
-            completion_tokens=int(usage.get("completion_tokens", 0)),
-            total_tokens=int(usage.get("total_tokens", 0)),
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            total_tokens=total,
+            cost_usd=cost,
         )
     return TokenUsage()
 

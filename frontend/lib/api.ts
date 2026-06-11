@@ -10,6 +10,8 @@ import type {
   CandidateCompetitor,
   CandidateSource,
   CompetitiveReport,
+  GraphResponse,
+  MetricsResponse,
   ProjectCreate,
   ProjectResponse,
   SourceEvidence,
@@ -76,6 +78,16 @@ export const api = {
 
   getSearchStatus: () =>
     request<{ search_available: boolean }>('/api/search/status'),
+
+  getGraph: () => request<GraphResponse>('/api/graph'),
+
+  getMetrics: (params?: { project_id?: string; since?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.project_id) query.set('project_id', params.project_id)
+    if (params?.since) query.set('since', params.since)
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    return request<MetricsResponse>(`/api/metrics${suffix}`)
+  },
 
   searchSources: (payload: {
     competitor_name: string

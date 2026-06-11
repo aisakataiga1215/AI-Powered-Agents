@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes import (
     health,
+    graph,
     knowledge,
+    metrics,
     projects,
     reports,
     search,
@@ -72,9 +74,11 @@ async def app_error_handler(request: Request, exc: AppError):
 
 
 app.include_router(health.router, prefix="/api")
+app.include_router(graph.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(traces.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(sources.router, prefix="/api")
 app.include_router(knowledge.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
+app.include_router(metrics.router, prefix="/api")

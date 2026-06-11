@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.schemas.claim import Claim
+from app.schemas.claim import Claim, Sentence
 from app.schemas.knowledge import CompetitorKnowledge
 from app.schemas.report import CompetitiveReport
 from app.schemas.source import SourceEvidence
@@ -180,19 +180,35 @@ def _extract_token_usage(response: Any) -> TokenUsage:
     # Preferred: LangChain's unified usage_metadata (dict with input_tokens, etc.)
     meta = getattr(response, "usage_metadata", None)
     if meta and isinstance(meta, dict):
+        prompt = int(meta.get("input_tokens", 0))
+        completion = int(meta.get("output_tokens", 0))
+        total = int(meta.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
         return TokenUsage(
-            prompt_tokens=int(meta.get("input_tokens", 0)),
-            completion_tokens=int(meta.get("output_tokens", 0)),
-            total_tokens=int(meta.get("total_tokens", 0)),
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            total_tokens=total,
+            cost_usd=cost,
         )
     # Fallback: raw response_metadata from OpenAI-compatible providers
     resp_meta = getattr(response, "response_metadata", None) or {}
     usage = resp_meta.get("token_usage") or resp_meta.get("usage") or {}
     if usage:
+        prompt = int(usage.get("prompt_tokens", 0))
+        completion = int(usage.get("completion_tokens", 0))
+        total = int(usage.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
         return TokenUsage(
-            prompt_tokens=int(usage.get("prompt_tokens", 0)),
-            completion_tokens=int(usage.get("completion_tokens", 0)),
-            total_tokens=int(usage.get("total_tokens", 0)),
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            total_tokens=total,
+            cost_usd=cost,
         )
     return TokenUsage()
 
@@ -232,7 +248,7 @@ def _to_claim_dict_list(value: Any) -> list[dict]:
     if value is None:
         return []
     if isinstance(value, str):
-        return [{"text": value, "evidence": [], "is_hypothesis": True}]
+        return [{"text": value, "evidence": [], "is_hypothesis": True, "sentences": [{"text": value, "sources": []}]}]
     if isinstance(value, dict):
         return [value]
     if not isinstance(value, list):
@@ -243,7 +259,7 @@ def _to_claim_dict_list(value: Any) -> list[dict]:
             result.append(item)
         elif isinstance(item, str) and item.strip():
             result.append(
-                {"text": item, "evidence": [], "is_hypothesis": True}
+                {"text": item, "evidence": [], "is_hypothesis": True, "sentences": [{"text": item, "sources": []}]}
             )
     return result
 
@@ -327,6 +343,24 @@ def _build_fallback_report(
         source_list=list(sources),
         markdown_content="\n".join(lines),
     )
+
+
+def _strip_invalid_sentence_sources(report: CompetitiveReport, valid_source_ids: set[str]) -> None:
+    """Remove any sentence source IDs not in the input bundle (in-place).
+
+    Prevents hallucinated citation IDs from propagating. Logs a warning
+    when invalid IDs are found so the issue is visible in traces.
+    """
+    for claim in list(report.executive_summary) + list(report.strategic_recommendations):
+        if not claim.sentences:
+            continue
+        for sentence in claim.sentences:
+            invalid = [sid for sid in sentence.sources if sid not in valid_source_ids]
+            if invalid:
+                logger.warning(
+                    "WriterAgent: stripped hallucinated source IDs from sentence: %s", invalid
+                )
+                sentence.sources = [sid for sid in sentence.sources if sid in valid_source_ids]
 
 
 def _produce_report(
@@ -793,6 +827,8 @@ def run(
                 sources=sources,
                 goals=goals,
             )
+        valid_source_ids = {s.source_id for s in sources}
+        _strip_invalid_sentence_sources(report, valid_source_ids)
         report = _bind_report_fields(
             report,
             project_id=project_id,
