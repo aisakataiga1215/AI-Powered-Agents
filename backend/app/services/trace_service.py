@@ -140,6 +140,81 @@ def record_workflow_event(
     return save_agent_run(db, run)
 
 
+def aggregate_costs(
+    db: Session,
+    project_id: str | None = None,
+    since: datetime | None = None,
+) -> dict:
+    """Return token cost aggregates across agent runs.
+
+    Filters by ``project_id`` and/or ``since`` when provided.
+    Returns ``{total_cost_usd, by_agent, by_project, by_day}``.
+    """
+    query = db.query(models.AgentRun)
+    if project_id:
+        query = query.filter(models.AgentRun.project_id == project_id)
+    if since:
+        query = query.filter(models.AgentRun.created_at >= since)
+
+    records = query.all()
+
+    total_cost = 0.0
+    total_tokens = 0
+    by_agent: dict[str, dict[str, float | int]] = {}
+    by_project: dict[str, dict[str, float | int]] = {}
+    by_day: dict[str, dict[str, float | int]] = {}
+
+    def add(bucket: dict[str, dict[str, float | int]], key: str, cost: float, tokens: int) -> None:
+        current = bucket.setdefault(key, {"cost_usd": 0.0, "total_tokens": 0, "run_count": 0})
+        current["cost_usd"] = float(current["cost_usd"]) + cost
+        current["total_tokens"] = int(current["total_tokens"]) + tokens
+        current["run_count"] = int(current["run_count"]) + 1
+
+    for record in records:
+        try:
+            usage = json.loads(record.token_usage_json or "{}")
+        except json.JSONDecodeError:
+            usage = {}
+        cost = float(usage.get("cost_usd") or 0.0)
+        tokens = int(usage.get("total_tokens") or 0)
+        total_cost += cost
+        total_tokens += tokens
+
+        agent = record.agent_name or "unknown"
+        add(by_agent, agent, cost, tokens)
+
+        proj = record.project_id or "unknown"
+        add(by_project, proj, cost, tokens)
+
+        ts = record.created_at
+        if isinstance(ts, datetime):
+            day = ts.date().isoformat()
+        elif isinstance(ts, str):
+            day = ts[:10]
+        else:
+            day = "unknown"
+        add(by_day, day, cost, tokens)
+
+    def rounded(bucket: dict[str, dict[str, float | int]]) -> dict[str, dict[str, float | int]]:
+        return {
+            key: {
+                "cost_usd": round(float(value["cost_usd"]), 6),
+                "total_tokens": int(value["total_tokens"]),
+                "run_count": int(value["run_count"]),
+            }
+            for key, value in bucket.items()
+        }
+
+    return {
+        "total_cost_usd": round(total_cost, 6),
+        "total_tokens": total_tokens,
+        "run_count": len(records),
+        "by_agent": rounded(by_agent),
+        "by_project": rounded(by_project),
+        "by_day": rounded(dict(sorted(by_day.items()))),
+    }
+
+
 def serialize_agent_run(record: models.AgentRun) -> dict:
     """Serialize an :class:`AgentRun` ORM row into a JSON-friendly dict."""
     try:

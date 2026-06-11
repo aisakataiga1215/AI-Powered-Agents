@@ -1,16 +1,9 @@
 """WriterAgent.
 
 Synthesizes a :class:`CompetitiveReport` from structured competitor
-knowledge using an LLM in **JSON Output mode**.
-
-Why JSON output instead of ``with_structured_output``:
-DeepSeek's OpenAI-compatible endpoint reliably returns plain assistant
-content for this task and frequently refuses the tool-call path that
-LangChain's ``with_structured_output(method="function_calling")``
-expects, leaving the workflow stuck on a ``None`` return. JSON output
-mode (``response_format={"type": "json_object"}``) is the supported way
-to get strict-JSON responses from DeepSeek; we then parse, normalize,
-and validate against :class:`CompetitiveReport` ourselves.
+knowledge using function/tool calling when the provider supports it.
+JSON Output remains as a compatibility fallback for OpenAI-compatible
+providers whose function-calling implementation is incomplete.
 
 The writer never raises on LLM/parsing/validation failure — it always
 produces a valid (possibly minimal) :class:`CompetitiveReport` so the
@@ -31,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.schemas.claim import Claim
+from app.schemas.claim import Claim, Sentence
 from app.schemas.knowledge import CompetitorKnowledge
 from app.schemas.report import CompetitiveReport
 from app.schemas.source import SourceEvidence
@@ -138,8 +131,8 @@ Keep the report concise:
 """
 
 
-def _build_json_llm() -> ChatOpenAI:
-    """Construct a ChatOpenAI client bound to JSON-object response mode."""
+def _build_base_llm(*, json_mode: bool) -> ChatOpenAI:
+    """Construct a ChatOpenAI client for structured report generation."""
     if not settings.openai_api_key:
         raise RuntimeError(
             "OPENAI_API_KEY is not configured; WriterAgent cannot run."
@@ -148,10 +141,11 @@ def _build_json_llm() -> ChatOpenAI:
         "model": settings.default_model,
         "api_key": settings.openai_api_key,
         "temperature": 0,
+    }
+    if json_mode:
         # ``response_format`` is an OpenAI request param; ``model_kwargs``
         # is the langchain-openai escape hatch for forwarding it.
-        "model_kwargs": {"response_format": {"type": "json_object"}},
-    }
+        kwargs["model_kwargs"] = {"response_format": {"type": "json_object"}}
     if settings.openai_base_url:
         kwargs["base_url"] = settings.openai_base_url
     if settings.llm_disable_thinking:
@@ -160,6 +154,20 @@ def _build_json_llm() -> ChatOpenAI:
         # OpenAI client reject it as an unknown argument.
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
     return ChatOpenAI(**kwargs)
+
+
+def _build_json_llm() -> ChatOpenAI:
+    """Construct a ChatOpenAI client bound to JSON-object response mode."""
+    return _build_base_llm(json_mode=True)
+
+
+def _build_function_calling_llm():
+    """Construct a structured-output client using native function calling."""
+    return _build_base_llm(json_mode=False).with_structured_output(
+        CompetitiveReport,
+        method="function_calling",
+        include_raw=True,
+    )
 
 
 def _extract_token_usage(response: Any) -> TokenUsage:
@@ -172,19 +180,35 @@ def _extract_token_usage(response: Any) -> TokenUsage:
     # Preferred: LangChain's unified usage_metadata (dict with input_tokens, etc.)
     meta = getattr(response, "usage_metadata", None)
     if meta and isinstance(meta, dict):
+        prompt = int(meta.get("input_tokens", 0))
+        completion = int(meta.get("output_tokens", 0))
+        total = int(meta.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
         return TokenUsage(
-            prompt_tokens=int(meta.get("input_tokens", 0)),
-            completion_tokens=int(meta.get("output_tokens", 0)),
-            total_tokens=int(meta.get("total_tokens", 0)),
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            total_tokens=total,
+            cost_usd=cost,
         )
     # Fallback: raw response_metadata from OpenAI-compatible providers
     resp_meta = getattr(response, "response_metadata", None) or {}
     usage = resp_meta.get("token_usage") or resp_meta.get("usage") or {}
     if usage:
+        prompt = int(usage.get("prompt_tokens", 0))
+        completion = int(usage.get("completion_tokens", 0))
+        total = int(usage.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
         return TokenUsage(
-            prompt_tokens=int(usage.get("prompt_tokens", 0)),
-            completion_tokens=int(usage.get("completion_tokens", 0)),
-            total_tokens=int(usage.get("total_tokens", 0)),
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            total_tokens=total,
+            cost_usd=cost,
         )
     return TokenUsage()
 
@@ -224,7 +248,7 @@ def _to_claim_dict_list(value: Any) -> list[dict]:
     if value is None:
         return []
     if isinstance(value, str):
-        return [{"text": value, "evidence": [], "is_hypothesis": True}]
+        return [{"text": value, "evidence": [], "is_hypothesis": True, "sentences": [{"text": value, "sources": []}]}]
     if isinstance(value, dict):
         return [value]
     if not isinstance(value, list):
@@ -235,7 +259,7 @@ def _to_claim_dict_list(value: Any) -> list[dict]:
             result.append(item)
         elif isinstance(item, str) and item.strip():
             result.append(
-                {"text": item, "evidence": [], "is_hypothesis": True}
+                {"text": item, "evidence": [], "is_hypothesis": True, "sentences": [{"text": item, "sources": []}]}
             )
     return result
 
@@ -319,6 +343,24 @@ def _build_fallback_report(
         source_list=list(sources),
         markdown_content="\n".join(lines),
     )
+
+
+def _strip_invalid_sentence_sources(report: CompetitiveReport, valid_source_ids: set[str]) -> None:
+    """Remove any sentence source IDs not in the input bundle (in-place).
+
+    Prevents hallucinated citation IDs from propagating. Logs a warning
+    when invalid IDs are found so the issue is visible in traces.
+    """
+    for claim in list(report.executive_summary) + list(report.strategic_recommendations):
+        if not claim.sentences:
+            continue
+        for sentence in claim.sentences:
+            invalid = [sid for sid in sentence.sources if sid not in valid_source_ids]
+            if invalid:
+                logger.warning(
+                    "WriterAgent: stripped hallucinated source IDs from sentence: %s", invalid
+                )
+                sentence.sources = [sid for sid in sentence.sources if sid in valid_source_ids]
 
 
 def _produce_report(
@@ -433,6 +475,36 @@ def _produce_report(
         )
 
     return report, False, token_usage, _preview(content), "parsed"
+
+
+def _produce_report_function_calling(
+    llm: Any,
+    messages: list,
+) -> tuple[CompetitiveReport, TokenUsage, str, str]:
+    """Invoke a function-calling structured-output LLM.
+
+    Raises on provider/tool-call/parsing failure so the caller can fall back
+    to JSON Output mode without marking the report as a true fallback.
+    """
+    response = llm.invoke(messages)
+    raw_message = response.get("raw") if isinstance(response, dict) else None
+    parsed = response.get("parsed") if isinstance(response, dict) else response
+    parsing_error = response.get("parsing_error") if isinstance(response, dict) else None
+    if parsing_error is not None:
+        raise ValueError(f"function calling parse error: {parsing_error}")
+
+    if isinstance(parsed, CompetitiveReport):
+        report = parsed
+    else:
+        report = CompetitiveReport.model_validate(_normalize_report_payload(parsed))
+
+    preview_payload = report.model_dump(mode="json")
+    return (
+        report,
+        _extract_token_usage(raw_message),
+        _preview(json.dumps(preview_payload, ensure_ascii=False)),
+        "function_calling_parsed",
+    )
 
 
 def _build_feature_comparison(
@@ -723,8 +795,6 @@ def run(
                 "and the report title.\n"
                 "JSON keys, source_ids, competitor names, URLs, and enum values stay in English."
             )
-        llm = _build_json_llm()
-
         user_message = _build_user_message(
             competitor_knowledge=competitor_knowledge,
             sources=sources,
@@ -738,14 +808,27 @@ def run(
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_message),
         ]
-        report, is_fallback, token_usage, llm_output_preview, parse_status = _produce_report(
-            llm,
-            messages,
-            project_id=project_id,
-            competitor_knowledge=competitor_knowledge,
-            sources=sources,
-            goals=goals,
-        )
+        is_fallback = False
+        try:
+            report, token_usage, llm_output_preview, parse_status = _produce_report_function_calling(
+                _build_function_calling_llm(),
+                messages,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "WriterAgent: function calling failed: %s; falling back to JSON output.",
+                exc,
+            )
+            report, is_fallback, token_usage, llm_output_preview, parse_status = _produce_report(
+                _build_json_llm(),
+                messages,
+                project_id=project_id,
+                competitor_knowledge=competitor_knowledge,
+                sources=sources,
+                goals=goals,
+            )
+        valid_source_ids = {s.source_id for s in sources}
+        _strip_invalid_sentence_sources(report, valid_source_ids)
         report = _bind_report_fields(
             report,
             project_id=project_id,

@@ -122,9 +122,10 @@ export interface TokenUsage {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  cost_usd?: number | null
 }
 
-export type AgentRunStatus = 'success' | 'failed' | 'skipped' | 'running'
+export type AgentRunStatus = 'success' | 'failed' | 'skipped' | 'running' | 'timeout'
 
 export interface AgentRun {
   agent_run_id: string
@@ -145,6 +146,38 @@ export interface TracesResponse {
   traces: AgentRun[]
 }
 
+export interface GraphNode {
+  id: string
+  label: string
+  type: string
+}
+
+export interface GraphEdge {
+  source: string
+  target: string
+  condition?: string
+}
+
+export interface GraphResponse {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+}
+
+export interface MetricsResponse {
+  total_cost_usd: number
+  total_tokens: number
+  run_count: number
+  by_agent: Record<string, MetricBucket>
+  by_project: Record<string, MetricBucket>
+  by_day: Record<string, MetricBucket>
+}
+
+export interface MetricBucket {
+  cost_usd: number
+  total_tokens: number
+  run_count: number
+}
+
 /**
  * Backend Claim schema uses `text` (not `claim`).
  * `evidence` is a list of source IDs.
@@ -154,6 +187,7 @@ export interface Claim {
   text: string
   confidence?: 'high' | 'medium' | 'low'
   evidence: string[]
+  sentences?: { text: string; sources: string[] }[] | null
   is_hypothesis?: boolean
   created_by?: string
 }
@@ -281,6 +315,8 @@ export interface SourceEvidence {
   retrieved_at: string
   reliability: Reliability | string
   data_source?: 'live' | 'demo' | 'search' | 'manual'
+  contains_pii?: boolean
+  desensitized?: boolean
 }
 
 /**

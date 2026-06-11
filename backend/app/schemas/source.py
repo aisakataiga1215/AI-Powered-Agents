@@ -47,3 +47,5 @@ class SourceEvidence(BaseModel):
     retrieved_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     reliability: Reliability = Reliability.medium
     data_source: Literal["live", "demo", "search", "manual"] = "demo"
+    contains_pii: bool = False
+    desensitized: bool = False

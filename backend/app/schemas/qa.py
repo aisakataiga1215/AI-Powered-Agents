@@ -72,3 +72,20 @@ class QAResult(BaseModel):
                 computed -= _MEDIUM_PENALTY
         self.score = max(computed, 0)
         return self
+
+
+class QAComparison(BaseModel):
+    """Snapshot of QA-relevant metrics before/after a rework loop.
+
+    Captured by the workflow when a rework pass runs so the trace UI can
+    show evaluators that QA actually changed the report (fewer issues,
+    higher citation coverage, claims touched).
+    """
+
+    issues_before: int = 0
+    issues_high_before: int = 0
+    citation_coverage_before: float = 0.0
+    issues_after: int = 0
+    issues_high_after: int = 0
+    citation_coverage_after: float = 0.0
+    claims_affected: int = 0

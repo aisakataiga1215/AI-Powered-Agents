@@ -30,6 +30,9 @@ export function AgentRunCard({ run }: AgentRunCardProps) {
   const totalTokens = typeof run.token_usage?.total_tokens === 'number'
     ? run.token_usage.total_tokens
     : 0
+  const costUsd = typeof run.token_usage?.cost_usd === 'number'
+    ? run.token_usage.cost_usd
+    : null
 
   return (
     <article className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
@@ -46,6 +49,7 @@ export function AgentRunCard({ run }: AgentRunCardProps) {
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <span>{run.latency_ms}ms</span>
           <span>约 {totalTokens.toLocaleString()} tokens</span>
+          {costUsd !== null && <span>${costUsd.toFixed(6)}</span>}
         </div>
       </header>
 

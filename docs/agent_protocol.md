@@ -30,8 +30,9 @@ Implementation note: the runtime workflow currently passes these
 structured payloads through LangGraph `WorkflowState` and persists the
 corresponding `AgentRun` traces. The `AgentMessage` schema documents the
 logical protocol boundary; it is not a claim that every edge is implemented
-as native OpenAI function/tool calling. LLM calls use JSON Output mode plus
-Pydantic validation by default for provider compatibility.
+as persisted `AgentMessage` rows on every edge. AnalystAgent and WriterAgent
+now try native function/tool calling first; if a provider does not support it
+reliably, they fall back to JSON Output mode plus Pydantic validation.
 
 ```json
 {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import ReactFlow, {
   Background,
   Handle,
@@ -14,7 +15,8 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
-import type { AgentRun, ProjectStatus } from '@/lib/types'
+import { api } from '@/lib/api'
+import type { AgentRun, GraphResponse, ProjectStatus } from '@/lib/types'
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -31,12 +33,23 @@ interface AgentSlot {
 }
 
 const SLOTS: AgentSlot[] = [
-  { id: 'collector', label: 'Collector', x: 0, matcher: 'Collector' },
-  { id: 'analyst', label: 'Analyst', x: GAP * 1, matcher: 'Analyst' },
-  { id: 'writer', label: 'Writer', x: GAP * 2, matcher: 'Writer' },
-  { id: 'qa', label: 'QA', x: GAP * 3, matcher: 'QA' },
-  { id: 'end', label: 'END', x: GAP * 4, matcher: null },
+  { id: 'collect_sources', label: 'Collector', x: 0, matcher: 'Collector' },
+  { id: 'analyze_competitors', label: 'Analyst', x: GAP * 1, matcher: 'Analyst' },
+  { id: 'write_report', label: 'Writer', x: GAP * 2, matcher: 'Writer' },
+  { id: 'qa_review', label: 'QA', x: GAP * 3, matcher: 'QA' },
+  { id: '__end__', label: 'END', x: GAP * 4, matcher: null },
 ]
+
+const NODE_POSITION: Record<string, { x: number; y: number; matcher: string | null }> = {
+  collect_sources: { x: 0, y: NODE_Y, matcher: 'Collector' },
+  analyze_competitors: { x: GAP, y: NODE_Y, matcher: 'Analyst' },
+  write_report: { x: GAP * 2, y: NODE_Y, matcher: 'Writer' },
+  qa_review: { x: GAP * 3, y: NODE_Y, matcher: 'QA' },
+  finalize_report: { x: GAP * 4, y: 25, matcher: null },
+  mark_qa_failed: { x: GAP * 4, y: 118, matcher: null },
+  handle_rework: { x: GAP * 3, y: 205, matcher: null },
+  __end__: { x: GAP * 5, y: NODE_Y, matcher: null },
+}
 
 // ── Node colour by status ─────────────────────────────────────────────────────
 
@@ -156,8 +169,15 @@ const EDGE_TYPES: EdgeTypes = Object.freeze({ rework: ReworkEdge })
 // ── AgentDAG ──────────────────────────────────────────────────────────────────
 
 export function AgentDAG({ traces, projectStatus }: { traces: AgentRun[]; projectStatus?: ProjectStatus }) {
+  const graphQuery = useQuery({
+    queryKey: ['workflow-graph'],
+    queryFn: () => api.getGraph(),
+    staleTime: 60_000,
+    retry: false,
+  })
   const isTerminal = projectStatus === 'completed' || projectStatus === 'qa_failed' || projectStatus === 'failed'
   const { nodes, edges } = useMemo(() => {
+    const graph = graphQuery.data
     // Derive which rework targets were actually triggered
     const reworkTargets = new Set<string>()
     traces.forEach((t) => {
@@ -166,9 +186,9 @@ export function AgentDAG({ traces, projectStatus }: { traces: AgentRun[]; projec
         if (out.passed === false) {
           out.issues?.forEach((issue) => {
             const tgt = (issue.target_agent ?? '').toLowerCase()
-            if (tgt.includes('collector')) reworkTargets.add('collector')
-            if (tgt.includes('analyst')) reworkTargets.add('analyst')
-            if (tgt.includes('writer')) reworkTargets.add('writer')
+            if (tgt.includes('collector')) reworkTargets.add('collect_sources')
+            if (tgt.includes('analyst')) reworkTargets.add('analyze_competitors')
+            if (tgt.includes('writer')) reworkTargets.add('write_report')
           })
         }
       }
@@ -182,41 +202,65 @@ export function AgentDAG({ traces, projectStatus }: { traces: AgentRun[]; projec
         (t.output as { passed?: boolean }).passed === true
     )
 
-    const nodes: Node[] = SLOTS.map((slot) => ({
-      id: slot.id,
-      type: 'agent',
-      position: { x: slot.x, y: NODE_Y },
-      data: { label: slot.label, slotStyle: findStyle(slot, traces, isTerminal) },
-      draggable: false,
-      selectable: false,
-      connectable: false,
-    }))
+    const visibleBackendNodes = graph?.nodes
+      ?.filter((node) => NODE_POSITION[node.id])
+      .map((node) => {
+        const pos = NODE_POSITION[node.id]
+        const slot: AgentSlot = {
+          id: node.id,
+          label: node.label,
+          x: pos.x,
+          matcher: pos.matcher,
+        }
+        return {
+          id: node.id,
+          type: 'agent',
+          position: { x: pos.x, y: pos.y },
+          data: { label: node.label, slotStyle: findStyle(slot, traces, isTerminal) },
+          draggable: false,
+          selectable: false,
+          connectable: false,
+        } satisfies Node
+      })
 
-    const edges: Edge[] = [
+    const nodes: Node[] = visibleBackendNodes?.length
+      ? visibleBackendNodes
+      : SLOTS.map((slot) => ({
+          id: slot.id,
+          type: 'agent',
+          position: { x: slot.x, y: NODE_Y },
+          data: { label: slot.label, slotStyle: findStyle(slot, traces, isTerminal) },
+          draggable: false,
+          selectable: false,
+          connectable: false,
+        }))
+
+    const backendEdges = buildEdgesFromGraph(graph, reworkTargets, qaPassed)
+    const edges: Edge[] = backendEdges.length > 0 ? backendEdges : [
       // ── forward flow ──────────────────────────────────────────────────────
       {
         id: 'c-a',
-        source: 'collector',
+        source: 'collect_sources',
         sourceHandle: 'right',
-        target: 'analyst',
+        target: 'analyze_competitors',
         targetHandle: 'left',
         type: 'smoothstep',
         style: { stroke: '#94a3b8', strokeWidth: 1.5 },
       },
       {
         id: 'a-w',
-        source: 'analyst',
+        source: 'analyze_competitors',
         sourceHandle: 'right',
-        target: 'writer',
+        target: 'write_report',
         targetHandle: 'left',
         type: 'smoothstep',
         style: { stroke: '#94a3b8', strokeWidth: 1.5 },
       },
       {
         id: 'w-q',
-        source: 'writer',
+        source: 'write_report',
         sourceHandle: 'right',
-        target: 'qa',
+        target: 'qa_review',
         targetHandle: 'left',
         type: 'smoothstep',
         style: { stroke: '#94a3b8', strokeWidth: 1.5 },
@@ -224,9 +268,9 @@ export function AgentDAG({ traces, projectStatus }: { traces: AgentRun[]; projec
       // QA → END: show "pass" label only when QA actually passed
       {
         id: 'q-e',
-        source: 'qa',
+        source: 'qa_review',
         sourceHandle: 'right',
-        target: 'end',
+        target: '__end__',
         targetHandle: 'left',
         type: 'smoothstep',
         ...(qaPassed
@@ -243,35 +287,35 @@ export function AgentDAG({ traces, projectStatus }: { traces: AgentRun[]; projec
       // ── rework arcs — always structurally present, highlighted only when triggered ──
       {
         id: 'q-w',
-        source: 'qa',
+        source: 'qa_review',
         sourceHandle: 'bot-src',
-        target: 'writer',
+        target: 'write_report',
         targetHandle: 'bot-tgt',
         type: 'rework',
-        data: { active: reworkTargets.has('writer') },
+        data: { active: reworkTargets.has('write_report') },
       },
       {
         id: 'q-a',
-        source: 'qa',
+        source: 'qa_review',
         sourceHandle: 'bot-src',
-        target: 'analyst',
+        target: 'analyze_competitors',
         targetHandle: 'bot-tgt',
         type: 'rework',
-        data: { active: reworkTargets.has('analyst') },
+        data: { active: reworkTargets.has('analyze_competitors') },
       },
       {
         id: 'q-c',
-        source: 'qa',
+        source: 'qa_review',
         sourceHandle: 'bot-src',
-        target: 'collector',
+        target: 'collect_sources',
         targetHandle: 'bot-tgt',
         type: 'rework',
-        data: { active: reworkTargets.has('collector') },
+        data: { active: reworkTargets.has('collect_sources') },
       },
     ]
 
     return { nodes, edges }
-  }, [traces, isTerminal])
+  }, [traces, isTerminal, graphQuery.data])
 
   return (
     <div
@@ -298,4 +342,48 @@ export function AgentDAG({ traces, projectStatus }: { traces: AgentRun[]; projec
       </ReactFlow>
     </div>
   )
+}
+
+function buildEdgesFromGraph(
+  graph: GraphResponse | undefined,
+  reworkTargets: Set<string>,
+  qaPassed: boolean
+): Edge[] {
+  if (!graph?.edges?.length) return []
+  return graph.edges
+    .filter((edge) => NODE_POSITION[edge.source] && NODE_POSITION[edge.target])
+    .map((edge) => {
+      const isRework = edge.source === 'handle_rework'
+      const source = isRework ? 'qa_review' : edge.source
+      const target = edge.target
+      const isPass = edge.source === 'qa_review' && edge.target === 'finalize_report'
+      const isFail = edge.source === 'qa_review' && edge.target === 'mark_qa_failed'
+      const active = isRework && reworkTargets.has(target)
+      return {
+        id: `${edge.source}-${edge.target}`,
+        source,
+        sourceHandle: isRework ? 'bot-src' : 'right',
+        target,
+        targetHandle: isRework ? 'bot-tgt' : 'left',
+        type: isRework ? 'rework' : 'smoothstep',
+        data: isRework ? { active } : undefined,
+        label: isPass && qaPassed ? 'pass' : isFail ? 'fail' : undefined,
+        labelStyle: isPass && qaPassed
+          ? { fontSize: 11, fontWeight: 600, fill: '#16a34a' }
+          : isFail
+            ? { fontSize: 11, fontWeight: 600, fill: '#dc2626' }
+            : undefined,
+        labelBgStyle: isPass && qaPassed
+          ? { fill: '#f0fdf4' }
+          : isFail
+            ? { fill: '#fef2f2' }
+            : undefined,
+        labelBgPadding: (isPass || isFail) ? [5, 3] as [number, number] : undefined,
+        labelBgBorderRadius: (isPass || isFail) ? 4 : undefined,
+        style: {
+          stroke: isPass && qaPassed ? '#22c55e' : isFail ? '#ef4444' : '#94a3b8',
+          strokeWidth: 1.5,
+        },
+      } satisfies Edge
+    })
 }

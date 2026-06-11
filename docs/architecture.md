@@ -462,6 +462,8 @@ Core MVP APIs:
 | POST   | `/api/search/sources`                  | Interactive per-competitor candidate URL search (returns `list[CandidateSource]`; requires `ENABLE_LIVE_SEARCH=true` and `TAVILY_API_KEY`) |
 | POST   | `/api/search/competitors`              | Industry-driven competitor discovery (accepts `{ industry, industry_type }`, returns `list[CandidateCompetitor]`; requires `ENABLE_LIVE_SEARCH=true` and `TAVILY_API_KEY`) |
 | PATCH  | `/api/projects/{project_id}/knowledge` | Manually correct structured knowledge |
+| GET    | `/api/graph`                           | Export the compiled LangGraph DAG for the frontend workflow view |
+| GET    | `/api/metrics`                         | Aggregate AgentRun token usage and estimated cost by agent, project, and day |
 
 ## 10. Traceability Design
 
