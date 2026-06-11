@@ -170,6 +170,28 @@ class AgentRun(Base):
     project = relationship("Project", back_populates="agent_runs")
 
 
+class WorkflowJob(Base):
+    __tablename__ = "workflow_jobs"
+
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(
+        String,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(String, nullable=False, default="queued", index=True)
+    backend = Column(String, nullable=False, default="background_tasks")
+    payload_json = Column(Text, nullable=False, default="{}")
+    error_message = Column(Text, nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    project = relationship("Project")
+
+
 class QAResultRecord(Base):
     __tablename__ = "qa_results"
 

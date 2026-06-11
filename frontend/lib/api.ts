@@ -16,6 +16,7 @@ import type {
   ProjectResponse,
   SourceEvidence,
   TracesResponse,
+  WorkflowJob,
 } from './types'
 
 const BASE =
@@ -69,6 +70,9 @@ export const api = {
 
   getTraces: (id: string) =>
     request<TracesResponse>(`/api/projects/${id}/traces`),
+
+  getProjectJobs: (id: string) =>
+    request<WorkflowJob[]>(`/api/projects/${id}/jobs`),
 
   getReport: (id: string) =>
     request<CompetitiveReport>(`/api/projects/${id}/report`),

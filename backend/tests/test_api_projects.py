@@ -194,9 +194,38 @@ def test_run_project_marks_running(client):
     body = response.json()
     assert body["project_id"] == project_id
     assert body["status"] == "running"
+    assert body["job_id"].startswith("job_")
 
     follow_up = client.get(f"/api/projects/{project_id}")
     assert follow_up.json()["status"] == "running"
+
+    jobs = client.get(f"/api/projects/{project_id}/jobs")
+    assert jobs.status_code == 200
+    assert jobs.json()[0]["job_id"] == body["job_id"]
+
+
+def test_run_project_rejects_duplicate_active_job(client, monkeypatch):
+    import app.api.routes.projects as projects_route
+
+    # Keep the queued job active so the second run exercises the lock.
+    monkeypatch.setattr(projects_route, "run_workflow_background", None)
+
+    create = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [{"name": "Cursor", "url": "https://cursor.com"}],
+            "goals": ["feature_comparison"],
+        },
+    )
+    project_id = create.json()["project_id"]
+
+    first = client.post(f"/api/projects/{project_id}/run")
+    assert first.status_code == 200
+
+    second = client.post(f"/api/projects/{project_id}/run")
+    assert second.status_code == 409
+    assert "active workflow job" in second.json()["error"]
 
 
 def test_run_project_missing_returns_404(client):

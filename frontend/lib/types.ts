@@ -146,6 +146,20 @@ export interface TracesResponse {
   traces: AgentRun[]
 }
 
+export type WorkflowJobStatus = 'queued' | 'running' | 'completed' | 'failed'
+
+export interface WorkflowJob {
+  job_id: string
+  project_id: string
+  status: WorkflowJobStatus
+  backend: string
+  attempts: number
+  created_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  error_message?: string | null
+}
+
 export interface GraphNode {
   id: string
   label: string

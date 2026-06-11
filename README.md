@@ -34,6 +34,7 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 - 真实采集 / Demo 双数据模式共用同一 Agent 流程；真实采集不可用时显式回退到 Demo fixtures
 - **结构化输出**：AnalystAgent 和 WriterAgent 使用 OpenAI function/tool calling（`with_structured_output(method="function_calling")`）直接产出 Pydantic 对象，兼容性失败时自动回退到 `response_format={"type": "json_object"}` + Pydantic v2 校验，保证输出始终符合 CompetitorKnowledge / CompetitiveReport schema
 - `/api/graph` 暴露后端 LangGraph DAG，前端工作流图按后端节点/边渲染；`/api/metrics` 汇总 token 和估算成本
+- `/api/projects/{id}/jobs` 暴露持久化 workflow job，运行前做项目级 active job 锁，避免同一项目重复触发
 - 访谈/问卷等人工研究输入进入 SourceEvidence 前会做 PII 脱敏，并在来源面板显示脱敏状态
 
 ### 在线 Demo
@@ -88,6 +89,8 @@ Volcengine Doubao（OpenAI 兼容 endpoint）+ Tavily Search + SQLite
 | 数据库 | SQLite |
 | 部署 | Docker + Hugging Face Space（后端）+ Vercel（前端） |
 | 测试 | pytest + pytest-asyncio |
+
+生产化队列/并发控制路线见 [`docs/production_hardening_plan.md`](docs/production_hardening_plan.md)。
 
 ---
 

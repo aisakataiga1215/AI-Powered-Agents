@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/formatDateTime'
-import type { AgentRun, ProjectStatus, QAIssue, QATraceOutput } from '@/lib/types'
+import type { AgentRun, ProjectStatus, QAIssue, QATraceOutput, WorkflowJob } from '@/lib/types'
 import { AgentDAG } from '@/components/agent-flow/AgentDAG'
 
 const POLL_INTERVAL_MS = 3000
@@ -66,11 +66,19 @@ export default function ProjectExecutionPage({ params }: PageProps) {
     enabled: !!projectQuery.data,
   })
 
+  const jobsQuery = useQuery({
+    queryKey: ['jobs', id],
+    queryFn: () => api.getProjectJobs(id),
+    refetchInterval: isRunning ? POLL_INTERVAL_MS : false,
+    enabled: !!projectQuery.data,
+  })
+
   const runMutation = useMutation({
     mutationFn: () => api.runProject(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', id] })
       queryClient.invalidateQueries({ queryKey: ['traces', id] })
+      queryClient.invalidateQueries({ queryKey: ['jobs', id] })
     },
   })
 
@@ -177,6 +185,10 @@ export default function ProjectExecutionPage({ params }: PageProps) {
         </section>
       )}
 
+      {jobsQuery.data && jobsQuery.data.length > 0 && (
+        <WorkflowJobPanel jobs={jobsQuery.data} />
+      )}
+
       {projectQuery.data && ['failed', 'qa_failed'].includes(projectQuery.data.status) && (
         <FailureSummary
           status={projectQuery.data.status}
@@ -239,6 +251,49 @@ export default function ProjectExecutionPage({ params }: PageProps) {
       </section>
     </div>
   )
+}
+
+function WorkflowJobPanel({ jobs }: { jobs: WorkflowJob[] }) {
+  const latest = jobs[0]
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wider text-gray-700 uppercase">
+            Workflow Job
+          </h2>
+          <p className="mt-1 font-mono text-xs text-gray-400">{latest.job_id}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className={cn('rounded-full border px-2.5 py-0.5 font-medium', jobStatusStyle(latest.status))}>
+            {latest.status}
+          </span>
+          <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-600">
+            {latest.backend}
+          </span>
+          <span className="text-gray-500">attempts {latest.attempts}</span>
+        </div>
+      </div>
+      {latest.error_message && (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {latest.error_message}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function jobStatusStyle(status: WorkflowJob['status']): string {
+  switch (status) {
+    case 'queued':
+      return 'border-gray-200 bg-gray-50 text-gray-700'
+    case 'running':
+      return 'border-blue-200 bg-blue-50 text-blue-700'
+    case 'completed':
+      return 'border-green-200 bg-green-50 text-green-700'
+    case 'failed':
+      return 'border-red-200 bg-red-50 text-red-700'
+  }
 }
 
 function FailureSummary({

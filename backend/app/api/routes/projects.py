@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
 from app.core.config import settings
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.schemas.competitor import CompetitorInput
 from app.schemas.project import (
@@ -23,7 +23,7 @@ from app.schemas.project import (
     ProjectStatus,
     normalize_analysis_purpose,
 )
-from app.services import project_service
+from app.services import project_service, workflow_job_service
 
 # The graph workflow lives in a sibling package implemented by the agent
 # workflow engineer. Import lazily so this module loads even before the
@@ -99,12 +99,21 @@ def run_project(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_session),
 ) -> dict:
-    """Mark the project as running and trigger the workflow background task."""
+    """Create a workflow job and schedule execution.
+
+    Local development still uses FastAPI BackgroundTasks as the execution
+    adapter. The durable job row and project-level active-job lock are the
+    production contract; a Redis/Celery worker can consume the same payload.
+    """
     project = project_service.get_project(db, project_id)
     if project is None:
         raise NotFoundError("Project", project_id)
 
-    project_service.update_project_status(db, project_id, ProjectStatus.running)
+    active_job = workflow_job_service.get_active_job(db, project_id)
+    if active_job is not None:
+        raise ConflictError(
+            f"Project '{project_id}' already has active workflow job {active_job.id}"
+        )
 
     competitors_payload: list[dict] = [
         {
@@ -116,20 +125,36 @@ def run_project(
         for c in project_service.get_project_competitors(db, project_id)
     ]
     goals_payload = project_service.deserialize_goals(project)
+    custom_dimensions = json.loads(getattr(project, "custom_dimensions", "[]") or "[]")
+    research_inputs = json.loads(getattr(project, "research_inputs", "[]") or "[]")
+
+    job_payload = {
+        "project_id": project_id,
+        "competitors": competitors_payload,
+        "goals": goals_payload,
+        "database_url": settings.database_url,
+        "output_language": project.output_language,
+        "data_mode": getattr(project, "data_mode", "demo") or "demo",
+        "industry_type": getattr(project, "industry_type", "general") or "general",
+        "analysis_purpose": normalize_analysis_purpose(
+            getattr(project, "analysis_purpose", None)
+        ),
+        "custom_dimensions": custom_dimensions,
+        "research_inputs": research_inputs,
+    }
+    job = workflow_job_service.create_job(
+        db,
+        project_id=project_id,
+        payload=job_payload,
+        backend="background_tasks",
+    )
+    project_service.update_project_status(db, project_id, ProjectStatus.running)
 
     if run_workflow_background is not None:
         background_tasks.add_task(
-            run_workflow_background,
-            project_id,
-            competitors_payload,
-            goals_payload,
-            settings.database_url,
-            project.output_language,
-            getattr(project, "data_mode", "demo") or "demo",
-            getattr(project, "industry_type", "general") or "general",
-            normalize_analysis_purpose(getattr(project, "analysis_purpose", None)),
-            json.loads(getattr(project, "custom_dimensions", "[]") or "[]"),
-            json.loads(getattr(project, "research_inputs", "[]") or "[]"),
+            run_workflow_job_background,
+            job.id,
+            job_payload,
         )
     else:
         logger.warning(
@@ -141,7 +166,46 @@ def run_project(
     return {
         "project_id": project_id,
         "status": ProjectStatus.running.value,
+        "job_id": job.id,
     }
+
+
+def run_workflow_job_background(job_id: str, payload: dict) -> None:
+    """BackgroundTasks adapter for a durable workflow job."""
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        workflow_job_service.mark_running(db, job_id)
+    finally:
+        db.close()
+
+    try:
+        run_workflow_background(
+            payload["project_id"],
+            payload["competitors"],
+            payload["goals"],
+            payload["database_url"],
+            payload["output_language"],
+            payload["data_mode"],
+            payload["industry_type"],
+            payload["analysis_purpose"],
+            payload["custom_dimensions"],
+            payload["research_inputs"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        db = SessionLocal()
+        try:
+            workflow_job_service.mark_failed(db, job_id, str(exc))
+        finally:
+            db.close()
+        raise
+    else:
+        db = SessionLocal()
+        try:
+            workflow_job_service.mark_completed(db, job_id)
+        finally:
+            db.close()
 
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
@@ -159,3 +223,17 @@ def get_project(
 def list_projects(db: Session = Depends(get_session)) -> list[ProjectResponse]:
     projects = project_service.list_projects(db)
     return [_to_response(p) for p in projects]
+
+
+@router.get("/projects/{project_id}/jobs")
+def list_project_jobs(
+    project_id: str,
+    db: Session = Depends(get_session),
+) -> list[dict]:
+    project = project_service.get_project(db, project_id)
+    if project is None:
+        raise NotFoundError("Project", project_id)
+    return [
+        workflow_job_service.serialize_job(job).model_dump(mode="json")
+        for job in workflow_job_service.list_project_jobs(db, project_id)
+    ]
