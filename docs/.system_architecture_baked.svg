@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 820" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#475569" />
+    </marker>
+    <marker id="arrow-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#dc2626" />
+    </marker>
+    <marker id="arrow-llm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#ea580c" />
+    </marker>
+  </defs>
+
+  <rect width="940" height="820" fill="#fafafa" />
+  <text x="470" y="26" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">AI-Powered-Agents · 系统架构</text>
+
+  
+  <rect x="390" y="44" rx="22" ry="22" width="160" height="40" fill="#0f172a" />
+  <text x="470" y="70" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">用户 / 评委</text>
+  <line x1="470" y1="84" x2="470" y2="104" stroke="#475569" stroke-width="2" />
+
+  
+  <rect x="40" y="108" rx="12" ry="12" width="860" height="92" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5" />
+  <text x="60" y="132" fill="#1e3a8a" font-size="14" font-weight="700">① 前端</text>
+  <g font-size="12" fill="#1e40af">
+    <rect x="60" y="148" rx="6" ry="6" width="140" height="36" fill="#fff" stroke="#93c5fd" />
+    <text x="130" y="170" text-anchor="middle">项目创建 / 列表</text>
+    <rect x="216" y="148" rx="6" ry="6" width="160" height="36" fill="#fff" stroke="#93c5fd" />
+    <text x="296" y="170" text-anchor="middle">竞品发现 / 来源选择</text>
+    <rect x="392" y="148" rx="6" ry="6" width="130" height="36" fill="#fff" stroke="#93c5fd" />
+    <text x="457" y="170" text-anchor="middle">报告查看器</text>
+    <rect x="538" y="148" rx="6" ry="6" width="130" height="36" fill="#fff" stroke="#93c5fd" />
+    <text x="603" y="170" text-anchor="middle">SourcePanel</text>
+    <rect x="684" y="148" rx="6" ry="6" width="200" height="36" fill="#fff" stroke="#93c5fd" />
+    <text x="784" y="170" text-anchor="middle">TraceTimeline / 打印 PDF</text>
+  </g>
+  <line x1="470" y1="200" x2="470" y2="226" stroke="#475569" stroke-width="2" />
+
+  
+  <rect x="40" y="230" rx="12" ry="12" width="860" height="96" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5" />
+  <text x="60" y="254" fill="#312e81" font-size="14" font-weight="700">② 后端</text>
+  <g font-size="12" fill="#3730a3">
+    <rect x="60" y="272" rx="6" ry="6" width="110" height="36" fill="#fff" stroke="#a5b4fc" />
+    <text x="115" y="294" text-anchor="middle">Projects</text>
+    <rect x="186" y="272" rx="6" ry="6" width="110" height="36" fill="#fff" stroke="#a5b4fc" />
+    <text x="241" y="294" text-anchor="middle">Reports</text>
+    <rect x="312" y="272" rx="6" ry="6" width="110" height="36" fill="#fff" stroke="#a5b4fc" />
+    <text x="367" y="294" text-anchor="middle">Sources</text>
+    <rect x="438" y="272" rx="6" ry="6" width="110" height="36" fill="#fff" stroke="#a5b4fc" />
+    <text x="493" y="294" text-anchor="middle">Traces</text>
+    <rect x="564" y="272" rx="6" ry="6" width="110" height="36" fill="#fff" stroke="#a5b4fc" />
+    <text x="619" y="294" text-anchor="middle">Search</text>
+    <rect x="690" y="272" rx="6" ry="6" width="110" height="36" fill="#fff" stroke="#a5b4fc" />
+    <text x="745" y="294" text-anchor="middle">Knowledge</text>
+    <rect x="816" y="272" rx="6" ry="6" width="68" height="36" fill="#fff" stroke="#a5b4fc" />
+    <text x="850" y="294" text-anchor="middle">Health</text>
+  </g>
+  <line x1="470" y1="326" x2="470" y2="352" stroke="#475569" stroke-width="2" />
+
+  
+  <rect x="40" y="356" rx="12" ry="12" width="860" height="140" fill="#f3e8ff" stroke="#a855f7" stroke-width="1.5" />
+  <text x="60" y="380" fill="#581c87" font-size="14" font-weight="700">③ Agent 编排层</text>
+  <g font-size="12" fill="#fff">
+    <rect x="80" y="400" rx="8" ry="8" width="170" height="48" fill="#7c3aed" />
+    <text x="165" y="422" text-anchor="middle" font-weight="700">CollectorAgent</text>
+    <text x="165" y="438" text-anchor="middle" font-size="11">采集 / 抓取</text>
+
+    <rect x="290" y="400" rx="8" ry="8" width="170" height="48" fill="#8b5cf6" />
+    <text x="375" y="422" text-anchor="middle" font-weight="700">AnalystAgent</text>
+    <text x="375" y="438" text-anchor="middle" font-size="11">结构化知识抽取</text>
+
+    <rect x="500" y="400" rx="8" ry="8" width="170" height="48" fill="#a855f7" />
+    <text x="585" y="422" text-anchor="middle" font-weight="700">WriterAgent</text>
+    <text x="585" y="438" text-anchor="middle" font-size="11">报告撰写</text>
+
+    <rect x="710" y="400" rx="8" ry="8" width="170" height="48" fill="#c084fc" />
+    <text x="795" y="422" text-anchor="middle" font-weight="700">QAAgent</text>
+    <text x="795" y="438" text-anchor="middle" font-size="11">质检 / 打回</text>
+  </g>
+  <line x1="250" y1="424" x2="288" y2="424" stroke="#475569" stroke-width="2" />
+  <line x1="460" y1="424" x2="498" y2="424" stroke="#475569" stroke-width="2" />
+  <line x1="670" y1="424" x2="708" y2="424" stroke="#475569" stroke-width="2" />
+  <path d="M 795 448 C 795 478 165 478 165 448" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="6,3" />
+  <text x="470" y="490" text-anchor="middle" font-size="12" fill="#dc2626" font-weight="600">QA 失败 → 按 target_agent 路由返工</text>
+
+  
+  <line x1="440" y1="496" x2="440" y2="522" stroke="#ea580c" stroke-width="2.2" />
+  <line x1="500" y1="522" x2="500" y2="496" stroke="#ea580c" stroke-width="2.2" />
+
+  
+  <rect x="40" y="526" rx="12" ry="12" width="860" height="64" fill="#fff7ed" stroke="#f97316" stroke-width="1.8" />
+  <text x="60" y="550" fill="#7c2d12" font-size="14" font-weight="700">④ 模型层</text>
+  <rect x="370" y="556" rx="8" ry="8" width="200" height="28" fill="#fff" stroke="#fb923c" stroke-width="1.5" />
+  <text x="470" y="575" text-anchor="middle" font-size="13" font-weight="700" fill="#7c2d12">DeepSeek-V4-Flash</text>
+  <line x1="470" y1="590" x2="470" y2="616" stroke="#475569" stroke-width="2" />
+
+  
+  <rect x="40" y="620" rx="12" ry="12" width="860" height="60" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" />
+  <text x="60" y="644" fill="#0f172a" font-size="14" font-weight="700">⑤ 数据层</text>
+  <g font-size="12" fill="#334155">
+    <rect x="370" y="638" rx="6" ry="6" width="200" height="28" fill="#fff" stroke="#cbd5e1" />
+    <text x="470" y="656" text-anchor="middle">SQLite</text>
+  </g>
+  <line x1="470" y1="680" x2="470" y2="706" stroke="#475569" stroke-width="2" />
+
+  
+  <rect x="40" y="710" rx="12" ry="12" width="860" height="68" fill="#fff7ed" stroke="#f97316" stroke-width="1.5" />
+  <text x="60" y="734" fill="#7c2d12" font-size="14" font-weight="700">⑥ 外部服务</text>
+  <g font-size="12" fill="#9a3412">
+    <rect x="240" y="740" rx="8" ry="8" width="200" height="32" fill="#fff" stroke="#fb923c" />
+    <text x="340" y="760" text-anchor="middle" font-weight="600">Tavily Search API</text>
+    <rect x="500" y="740" rx="8" ry="8" width="200" height="32" fill="#fff" stroke="#fb923c" />
+    <text x="600" y="760" text-anchor="middle" font-weight="600">LangSmith Tracing</text>
+  </g>
+<g><polygon points="470.00,104.00 467.20,97.00 472.80,97.00" fill="#475569"/><polygon points="470.00,226.00 467.20,219.00 472.80,219.00" fill="#475569"/><polygon points="470.00,352.00 467.20,345.00 472.80,345.00" fill="#475569"/><polygon points="288.00,424.00 281.00,426.80 281.00,421.20" fill="#475569"/><polygon points="498.00,424.00 491.00,426.80 491.00,421.20" fill="#475569"/><polygon points="708.00,424.00 701.00,426.80 701.00,421.20" fill="#475569"/><polygon points="165.00,448.00 167.80,455.00 162.20,455.00" fill="#dc2626"/><polygon points="440.00,522.00 437.20,515.00 442.80,515.00" fill="#ea580c"/><polygon points="500.00,496.00 502.80,503.00 497.20,503.00" fill="#ea580c"/><polygon points="470.00,616.00 467.20,609.00 472.80,609.00" fill="#475569"/><polygon points="470.00,706.00 467.20,699.00 472.80,699.00" fill="#475569"/></g></svg>

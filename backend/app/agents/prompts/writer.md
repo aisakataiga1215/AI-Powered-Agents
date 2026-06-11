@@ -8,7 +8,7 @@ Required JSON shape (every key listed must be present; use [] or {} for
 empty values, never null):
 
 {
-  "title": "string — e.g. 'Competitive Analysis Report: AI Coding Tools'",
+  "title": "string — e.g. 'Competitive Analysis Report: Project Management Tools'",
   "executive_summary": [
     {
       "text": "string — the full claim text",

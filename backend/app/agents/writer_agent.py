@@ -652,13 +652,13 @@ def _backfill_required_sections(
         if zh:
             report.executive_summary = [
                 _claim(f"本次分析覆盖 {len(names)} 个竞品：{', '.join(names)}。", evidence),
-                _claim("各产品的主要差异集中在 AI 编码能力、上下文管理、协作/企业能力和定价边界。", evidence, hypothesis=True),
+                _claim("各产品在核心功能、用户体验、定价策略和生态建设方面存在差异化竞争。", evidence, hypothesis=True),
                 _claim("由于部分 live 来源较弱或触发区域限制，低置信信息需要结合来源页人工复核。", evidence, hypothesis=True),
             ]
         else:
             report.executive_summary = [
                 _claim(f"This analysis covers {len(names)} competitors: {', '.join(names)}.", evidence),
-                _claim("Key differences cluster around AI coding capability, context handling, collaboration or enterprise controls, and pricing boundaries.", evidence, hypothesis=True),
+                _claim("Key differences cluster around core capabilities, user experience, pricing strategy, and ecosystem maturity.", evidence, hypothesis=True),
                 _claim("Some live sources are weak or region-limited, so low-confidence findings should be manually verified against cited sources.", evidence, hypothesis=True),
             ]
 

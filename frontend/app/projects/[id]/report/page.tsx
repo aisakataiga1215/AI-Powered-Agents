@@ -154,7 +154,7 @@ export default function ReportPage({ params }: PageProps) {
   const citedSources = report.source_list?.length ?? 0
   const summaryLen = report.executive_summary?.length ?? 0
   const isInsufficientData =
-    citedSources === 0 || summaryLen === 0 || qaScore < 30 || analysedCount < 1
+    citedSources === 0 || summaryLen === 0
   return (
     <div className="space-y-5">
       {/* Breadcrumb hidden in print */}
