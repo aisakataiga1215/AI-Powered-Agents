@@ -11,6 +11,7 @@
 import Link from 'next/link'
 import { use, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { UseMutationResult } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
@@ -117,72 +118,14 @@ export default function ProjectExecutionPage({ params }: PageProps) {
       )}
 
       {projectQuery.data && (
-        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-medium tracking-wider text-blue-700 uppercase">项目</p>
-              <h1 className="mt-1 text-2xl font-semibold text-gray-900">
-                {projectQuery.data.industry}
-              </h1>
-              <p className="mt-1 font-mono text-xs text-gray-400">{id}</p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium',
-                    STATUS_PILLS[projectQuery.data.status]
-                  )}
-                >
-                  {isRunning && (
-                    <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-                  )}
-                  {STATUS_LABELS[projectQuery.data.status] ?? projectQuery.data.status}
-                </span>
-                {projectQuery.data.goals.map((g) => (
-                  <span key={g} className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                    {GOAL_LABELS[g] ?? g}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-gray-500">
-                创建于 {formatDateTime(projectQuery.data.created_at)} · 更新于{' '}
-                {formatDateTime(projectQuery.data.updated_at)}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <button
-                type="button"
-                onClick={() => runMutation.mutate()}
-                disabled={projectQuery.data.status !== 'created' || runMutation.isPending}
-                className={cn(
-                  'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors',
-                  projectQuery.data.status === 'created' && !runMutation.isPending
-                    ? 'bg-blue-600 hover:bg-blue-700'
-                    : 'cursor-not-allowed bg-gray-300'
-                )}
-              >
-                {runMutation.isPending && (
-                  <span
-                    className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent"
-                    aria-hidden
-                  />
-                )}
-                {runMutation.isPending ? '启动中...' : '运行工作流'}
-              </button>
-              {projectQuery.data.status !== 'created' && (
-                <p className="text-xs text-gray-500">
-                  该项目已触发工作流。
-                </p>
-              )}
-              {runMutation.isError && (
-                <p className="text-xs text-red-600">
-                  {runMutation.error instanceof Error
-                    ? runMutation.error.message
-                    : '工作流启动失败。'}
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
+        <ProjectHero
+          id={id}
+          project={projectQuery.data}
+          traces={traces}
+          latestQA={latestQA}
+          isRunning={isRunning}
+          runMutation={runMutation}
+        />
       )}
 
       {jobsQuery.data && jobsQuery.data.length > 0 && (
@@ -199,23 +142,36 @@ export default function ProjectExecutionPage({ params }: PageProps) {
         />
       )}
 
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold tracking-wider text-gray-700 uppercase">
-            Agent 工作流
-          </h2>
+      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
+              Agent 工作流
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-gray-950">
+              编排 DAG 与实时执行状态
+            </h2>
+          </div>
           {isRunning && (
-            <span className="text-xs text-blue-700">工作流运行中，每 3 秒刷新一次</span>
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+              每 3 秒刷新
+            </span>
           )}
         </div>
         <AgentDAG traces={traces} projectStatus={projectQuery.data?.status} />
         {latestPerAgent.length > 0 && (
-          <ul className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600 sm:grid-cols-4">
+          <ul className="mt-4 grid gap-2 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-4">
             {latestPerAgent.map((r) => (
-              <li key={r.agent_run_id} className="rounded border border-gray-200 bg-white p-2">
-                <div className="font-medium text-gray-800">{r.agent_name}</div>
-                <div className="text-gray-500">
-                  {r.status} · {r.latency_ms}ms
+              <li
+                key={r.agent_run_id}
+                className="rounded-lg border border-gray-200 bg-gray-50 p-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate font-medium text-gray-900">{r.agent_name}</div>
+                  <span className={cn('h-2 w-2 shrink-0 rounded-full', runDotClass(r.status))} />
+                </div>
+                <div className="mt-1 text-gray-500">
+                  {r.status} · {r.latency_ms}ms · retry {r.retry_count}
                 </div>
               </li>
             ))}
@@ -223,44 +179,170 @@ export default function ProjectExecutionPage({ params }: PageProps) {
         )}
       </section>
 
-      <section className="relative z-10 flex flex-wrap gap-3">
-        <Link
-          href={`/projects/${id}/traces`}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
-        >
-          <span className="text-blue-600">Trace 时间线</span>
-          <span className="text-gray-400">查看输入、输出、耗时和重试</span>
-        </Link>
-        {reportAvailable ? (
-          <Link
-            href={`/projects/${id}/report`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
-          >
-            <span className="text-blue-600">最终报告</span>
-            <span className="text-gray-400">查看结构化输出和引用来源</span>
-          </Link>
-        ) : (
-          <span
-            className="inline-flex items-center gap-2 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-400"
-            title="工作流完成后可查看报告。"
-          >
-            <span>最终报告</span>
-            <span>（工作流完成后可用）</span>
-          </span>
+      <ProjectActions id={id} reportAvailable={reportAvailable} />
+    </div>
+  )
+}
+
+function ProjectHero({
+  id,
+  project,
+  traces,
+  latestQA,
+  isRunning,
+  runMutation,
+}: {
+  id: string
+  project: {
+    industry: string
+    goals: string[]
+    status: ProjectStatus
+    created_at: string
+    updated_at: string
+  }
+  traces: AgentRun[]
+  latestQA?: { score: number; issues: QAIssue[] }
+  isRunning: boolean
+  runMutation: UseMutationResult<
+    { project_id: string; status: string },
+    Error,
+    void,
+    unknown
+  >
+}) {
+  const completedRuns = traces.filter((run) => run.status === 'success').length
+  const failedRuns = traces.filter((run) => run.status === 'failed' || run.error_message).length
+  const totalTokens = traces.reduce((sum, run) => sum + (run.token_usage?.total_tokens ?? 0), 0)
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-200 bg-gray-50 px-6 py-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold tracking-wider text-blue-700 uppercase">
+                竞品分析项目
+              </p>
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium',
+                  STATUS_PILLS[project.status]
+                )}
+              >
+                {isRunning && (
+                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+                )}
+                {STATUS_LABELS[project.status] ?? project.status}
+              </span>
+            </div>
+            <h1 className="mt-2 truncate text-2xl font-semibold text-gray-950">
+              {project.industry}
+            </h1>
+            <p className="mt-1 font-mono text-xs text-gray-500">{id}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {project.goals.map((goal) => (
+                <span
+                  key={goal}
+                  className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-700"
+                >
+                  {GOAL_LABELS[goal] ?? goal}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <button
+              type="button"
+              onClick={() => runMutation.mutate()}
+              disabled={project.status !== 'created' || runMutation.isPending}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors',
+                project.status === 'created' && !runMutation.isPending
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'cursor-not-allowed bg-gray-300'
+              )}
+            >
+              {runMutation.isPending && (
+                <span
+                  className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent"
+                  aria-hidden
+                />
+              )}
+              {runMutation.isPending ? '启动中...' : '运行工作流'}
+            </button>
+            {project.status !== 'created' && (
+              <p className="text-xs text-gray-500">该项目已触发工作流。</p>
+            )}
+            {runMutation.isError && (
+              <p className="max-w-xs text-xs text-red-600">
+                {runMutation.error instanceof Error
+                  ? runMutation.error.message
+                  : '工作流启动失败。'}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-px bg-gray-200 md:grid-cols-5">
+        <HeroMetric label="成功 Agent" value={completedRuns.toString()} />
+        <HeroMetric label="异常 Agent" value={failedRuns.toString()} tone={failedRuns ? 'danger' : 'neutral'} />
+        <HeroMetric label="QA 分数" value={latestQA ? `${latestQA.score}/100` : '-'} />
+        <HeroMetric label="Token" value={formatCompactNumber(totalTokens)} />
+        <HeroMetric
+          label="更新时间"
+          value={formatDateTime(project.updated_at)}
+          compact
+        />
+      </div>
+
+      <div className="px-6 py-3 text-xs text-gray-500">
+        创建于 {formatDateTime(project.created_at)}
+      </div>
+    </section>
+  )
+}
+
+function HeroMetric({
+  label,
+  value,
+  tone = 'neutral',
+  compact = false,
+}: {
+  label: string
+  value: string
+  tone?: 'neutral' | 'danger'
+  compact?: boolean
+}) {
+  return (
+    <div className="bg-white px-4 py-3">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p
+        className={cn(
+          'mt-1 truncate font-semibold',
+          compact ? 'text-sm' : 'text-xl',
+          tone === 'danger' ? 'text-red-700' : 'text-gray-950'
         )}
-      </section>
+      >
+        {value}
+      </p>
     </div>
   )
 }
 
 function WorkflowJobPanel({ jobs }: { jobs: WorkflowJob[] }) {
   const latest = jobs[0]
+  const visibleJobs = jobs.slice(0, 4)
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold tracking-wider text-gray-700 uppercase">
+          <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
             Workflow Job
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-gray-950">
+            生产任务执行记录
           </h2>
           <p className="mt-1 font-mono text-xs text-gray-400">{latest.job_id}</p>
         </div>
@@ -274,6 +356,28 @@ function WorkflowJobPanel({ jobs }: { jobs: WorkflowJob[] }) {
           <span className="text-gray-500">attempts {latest.attempts}</span>
         </div>
       </div>
+      <ol className="mt-4 grid gap-3 md:grid-cols-4">
+        {visibleJobs.map((job, index) => (
+          <li
+            key={job.job_id}
+            className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-gray-900">#{index + 1}</span>
+              <span
+                className={cn(
+                  'rounded-full border px-2 py-0.5 font-medium',
+                  jobStatusStyle(job.status)
+                )}
+              >
+                {job.status}
+              </span>
+            </div>
+            <p className="mt-2 font-mono text-gray-500">{shortId(job.job_id)}</p>
+            <p className="mt-1 text-gray-500">{formatDateTime(job.created_at)}</p>
+          </li>
+        ))}
+      </ol>
       {latest.error_message && (
         <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           {latest.error_message}
@@ -294,6 +398,64 @@ function jobStatusStyle(status: WorkflowJob['status']): string {
     case 'failed':
       return 'border-red-200 bg-red-50 text-red-700'
   }
+}
+
+function ProjectActions({
+  id,
+  reportAvailable,
+}: {
+  id: string
+  reportAvailable: boolean
+}) {
+  return (
+    <section className="grid gap-3 md:grid-cols-2">
+      <Link
+        href={`/projects/${id}/traces`}
+        className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
+      >
+        <p className="text-sm font-semibold text-gray-950 group-hover:text-blue-800">
+          Trace 时间线
+        </p>
+        <p className="mt-1 text-sm text-gray-500">
+          查看每个 Agent 的输入、输出、耗时、Token 和重试。
+        </p>
+      </Link>
+      {reportAvailable ? (
+        <Link
+          href={`/projects/${id}/report`}
+          className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
+        >
+          <p className="text-sm font-semibold text-gray-950 group-hover:text-blue-800">
+            最终报告
+          </p>
+          <p className="mt-1 text-sm text-gray-500">
+            查看结构化结论、竞品知识 Schema 和引用来源。
+          </p>
+        </Link>
+      ) : (
+        <span className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4">
+          <p className="text-sm font-semibold text-gray-400">最终报告</p>
+          <p className="mt-1 text-sm text-gray-400">工作流完成后可查看。</p>
+        </span>
+      )}
+    </section>
+  )
+}
+
+function runDotClass(status: AgentRun['status']): string {
+  if (status === 'success') return 'bg-green-500'
+  if (status === 'failed' || status === 'timeout') return 'bg-red-500'
+  if (status === 'running') return 'bg-blue-500'
+  return 'bg-gray-400'
+}
+
+function formatCompactNumber(value: number): string {
+  return new Intl.NumberFormat('en', { notation: 'compact' }).format(value)
+}
+
+function shortId(value: string): string {
+  if (value.length <= 12) return value
+  return `${value.slice(0, 8)}...${value.slice(-4)}`
 }
 
 function FailureSummary({
