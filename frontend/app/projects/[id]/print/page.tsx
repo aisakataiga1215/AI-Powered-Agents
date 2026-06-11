@@ -76,7 +76,7 @@ export default function PrintPage({ params }: PageProps) {
   const citedSourcesCount = report?.source_list?.length ?? 0
   const summaryLen = report?.executive_summary?.length ?? 0
   const isInsufficientData =
-    citedSourcesCount === 0 || summaryLen === 0 || qaScore < 30 || analysedCount < 2
+    citedSourcesCount === 0 || summaryLen === 0 || qaScore < 30 || analysedCount < 1
 
   if (reportQuery.isLoading) {
     return <PrintSkeleton />
