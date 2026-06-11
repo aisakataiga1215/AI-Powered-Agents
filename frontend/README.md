@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend · Competitive Analysis Agent Console
 
-## Getting Started
+Next.js frontend for the AI-Powered-Agents competitive analysis system.
 
-First, run the development server:
+## What It Provides
+
+- Project creation with competitor discovery, manual competitor entry, custom dimensions, and research notes.
+- Live project execution view with backend-driven LangGraph DAG rendering.
+- Report viewer with structured tabs for summary, pricing, features, SWOT, recommendations, Markdown, and QA results.
+- Citation SourcePanel for one-click source inspection and original URL navigation.
+- Trace timeline with prompts, inputs, outputs, token usage, QA decisions, rework hints, and structured AgentMessage events.
+- Metrics page for token and cost aggregation.
+- Human correction panel on the report page; saved corrections create a new report revision and a `HumanReviewer` trace event.
+
+## Local Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The frontend expects the backend at `http://localhost:8000` unless overridden:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```ini
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Verification
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run build
+npm run lint
+```

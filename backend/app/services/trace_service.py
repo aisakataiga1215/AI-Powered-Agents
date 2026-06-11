@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.db import models
+from app.schemas.agent_message import AgentMessage
 from app.schemas.trace import AgentRun, AgentRunStatus, TokenUsage
 
 logger = get_logger(__name__)
@@ -138,6 +139,33 @@ def record_workflow_event(
         status=AgentRunStatus.success,
     )
     return save_agent_run(db, run)
+
+
+def record_agent_message(
+    db: Session,
+    message: AgentMessage,
+) -> models.AgentRun:
+    """Persist a structured AgentMessage as an auditable trace event.
+
+    Runtime payloads still flow through LangGraph state for execution, but
+    every logical edge can now be inspected as a first-class structured
+    message in the Trace timeline.
+    """
+    return save_agent_run(
+        db,
+        AgentRun(
+            agent_run_id=message.message_id,
+            project_id=message.project_id,
+            agent_name="AgentMessage",
+            input={
+                "from_agent": message.from_agent,
+                "to_agent": message.to_agent,
+                "message_type": message.message_type.value,
+            },
+            output=message.model_dump(mode="json"),
+            status=AgentRunStatus.success,
+        ),
+    )
 
 
 def aggregate_costs(

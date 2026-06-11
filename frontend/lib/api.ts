@@ -73,6 +73,15 @@ export const api = {
   getReport: (id: string) =>
     request<CompetitiveReport>(`/api/projects/${id}/report`),
 
+  patchReport: (
+    id: string,
+    payload: Partial<Pick<CompetitiveReport, 'title' | 'markdown_content' | 'analysis_objective' | 'competitor_selection_rationale'>>
+  ) =>
+    request<CompetitiveReport>(`/api/projects/${id}/report`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
   getSource: (sourceId: string) =>
     request<SourceEvidence>(`/api/sources/${sourceId}`),
 

@@ -1,12 +1,22 @@
 # Project Status
 
-**Last updated:** 2026-06-10
+**Last updated:** 2026-06-11
 
-## Current Status: M17.1.1 Complete — Print/PDF Custom Dimension Coverage
+## Current Status: M18 Complete — LLM Provider Switch, Function Calling, and Prompt Bias Fix
 
 ---
 
 ## Milestones
+
+### Milestone 18: LLM Provider Switch and Function Calling ✅ COMPLETE
+
+- [x] **LLM provider switch**: DeepSeek replaced by Volcengine Doubao (火山引擎豆包) via OpenAI-compatible endpoint (`https://ark.cn-beijing.volces.com/api/v3`, model `ep-20260514111325-xjmj7`). The Doubao endpoint fully supports function calling without requiring thinking-mode disable.
+- [x] `LLM_DISABLE_THINKING` removed from `.env` (default `false` in `config.py` is correct for Volcengine).
+- [x] **Function calling as primary output path**: Both `AnalystAgent` and `WriterAgent` use `ChatOpenAI.with_structured_output(method="function_calling", include_raw=True)` as the primary path, with JSON output (`response_format: json_object`) as fallback on any exception. Trace records whether function calling or JSON fallback was used per competitor.
+- [x] **Prompt bias fix**: Analyst prompt example changed from AI-coding product to generic SaaS; added explicit instruction to avoid industry assumption. Writer prompt example title changed from "AI Coding Tools" to "Project Management Tools". Fallback executive summary and strategic recommendations in `writer_agent.py` changed to industry-neutral wording.
+- [x] **Collector hint-keyword rework queries**: `SearchService._build_hint_queries()` generates targeted Tavily searches (pricing, features, docs, security, enterprise) when QA rework hints indicate missing source types. Queries are prepended to standard industry templates for priority.
+- [x] **Frontend fixes**: Report page `isInsufficientData` gate no longer checks `analysedCount` or `qaScore` — only `citedSources === 0 || summaryLen === 0` triggers the insufficient-data view. AgentDAG visualization improved with emoji icons, status dots, pulse animation, arrow markers, and QA rework arc labels.
+- [x] **Bug fixes**: Removed 8 accidentally committed debug PNG/SVG files.
 
 ### Milestone 17.1.1: Print/PDF Custom Dimension Coverage ✅ COMPLETE
 
@@ -326,12 +336,18 @@
 | `POST /api/search/competitors` endpoint | ✅ Complete (Milestone 15B) |
 | `CompetitorDiscoveryPanel.tsx` industry-driven competitor picker (frontend) | ✅ Complete (Milestone 15B) |
 | QA severity refactor (high=blocking, medium=warning, low=advisory) | ✅ Complete (Milestone 16) |
+| Volcengine Doubao LLM provider (OpenAI-compatible endpoint) | ✅ Complete (Milestone 18) |
+| Function calling with JSON fallback (AnalystAgent + WriterAgent) | ✅ Complete (Milestone 18) |
+| Collector hint-keyword rework queries (Tavily targeted search) | ✅ Complete (Milestone 18) |
+| Industry-neutral prompts and fallback text | ✅ Complete (Milestone 18) |
+| AgentDAG emoji icons, status dots, pulse animation, arrow markers | ✅ Complete (Milestone 18) |
+| Report page simplified insufficient-data gate | ✅ Complete (Milestone 18) |
 
 ---
 
 ## Current Focus
 
-Fix M15B competitor discovery quality before starting M17.
+Next milestone planning after M18 completion.
 
 ## Next Steps
 
@@ -374,4 +390,4 @@ Mitigation: Rule-based QA checks implemented. Deterministic pricing/feature over
 
 ### Risk 4: Demo latency too high
 
-Mitigation: ENABLE_DEMO_FIXTURES=true for offline dev. DeepSeek API significantly cheaper than OpenAI for live runs.
+Mitigation: ENABLE_DEMO_FIXTURES=true for offline dev. Volcengine Doubao endpoint provides cost-effective OpenAI-compatible inference for live runs.

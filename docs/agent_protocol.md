@@ -18,21 +18,42 @@ For architecture, see [architecture.md](architecture.md).
 
 ## 2. Protocol Principles
 
-1. Agents communicate through structured messages.
-2. Each message has a clear sender, receiver, type, and payload.
-3. Message payloads should be validated by Pydantic.
-4. Free-form natural language should not be the only communication format.
-5. Each important output should be traceable to source evidence.
+1. Agents communicate through LangGraph `WorkflowState` — a typed dictionary with Pydantic-validated fields.
+2. AnalystAgent and WriterAgent use **function calling** (`with_structured_output(method="function_calling")`) as the primary structured output path, with JSON Output as fallback.
+3. Agent input/output is persisted per `AgentRun` record for full trace observability.
+4. Free-form natural language is never the only communication format; all outputs are validated against Pydantic v2 schemas.
+5. Each important output is traceable to source evidence via `source_id`.
+6. Each workflow edge also emits a structured `AgentMessage` trace event so reviewers can inspect the handoff payload independently from the natural-language report.
 
-## 3. Base Agent Message
+## 3. Communication Mechanism
 
-Implementation note: the runtime workflow currently passes these
-structured payloads through LangGraph `WorkflowState` and persists the
-corresponding `AgentRun` traces. The `AgentMessage` schema documents the
-logical protocol boundary; it is not a claim that every edge is implemented
-as persisted `AgentMessage` rows on every edge. AnalystAgent and WriterAgent
-now try native function/tool calling first; if a provider does not support it
-reliably, they fall back to JSON Output mode plus Pydantic validation.
+**Primary: LangGraph WorkflowState**
+
+The actual runtime communication uses LangGraph's typed state dictionary.
+Each node reads from and writes to specific fields:
+
+| Field | Writer | Reader | Type |
+|-------|--------|--------|------|
+| `sources` | CollectorAgent | AnalystAgent | `list[SourceEvidence]` |
+| `competitor_knowledge` | AnalystAgent | WriterAgent, QAAgent | `list[CompetitorKnowledge]` |
+| `report` | WriterAgent | QAAgent | `CompetitiveReport` |
+| `qa_result` | QAAgent | WorkflowRouter | `QAResult` |
+| `rework_hints` | WorkflowRouter | CollectorAgent, AnalystAgent, WriterAgent | `list[str]` |
+| `rework_target` | WorkflowRouter | route_rework() | `str` |
+
+**Observability: AgentRun traces**
+
+Every agent invocation is persisted as an `AgentRun` row recording
+input, output, prompt preview, parse status, token usage, cost, and errors.
+
+**Runtime protocol audit: AgentMessage schema**
+
+The `AgentMessage` schema (`backend/app/schemas/agent_message.py`) documents
+the logical message types for each workflow edge. Runtime payloads still flow
+through LangGraph state for execution, while each handoff is persisted through
+`trace_service.record_agent_message()` as an `AgentRun` with
+`agent_name="AgentMessage"`. This makes the protocol visible in the same Trace
+timeline as prompts, model outputs, QA results, and rework routing.
 
 ```json
 {
@@ -308,27 +329,33 @@ QAAgent should route issues according to the table below.
 
 ## 8. QA Pass Criteria
 
-The MVP QAAgent should pass a report only if:
+The QAAgent runs deterministic checks across source coverage, report structure,
+citation integrity, and content quality. Each issue is classified as `high`,
+`medium`, or `low` severity.
 
-1. Required report sections are present.
-2. Each competitor has a product profile.
-3. Each competitor has feature information.
-4. Pricing information exists when requested.
-5. Non-hypothesis claims have evidence.
-6. Evidence source IDs exist in the source list.
-7. The report contains a source list.
+**Pass condition** (implemented in `backend/app/agents/qa_agent.py`):
+
+```
+score >= 80 AND no high-severity issues
+```
+
+**Scoring**: starts at 100, subtracts 15 per `high` issue, 5 per `medium` issue.
+
+**Check categories**:
+1. Source coverage: pricing page, features/docs page per competitor
+2. Report structure: executive summary, feature comparison, pricing comparison
+3. Citation integrity: reference to unknown source_id, claim without evidence
+4. Content quality: weak source content, brand mismatch, price consistency
 
 ## 9. Rework Limits
 
-The workflow should avoid infinite rework loops.
-
-Recommended MVP rule:
-
 ```txt
-max_rework_attempts = 2
+max_repair_loops = 1
 ```
 
-After reaching the limit, the workflow should return a partial report with QA issues instead of looping forever.
+Configured in `backend/app/core/config.py`. After reaching the limit,
+the workflow marks the project `qa_failed` and persists the partial report
+with QA issues — no silent hiding, no infinite loops.
 
 ## 10. Trace Requirements
 

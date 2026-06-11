@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — LLM Provider Switch and Function Calling
+
+### LLM Provider
+
+- **Switched from DeepSeek to Volcengine Doubao (火山引擎豆包)**: `OPENAI_BASE_URL` now points to `https://ark.cn-beijing.volces.com/api/v3` and `DEFAULT_MODEL` uses a Volcengine endpoint ID (`ep-20260514111325-xjmj7`). The Doubao endpoint is OpenAI-compatible and supports full function calling.
+- Removed `LLM_DISABLE_THINKING` setting from `.env` — the Volcengine endpoint does not require disabling thinking mode. The setting still exists in `.env.example` (default `false`) and in `config.py` (default `false`) for any providers that may need it.
+- Updated `OPENAI_INPUT_PRICE_PER_1M` and `OPENAI_OUTPUT_PRICE_PER_1M` defaults to match gpt-4o pricing in `config.py`.
+
+### Function Calling
+
+- **AnalystAgent**: Primary output path is now function calling via `ChatOpenAI.with_structured_output(RawCompetitorExtraction, method="function_calling", include_raw=True)`. Falls back to JSON output mode (`response_format: json_object`) only when function calling raises an exception. Trace records `parse_status` as `function_calling_parsed`, `json_output_parsed`, or `llm_error_fallback_empty`. Token usage is extracted from the raw provider metadata.
+- **WriterAgent**: Same dual-path pattern — primary is function calling via `with_structured_output(CompetitiveReport, ...)`, with JSON output fallback. The `_produce_report_function_calling()` helper raises on tool-call/parsing failure so the caller can fall back to JSON mode without marking the report as a true fallback.
+- Both agents build their `ChatOpenAI` clients via a shared `_build_base_llm(json_mode=False)` helper that respects `OPENAI_BASE_URL` and `LLM_DISABLE_THINKING`.
+
+### QA Improvements
+
+- **Industry-specific issue detection**: QA checks now correctly identify issues for any industry (not just AI-coding). Source coverage checks, pricing existence checks, and feature-tree checks all work with the generic competitor names from any industry.
+- Pass threshold remains **80/100** with high-severity blocking only. `max_repair_loops=1` unchanged.
+
+### Collector Enhancement: Hint-Keyword Rework Queries
+
+- When QA reports missing pricing or features sources during a rework loop, `CollectorAgent._collect_live()` passes `rework_hints` to `SearchService.discover_urls()`.
+- `SearchService._HINT_KEYWORD_QUERIES` maps hint keywords to targeted Tavily search templates:
+  - `pricing` -> `"{name} official pricing plans subscription cost"`
+  - `features` -> `"{name} features overview capabilities"`
+  - `docs` -> `"{name} official documentation docs"`
+  - `security` -> `"{name} security privacy compliance"`
+  - `enterprise` -> `"{name} enterprise plan business pricing"`
+- `_build_hint_queries()` generates extra search queries from QA rework hint text; these are **prepended** to the standard industry templates so they take priority in URL discovery.
+
+### Prompt Bias Fix
+
+- **Analyst prompt** (`analyst.md`): Example JSON changed from Cursor/AI-coding product to a generic SaaS product (small business tool with collaboration, reporting, integrations). Added a **CRITICAL** instruction: "The product and industry may be anything — food delivery, ecommerce, AI tools, design software, etc. Do NOT assume AI/coding terminology."
+- **Writer prompt** (`writer.md`): Example title changed from `"AI Coding Tools"` to `"Project Management Tools"`.
+- **Fallback executive summary** (`writer_agent.py`): Changed from AI-coding-specific text (mentioning `Claude Code`, `Copilot`, model access, agent limits) to industry-neutral text covering capabilities, user experience, pricing strategy, and ecosystem maturity.
+- **Fallback strategic recommendations** (`writer_agent.py`): Changed from AI-coding-specific (SSO, audit, agent limits, model credits) to industry-neutral (privacy, SSO, audit, usage-management controls).
+
+### Frontend Fixes
+
+- **Report page `isInsufficientData` gate** (`report/page.tsx`): Removed the `analysedCount < 2` and `qaScore < 30` checks. Now only shows the insufficient-data view when `citedSources === 0 || summaryLen === 0`. Reports with sources and summary claims but low competitor counts or low QA scores render normally instead of showing "数据不足".
+- **AgentDAG visualization** (`AgentDAG.tsx`):
+  - Emoji icons per agent (Collector=📡, Analyst=🧠, Writer=📝, QA=🛡️, END=🏁)
+  - Status dot (colored circle, top-right of each node)
+  - Pulse animation on running nodes (CSS keyframes)
+  - Arrow markers on all forward edges (smoothstep type with `MarkerType.ArrowClosed`)
+  - QA rework edges: dashed amber arcs with "QA 打回" label badge
+  - PASS label on the QA-to-END edge when QA passed
+  - Legend panel at bottom-center
+
+### Bug Fixes
+
+- Removed 8 accidentally committed debug files: `docs/.system_architecture_baked.svg`, `dag_verify2.png`, `dag_verify3.png`, `workflow_current.png`, `workflow_diagram.png`, `workflow_updated.png`.
+- Removed `LLM_DISABLE_THINKING` from `.env` (default `false` in `config.py` is correct for the Volcengine endpoint).
+
+---
+
 ## M17.1.1 — Print/PDF Custom Dimension Coverage
 
 ### Frontend

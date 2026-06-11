@@ -65,13 +65,6 @@ export default function PrintPage({ params }: PageProps) {
     [report]
   )
 
-  const analysedCount = useMemo(() => {
-    const collectorTrace = traces.find((t) => t.agent_name.includes('Collector'))
-    const out = (collectorTrace?.output ?? {}) as Record<string, unknown>
-    const collected = out.sufficiently_collected_competitors as string[] | undefined
-    return collected?.length ?? report?.competitor_overview?.length ?? 0
-  }, [traces, report])
-
   const qaScore = qaResult?.score ?? 0
   const citedSourcesCount = report?.source_list?.length ?? 0
   const summaryLen = report?.executive_summary?.length ?? 0

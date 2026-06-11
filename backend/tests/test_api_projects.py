@@ -134,6 +134,50 @@ def test_get_project_missing_returns_404(client):
     assert "error" in response.json()
 
 
+def test_patch_report_saves_human_revision_and_trace(client):
+    create = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [{"name": "Cursor", "url": "https://cursor.com"}],
+            "goals": ["feature_comparison"],
+        },
+    )
+    project_id = create.json()["project_id"]
+
+    from app.db.session import SessionLocal
+    from app.schemas.report import CompetitiveReport
+    from app.services import report_service
+
+    db = SessionLocal()
+    try:
+        report_service.save_report(
+            db,
+            project_id,
+            CompetitiveReport(
+                project_id=project_id,
+                title="Original title",
+                markdown_content="# Original",
+            ),
+        )
+    finally:
+        db.close()
+
+    response = client.patch(
+        f"/api/projects/{project_id}/report",
+        json={"title": "Corrected title", "markdown_content": "# Corrected"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Corrected title"
+    assert body["markdown_content"] == "# Corrected"
+
+    traces = client.get(f"/api/projects/{project_id}/traces").json()["traces"]
+    human = [t for t in traces if t["agent_name"] == "HumanReviewer"]
+    assert human
+    assert human[-1]["output"]["changed_fields"] == ["markdown_content", "title"]
+
+
 def test_run_project_marks_running(client):
     create = client.post(
         "/api/projects",

@@ -37,6 +37,19 @@ def save_report(
     return record
 
 
+def save_report_from_payload(
+    db: Session,
+    project_id: str,
+    payload: dict,
+) -> models.Report:
+    """Validate and persist a report payload as a new revision."""
+    payload["project_id"] = project_id
+    payload.pop("report_id", None)
+    payload.pop("created_at", None)
+    report = CompetitiveReport.model_validate(payload)
+    return save_report(db, project_id, report)
+
+
 def get_report(db: Session, project_id: str) -> models.Report | None:
     """Return the most recent report for a project, if any."""
     return (

@@ -67,3 +67,41 @@ def test_metrics_route_registered(client):
     assert "total_tokens" in body
     assert "run_count" in body
     assert "by_agent" in body
+
+
+def test_record_agent_message_is_serialized_trace():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.db import models
+    from app.schemas.agent_message import AgentMessage, MessageType
+    from app.services import trace_service
+
+    models.Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    try:
+        db.add(models.Project(id="proj_msg", industry="AI", goals="[]", status="created"))
+        db.commit()
+
+        trace_service.record_agent_message(
+            db,
+            AgentMessage(
+                project_id="proj_msg",
+                from_agent="CollectorAgent",
+                to_agent="AnalystAgent",
+                message_type=MessageType.source_collection_result,
+                payload={"source_count": 2},
+            ),
+        )
+
+        traces = trace_service.get_project_traces(db, "proj_msg")
+        serialized = trace_service.serialize_agent_run(traces[0])
+        assert serialized["agent_name"] == "AgentMessage"
+        assert serialized["input"]["message_type"] == "source_collection_result"
+        assert serialized["output"]["payload"] == {"source_count": 2}
+    finally:
+        db.close()

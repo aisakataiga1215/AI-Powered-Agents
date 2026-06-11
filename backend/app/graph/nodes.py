@@ -19,6 +19,7 @@ from app.core.logging import get_logger
 from app.graph.state import WorkflowState
 from app.schemas.project import DEFAULT_ANALYSIS_PURPOSE, ProjectStatus
 from app.schemas.qa import IssueSeverity, QAResult
+from app.schemas.agent_message import AgentMessage, MessageType
 from app.services import project_service, report_service, trace_service
 
 logger = get_logger(__name__)
@@ -37,10 +38,52 @@ def _make_db() -> Session:
     return SessionLocal()
 
 
+def _record_message(
+    db: Session,
+    *,
+    project_id: str,
+    from_agent: str,
+    to_agent: str,
+    message_type: MessageType,
+    payload: dict,
+) -> None:
+    try:
+        trace_service.record_agent_message(
+            db,
+            AgentMessage(
+                project_id=project_id,
+                from_agent=from_agent,
+                to_agent=to_agent,
+                message_type=message_type,
+                payload=payload,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - trace loss must not stop workflow
+        logger.warning(
+            "Failed to persist AgentMessage %s for project=%s: %s",
+            message_type.value,
+            project_id,
+            exc,
+        )
+
+
 def collect_sources_node(state: WorkflowState) -> dict:
     """Run the CollectorAgent and return the new sources."""
     db = _make_db()
     try:
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="System",
+            to_agent="CollectorAgent",
+            message_type=MessageType.source_collection_request,
+            payload={
+                "competitors": state["competitors"],
+                "goals": state["goals"],
+                "data_mode": state.get("data_mode", "demo"),
+                "rework_hints": state.get("rework_hints", []),
+            },
+        )
         sources = collector_agent.run(
             db=db,
             project_id=state["project_id"],
@@ -51,6 +94,17 @@ def collect_sources_node(state: WorkflowState) -> dict:
             industry_type=state.get("industry_type", "general"),
             research_inputs=state.get("research_inputs", []),
         )
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="CollectorAgent",
+            to_agent="AnalystAgent",
+            message_type=MessageType.source_collection_result,
+            payload={
+                "source_count": len(sources),
+                "source_ids": [s.source_id for s in sources],
+            },
+        )
         return {"sources": sources}
     finally:
         db.close()
@@ -60,6 +114,18 @@ def analyze_competitors_node(state: WorkflowState) -> dict:
     """Run the AnalystAgent on the collected sources."""
     db = _make_db()
     try:
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="CollectorAgent",
+            to_agent="AnalystAgent",
+            message_type=MessageType.analysis_request,
+            payload={
+                "source_count": len(state["sources"]),
+                "goals": state["goals"],
+                "rework_hints": state.get("rework_hints", []),
+            },
+        )
         competitor_roles = {
             c["name"]: c.get("role", "direct_competitor")
             for c in state.get("competitors", [])
@@ -74,6 +140,17 @@ def analyze_competitors_node(state: WorkflowState) -> dict:
             custom_dimensions=state.get("custom_dimensions", []),
             competitor_roles=competitor_roles,
         )
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="AnalystAgent",
+            to_agent="WriterAgent",
+            message_type=MessageType.analysis_result,
+            payload={
+                "competitor_count": len(knowledge),
+                "competitors": [k.competitor_name for k in knowledge],
+            },
+        )
         return {"competitor_knowledge": knowledge}
     finally:
         db.close()
@@ -83,6 +160,18 @@ def write_report_node(state: WorkflowState) -> dict:
     """Run the WriterAgent to produce a draft report."""
     db = _make_db()
     try:
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="AnalystAgent",
+            to_agent="WriterAgent",
+            message_type=MessageType.report_write_request,
+            payload={
+                "competitor_count": len(state["competitor_knowledge"]),
+                "goals": state["goals"],
+                "rework_hints": state.get("rework_hints", []),
+            },
+        )
         report = writer_agent.run(
             db=db,
             project_id=state["project_id"],
@@ -94,6 +183,18 @@ def write_report_node(state: WorkflowState) -> dict:
             analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
             custom_dimensions=state.get("custom_dimensions", []),
         )
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="WriterAgent",
+            to_agent="QAAgent",
+            message_type=MessageType.report_draft,
+            payload={
+                "report_id": report.report_id,
+                "summary_claim_count": len(report.executive_summary),
+                "source_count": len(report.source_list),
+            },
+        )
         return {"report": report}
     finally:
         db.close()
@@ -103,6 +204,18 @@ def qa_review_node(state: WorkflowState) -> dict:
     """Run the QAAgent against the latest draft."""
     db = _make_db()
     try:
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="WriterAgent",
+            to_agent="QAAgent",
+            message_type=MessageType.qa_review_request,
+            payload={
+                "report_id": state["report"].report_id if state.get("report") else None,
+                "knowledge_count": len(state["competitor_knowledge"]),
+                "source_count": len(state["sources"]),
+            },
+        )
         result = qa_agent.run(
             db=db,
             project_id=state["project_id"],
@@ -112,6 +225,21 @@ def qa_review_node(state: WorkflowState) -> dict:
             goals=state["goals"],
             analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
             custom_dimensions=state.get("custom_dimensions", []),
+        )
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="QAAgent",
+            to_agent="WorkflowRouter",
+            message_type=MessageType.qa_review_result,
+            payload={
+                "passed": result.passed,
+                "score": result.score,
+                "issue_count": len(result.issues),
+                "target_agents": sorted(
+                    {i.target_agent for i in result.issues if i.target_agent}
+                ),
+            },
         )
         return {"qa_result": result}
     finally:
@@ -125,6 +253,17 @@ def finalize_report_node(state: WorkflowState) -> dict:
         report = state.get("report")
         if report is not None:
             report_service.save_report(db, state["project_id"], report)
+            _record_message(
+                db,
+                project_id=state["project_id"],
+                from_agent="WorkflowRouter",
+                to_agent="System",
+                message_type=MessageType.final_report,
+                payload={
+                    "report_id": report.report_id,
+                    "status": ProjectStatus.completed.value,
+                },
+            )
         project_service.update_project_status(
             db, state["project_id"], ProjectStatus.completed
         )
@@ -149,6 +288,18 @@ def handle_rework_node(state: WorkflowState) -> dict:
     )
     db = _make_db()
     try:
+        _record_message(
+            db,
+            project_id=state["project_id"],
+            from_agent="WorkflowRouter",
+            to_agent=rework_target,
+            message_type=MessageType.rework_request,
+            payload={
+                "rework_count": rework_count,
+                "rework_target": rework_target,
+                "rework_hints": hints,
+            },
+        )
         trace_service.record_workflow_event(
             db,
             project_id=state["project_id"],
@@ -190,6 +341,18 @@ def mark_qa_failed_node(state: WorkflowState) -> dict:
         report = state.get("report")
         if report is not None:
             report_service.save_report(db, state["project_id"], report)
+            _record_message(
+                db,
+                project_id=state["project_id"],
+                from_agent="WorkflowRouter",
+                to_agent="System",
+                message_type=MessageType.final_report,
+                payload={
+                    "report_id": report.report_id,
+                    "status": ProjectStatus.qa_failed.value,
+                    "qa_passed": False,
+                },
+            )
         project_service.update_project_status(
             db, state["project_id"], ProjectStatus.qa_failed
         )

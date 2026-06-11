@@ -52,7 +52,7 @@ Responsibilities:
 * Display final report.
 * Show source citation details.
 * Show QA feedback and rework history.
-* Support manual correction in later versions.
+* Support manual report correction with versioned report persistence and a `HumanReviewer` trace event.
 
 Recommended stack:
 
@@ -112,6 +112,23 @@ Runtime business Agents:
 | AnalystAgent   | Extract structured competitor knowledge and perform analysis        |
 | WriterAgent    | Generate structured and human-readable reports                      |
 | QAAgent        | Validate schema completeness, evidence coverage, and report quality |
+
+#### 3.4.1 LLM Provider
+
+The system uses the **Volcengine Doubao (火山引擎豆包)** LLM provider via an OpenAI-compatible endpoint (`https://ark.cn-beijing.volces.com/api/v3`). The endpoint supports full function calling, enabling `ChatOpenAI.with_structured_output(method="function_calling")` as the primary structured output path for both AnalystAgent and WriterAgent.
+
+Configuration is in `.env`:
+- `OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3`
+- `DEFAULT_MODEL=<endpoint-id>`
+- `LLM_DISABLE_THINKING=false` (not needed for Doubao; defaults to `false` in `config.py`)
+
+#### 3.4.2 Structured Output Strategy
+
+Both AnalystAgent and WriterAgent use a **function-calling-first, JSON-fallback** pattern:
+
+1. **Primary path**: `ChatOpenAI.with_structured_output(Schema, method="function_calling", include_raw=True)` -- returns a dict with `parsed` (Pydantic object) and `raw` (provider metadata for token usage).
+2. **Fallback path**: On any exception from function calling, the agent retries with `response_format={"type": "json_object"}` and parses the JSON content manually. The `_extract_json_text()` helper strips markdown fences the model may emit.
+3. **Trace observability**: `parse_status` in agent trace output records which path was used (`function_calling_parsed`, `json_output_parsed`, `json_output_fallback_empty`, or `llm_error_fallback_empty`).
 
 ### 3.5 Data Layer
 
@@ -315,7 +332,7 @@ Contains application services:
 | `crawler_service.py`     | Public data collection (httpx + BeautifulSoup, 10s timeout, robots.txt best-effort)           |
 | `source_discovery.py`    | Probes industry-specific candidate URL paths on the competitor root domain. **Not a web crawler** — constructs known path variants (e.g. `/pricing`, `/seller-fees`) and probes them directly. No sitemap parsing, link following, or search-engine discovery. Industry-keyed path sets: `ai_saas` (10 paths, max 5 pages), `ecommerce` (14 paths, max 8 pages), `local_services` (12 paths, max 8 pages), `general` (6 paths, max 5 pages). `industry_type` is set per project at creation and threads through the workflow to CollectorAgent. Public helper `get_industry_max_pages(industry_type)` exposed for `CollectorAgent`. |
 | `search_provider.py`     | `SearchProvider` Protocol + `TavilySearchProvider` (wraps Tavily SDK) + `NullSearchProvider` (no-op) + `create_search_provider()` factory. Active when `ENABLE_LIVE_SEARCH=true` and `TAVILY_API_KEY` is set; degrades to `NullSearchProvider` otherwise. |
-| `search_service.py`      | Industry-keyed web search query templates → URL discovery via `SearchProvider` → `_is_crawlable()` filter (`_BLOCKED_DOMAINS` covers youtube/twitter/reddit/linkedin; `_UNSUPPORTED_EXTENSIONS` blocks binary files) → `_SEARCH_MAX_URLS=5` cap. Acts as a second URL-discovery channel alongside `source_discovery` inside `CollectorAgent._collect_live()`. Tavily title/snippet are discovery-only — never stored as evidence. Exposes three methods: `discover_urls()` for silent background discovery (workflow), `search_sources()` for interactive per-competitor candidate search (used by `POST /api/search/sources`) returning `CandidateSource` items annotated with `suggested_source_type`/`confidence`/`reason`, and `discover_competitors()` for industry-driven candidate-competitor discovery (used by `POST /api/search/competitors`) returning `CandidateCompetitor` items with provenance + relevance score. Aggregator/listicle/news domains are excluded via `_DISCOVERY_BLOCKED_DOMAINS` and `_LISTICLE_TITLE_RE`. |
+| `search_service.py`      | Industry-keyed web search query templates -> URL discovery via `SearchProvider` -> `_is_crawlable()` filter (`_BLOCKED_DOMAINS` covers youtube/twitter/reddit/linkedin; `_UNSUPPORTED_EXTENSIONS` blocks binary files) -> `_SEARCH_MAX_URLS=5` cap. Acts as a second URL-discovery channel alongside `source_discovery` inside `CollectorAgent._collect_live()`. Tavily title/snippet are discovery-only -- never stored as evidence. Exposes three methods: `discover_urls()` for silent background discovery (workflow; accepts optional `rework_hints` to prepend targeted queries via `_build_hint_queries()` which maps hint keywords like "pricing"/"features"/"docs" to specific Tavily search templates), `search_sources()` for interactive per-competitor candidate search (used by `POST /api/search/sources`) returning `CandidateSource` items annotated with `suggested_source_type`/`confidence`/`reason`, and `discover_competitors()` for industry-driven candidate-competitor discovery (used by `POST /api/search/competitors`) returning `CandidateCompetitor` items with provenance + relevance score. Aggregator/listicle/news domains are excluded via `_DISCOVERY_BLOCKED_DOMAINS` and `_LISTICLE_TITLE_RE`. |
 | `source_classifier.py`   | URL-path-first keyword classifier mapping discovered pages to `SourceType` (`features_page`, `security`, `privacy`, `unknown`, etc.) |
 | `coverage_evaluator.py`  | Per-competitor source coverage scoring (homepage/pricing/features/security weights, `WEAK_THRESHOLD=40`). Drives QA coverage checks. |
 | `source_service.py`      | Source storage and retrieval                                                                  |

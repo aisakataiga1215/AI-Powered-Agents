@@ -28,9 +28,11 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 - 每条结论绑定 `source_id`，前端 SourcePanel 一键回溯原始 URL
 - Claim 支持句级引用：同一个结论内的每句话可独立绑定来源，旧版整段引用保持兼容
 - TraceTimeline 可视化每个 AgentRun 的输入 / 输出 / 耗时 / token / QA 反馈
+- Agent 间每次关键交接都会生成结构化 `AgentMessage` Trace 事件，支持查看 from/to、message_type 与 payload
 - QA 失败显式展示（不静默隐藏），最多 N 轮返工后输出当前最优结果
+- 报告页支持人工修正 Markdown / 标题，保存后生成新报告版本并记录 `HumanReviewer` Trace
 - 真实采集 / Demo 双数据模式共用同一 Agent 流程；真实采集不可用时显式回退到 Demo fixtures
-- 结构化输出优先使用 function/tool calling；当 OpenAI-compatible 模型不稳定或不支持时自动回退到 JSON Output + Pydantic 校验
+- **结构化输出**：AnalystAgent 和 WriterAgent 使用 OpenAI function/tool calling（`with_structured_output(method="function_calling")`）直接产出 Pydantic 对象，兼容性失败时自动回退到 `response_format={"type": "json_object"}` + Pydantic v2 校验，保证输出始终符合 CompetitorKnowledge / CompetitiveReport schema
 - `/api/graph` 暴露后端 LangGraph DAG，前端工作流图按后端节点/边渲染；`/api/metrics` 汇总 token 和估算成本
 - 访谈/问卷等人工研究输入进入 SourceEvidence 前会做 PII 脱敏，并在来源面板显示脱敏状态
 
@@ -56,7 +58,7 @@ LangGraph DAG：CollectorAgent → AnalystAgent → WriterAgent → QAAgent
   ↓                                                          ↑
   └────────────── QA 失败按 target_agent 路由返工 ───────────┘
   ↓
-DeepSeek-V4-Flash（OpenAI 兼容 API）+ Tavily Search + SQLite
+Volcengine Doubao（OpenAI 兼容 endpoint）+ Tavily Search + SQLite
 ```
 
 详细架构图：[`docs/system_architecture.svg`](docs/system_architecture.svg)
@@ -81,7 +83,7 @@ DeepSeek-V4-Flash（OpenAI 兼容 API）+ Tavily Search + SQLite
 | 前端 | Next.js 16 + React 19 + TypeScript + Tailwind CSS 4 + TanStack Query + Zustand |
 | 后端 | Python 3.11 + FastAPI + Pydantic v2 + SQLAlchemy + Uvicorn |
 | Agent 编排 | LangGraph DAG + QA 失败循环返工 |
-| 大模型 | DeepSeek-V4-Flash（默认，OpenAI 兼容 API；可切 GPT-4.1-mini / GPT-4o / DeepSeek-V4-Pro） |
+| 大模型 | Volcengine Doubao（默认，OpenAI 兼容 endpoint `ep-20260514111325-xjmj7`；可切 DeepSeek / GPT-4.1-mini / GPT-4o） |
 | 搜索与爬取 | httpx + BeautifulSoup + Tavily Python SDK（可选） |
 | 数据库 | SQLite |
 | 部署 | Docker + Hugging Face Space（后端）+ Vercel（前端） |
@@ -161,13 +163,15 @@ E:\miniforge\envs\common\python.exe -m pytest --cov=app --cov-report=term-missin
 | 变量 | 必填 | 说明 |
 |------|------|------|
 | `OPENAI_API_KEY` | 是* | LLM 调用密钥（*仅查看 Demo fixtures 或部分离线流程时可留空） |
-| `OPENAI_BASE_URL` | 否 | OpenAI 兼容 API 地址，DeepSeek 填 `https://api.deepseek.com` |
-| `DEFAULT_MODEL` | 否 | 默认 `deepseek-v4-flash`，可选 `gpt-4.1-mini` / `gpt-4o` / `deepseek-v4-pro` |
-| `LLM_DISABLE_THINKING` | 否 | 默认开启思考的模型（如 deepseek-v4-pro）设为 `true` 关闭 |
+| `OPENAI_BASE_URL` | 否 | OpenAI 兼容 API 地址，火山引擎豆包填 `https://ark.cn-beijing.volces.com/api/v3` |
+| `DEFAULT_MODEL` | 否 | 默认 `gpt-4.1-mini`，当前线上使用火山引擎 endpoint ID `ep-20260514111325-xjmj7` |
+| `LLM_DISABLE_THINKING` | 否 | 默认 `false`；默认开启思考的模型（如 deepseek-v4-pro）设为 `true` 关闭 |
 | `DATABASE_URL` | 否 | 默认 `sqlite:///./dev.db` |
 | `ENABLE_DEMO_FIXTURES` | 否 | `true` = 允许使用本地 fixtures 兜底，保证演示稳定 |
 | `ENABLE_LIVE_SEARCH` | 否 | `true` = 启用真实搜索；设为 `false` 可强制关闭搜索 |
 | `TAVILY_API_KEY` | 否 | `ENABLE_LIVE_SEARCH=true` 时必填 |
+| `DEMO_SCENARIO` | 否 | 默认 `happy_path`；设为 `missing_pricing_source` 可稳定演示 QA 打回 Collector 重新采集 |
+| `DEMO_WITHHELD_PRICING_COMPETITOR` | 否 | 默认 `Windsurf`；指定返工演示中首轮隐藏定价页的竞品 |
 | `LANGSMITH_TRACING` | 否 | `true` = 上传 trace 到 LangSmith |
 | `LANGSMITH_API_KEY` | 否 | LangSmith Key |
 | `FRONTEND_ORIGINS` | 否 | 逗号分隔 CORS 白名单，Demo 默认 `*` |
@@ -179,6 +183,7 @@ E:\miniforge\envs\common\python.exe -m pytest --cov=app --cov-report=term-missin
 | 真实采集 | `ENABLE_LIVE_SEARCH=true` + `TAVILY_API_KEY` | 使用 Tavily 搜索补充候选 URL，并抓取公开网页作为来源 |
 | 真实采集 + Demo 兜底 | `ENABLE_LIVE_SEARCH=true`, `ENABLE_DEMO_FIXTURES=true` | 搜索或网页抓取不足时补充 fixtures，报告中会体现来源强弱 |
 | Demo | `ENABLE_LIVE_SEARCH=false`, `ENABLE_DEMO_FIXTURES=true` | 读取 `scripts/demo_fixtures/*.json`，适合离线开发和稳定演示 |
+| QA 返工演示 | `ENABLE_LIVE_SEARCH=false`, `ENABLE_DEMO_FIXTURES=true`, `DEMO_SCENARIO=missing_pricing_source` | 首轮隐藏指定竞品定价页，QA 打回 Collector 后重新采集，详见 [`docs/qa_rework_demo.md`](docs/qa_rework_demo.md) |
 
 ### 质量与鲁棒性策略
 
@@ -222,6 +227,8 @@ AI-Powered-Agents/
 │   ├── agent_protocol.md
 │   ├── schema_design.md
 │   ├── competition_submission.md
+│   ├── qa_rework_demo.md
+│   ├── quantitative_comparison.md
 │   ├── system_architecture.svg
 │   ├── changelog.md
 │   └── project_status.md

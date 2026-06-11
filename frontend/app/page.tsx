@@ -101,7 +101,7 @@ const CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY: Record<IndustryType, string[]> =
 const MAX_CUSTOM_DIMENSIONS = 8
 const DEFAULT_GOALS = ['feature_comparison', 'user_personas']
 
-function defaultGoalsForIndustryType(_industryType: IndustryType): string[] {
+function defaultGoalsForIndustryType(): string[] {
   return [...DEFAULT_GOALS]
 }
 
@@ -213,7 +213,7 @@ export default function NewProjectPage() {
 
   const applyIndustryType = useCallback((value: IndustryType) => {
     setIndustryType(value)
-    setGoals(defaultGoalsForIndustryType(value))
+    setGoals(defaultGoalsForIndustryType())
     setCompetitors((prev) => {
       if (value !== 'ai_saas' && isDefaultCompetitorSet(prev)) return []
       if (value === 'ai_saas' && prev.length === 0) return DEFAULT_COMPETITORS

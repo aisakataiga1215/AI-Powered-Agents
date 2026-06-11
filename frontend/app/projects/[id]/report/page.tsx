@@ -14,7 +14,7 @@
 
 import Link from 'next/link'
 import { use, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -44,6 +44,8 @@ type TabValue = 'summary' | 'pricing' | 'features' | 'swot' | 'recommendations' 
 export default function ReportPage({ params }: PageProps) {
   const { id } = use(params)
   const [activeTab, setActiveTab] = useState<TabValue>('summary')
+  const [correctionOpen, setCorrectionOpen] = useState(false)
+  const queryClient = useQueryClient()
 
   const reportQuery = useQuery({
     queryKey: ['report', id],
@@ -58,6 +60,16 @@ export default function ReportPage({ params }: PageProps) {
   const projectQuery = useQuery({
     queryKey: ['project', id],
     queryFn: () => api.getProject(id),
+  })
+
+  const correctionMutation = useMutation({
+    mutationFn: (payload: { title: string; markdown_content: string }) =>
+      api.patchReport(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['report', id] })
+      queryClient.invalidateQueries({ queryKey: ['traces', id] })
+      setCorrectionOpen(false)
+    },
   })
 
   const traces = useMemo(() => tracesQuery.data?.traces ?? [], [tracesQuery.data])
@@ -80,13 +92,6 @@ export default function ReportPage({ params }: PageProps) {
     () => computeDroppedCompetitors(requestedCompetitors, reportQuery.data, traces),
     [requestedCompetitors, reportQuery.data, traces]
   )
-
-  const analysedCount = useMemo(() => {
-    const collectorTrace = traces.find((t) => t.agent_name.includes('Collector'))
-    const out = (collectorTrace?.output ?? {}) as Record<string, unknown>
-    const collected = out.sufficiently_collected_competitors as string[] | undefined
-    return collected?.length ?? reportQuery.data?.competitor_overview?.length ?? 0
-  }, [traces, reportQuery.data])
 
   const tabs: TabItem[] = useMemo(() => {
     const allIssues = qaResult?.issues ?? []
@@ -194,6 +199,25 @@ export default function ReportPage({ params }: PageProps) {
           <span>{report.executive_summary?.length ?? 0} 条摘要结论</span>
         </div>
       </header>
+
+      <div className="print:hidden">
+        <button
+          type="button"
+          onClick={() => setCorrectionOpen((v) => !v)}
+          className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
+        >
+          {correctionOpen ? '收起人工修正' : '人工修正报告'}
+        </button>
+        {correctionOpen && (
+          <HumanCorrectionPanel
+            report={report}
+            isPending={correctionMutation.isPending}
+            error={correctionMutation.error}
+            onCancel={() => setCorrectionOpen(false)}
+            onSave={(payload) => correctionMutation.mutate(payload)}
+          />
+        )}
+      </div>
 
       {/* Tabbed interface — hidden when printing */}
       <div className="print:hidden">
@@ -316,6 +340,69 @@ export default function ReportPage({ params }: PageProps) {
       {/* Mounted at the page root so it overlays everything. */}
       <SourcePanel />
     </div>
+  )
+}
+
+function HumanCorrectionPanel({
+  report,
+  isPending,
+  error,
+  onCancel,
+  onSave,
+}: {
+  report: CompetitiveReport
+  isPending: boolean
+  error: unknown
+  onCancel: () => void
+  onSave: (payload: { title: string; markdown_content: string }) => void
+}) {
+  const [title, setTitle] = useState(report.title)
+  const [markdown, setMarkdown] = useState(report.markdown_content ?? '')
+
+  return (
+    <section className="mt-3 rounded-lg border border-blue-200 bg-white p-4 shadow-sm">
+      <div className="grid gap-3">
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium text-gray-800">报告标题</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          />
+        </label>
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium text-gray-800">Markdown 正文</span>
+          <textarea
+            value={markdown}
+            onChange={(event) => setMarkdown(event.target.value)}
+            rows={10}
+            className="min-h-64 rounded-md border border-gray-300 px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          />
+        </label>
+      </div>
+      {Boolean(error) && (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error instanceof Error ? error.message : '保存失败。'}
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onSave({ title, markdown_content: markdown })}
+          disabled={isPending || !title.trim()}
+          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+        >
+          {isPending ? '保存中...' : '保存修正版本'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          取消
+        </button>
+      </div>
+    </section>
   )
 }
 
