@@ -36,9 +36,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <Link href="/projects" className="transition-colors hover:text-gray-900">
                     项目
                   </Link>
-                  <Link href="/metrics" className="transition-colors hover:text-gray-900">
-                    指标
-                  </Link>
                   <Link
                     href="/"
                     className="rounded-md bg-gray-900 px-3 py-1.5 text-white transition-colors hover:bg-gray-700"

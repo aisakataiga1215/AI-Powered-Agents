@@ -26,13 +26,10 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 
 - 全链路 Pydantic v2 schema 强约束 Agent 输出
 - 每条结论绑定 `source_id`，前端 SourcePanel 一键回溯原始 URL
-- Claim 支持句级引用：同一个结论内的每句话可独立绑定来源，旧版整段引用保持兼容
 - TraceTimeline 可视化每个 AgentRun 的输入 / 输出 / 耗时 / token / QA 反馈
 - QA 失败显式展示（不静默隐藏），最多 N 轮返工后输出当前最优结果
 - 真实采集 / Demo 双数据模式共用同一 Agent 流程；真实采集不可用时显式回退到 Demo fixtures
-- 结构化输出优先使用 function/tool calling；当 OpenAI-compatible 模型不稳定或不支持时自动回退到 JSON Output + Pydantic 校验
-- `/api/graph` 暴露后端 LangGraph DAG，前端工作流图按后端节点/边渲染；`/api/metrics` 汇总 token 和估算成本
-- 访谈/问卷等人工研究输入进入 SourceEvidence 前会做 PII 脱敏，并在来源面板显示脱敏状态
+- 结构化输出默认使用 JSON Output + Pydantic 校验；schema 可映射到 function/tool calling，但默认不依赖原生 tool calling 以兼容 OpenAI-compatible 模型
 
 ### 在线 Demo
 
@@ -186,7 +183,6 @@ E:\miniforge\envs\common\python.exe -m pytest --cov=app --cov-report=term-missin
 - **错误恢复**：CollectorAgent 在真实采集覆盖不足时使用 Demo fixtures 兜底；WriterAgent 在 LLM 解析失败时生成带 fallback 标记的结构化报告；QA 失败会路由到 Collector / Analyst / Writer 之一重做。
 - **幻觉抑制**：关键 claim 必须绑定 `source_id` 或标记为假设；QAAgent 检查缺失引用、未知 source_id、价格数字不一致、弱来源和错误页面。
 - **可观测指标**：Trace 中记录每个 Agent 的输入、输出、耗时、token 和 QA 反馈；Collector 输出每个竞品的来源覆盖分，QA 输出分数、问题数、阻塞问题数和返工目标。
-- **成本指标**：AgentRun 记录 `cost_usd`，Metrics 页面按项目、Agent 和日期聚合 token 与估算成本。
 
 ---
 
@@ -197,7 +193,7 @@ AI-Powered-Agents/
 ├── backend/
 │   ├── app/
 │   │   ├── agents/         # CollectorAgent / AnalystAgent / WriterAgent / QAAgent 与 prompts
-│   │   ├── api/            # FastAPI 路由（projects / reports / sources / traces / search / knowledge / graph / metrics / health）
+│   │   ├── api/            # FastAPI 路由（projects / reports / sources / traces / search / knowledge / health）
 │   │   ├── core/           # 配置、日志、依赖注入
 │   │   ├── db/             # SQLAlchemy 模型与 session
 │   │   ├── graph/          # LangGraph DAG 节点、状态、路由
@@ -207,7 +203,7 @@ AI-Powered-Agents/
 │   │   └── main.py         # FastAPI 入口
 │   └── tests/              # pytest 测试（schema / 路由 / QA / Agent 集成）
 ├── frontend/
-│   ├── app/                # Next.js App Router 页面（首页 / 项目列表 / 详情 / 报告 / Trace / 打印 / Metrics）
+│   ├── app/                # Next.js App Router 页面（首页 / 项目列表 / 详情 / 报告 / Trace / 打印）
 │   ├── components/
 │   │   ├── agent-flow/     # AgentStatusBadge 等
 │   │   ├── competitor/     # CompetitorDiscoveryPanel

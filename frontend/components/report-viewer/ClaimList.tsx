@@ -29,37 +29,8 @@ export function ClaimList({ claims, sourceList, emptyMessage }: ClaimListProps) 
           key={c.claim_id ?? i}
           className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
         >
-          {c.sentences && c.sentences.length > 0 ? (
-            <p className="text-sm leading-relaxed text-gray-800">
-              {c.sentences.map((sentence, sentenceIndex) => (
-                <span key={`${c.claim_id ?? i}-sentence-${sentenceIndex}`}>
-                  {sentence.text}
-                  {(sentence.sources?.length ?? 0) > 0 && (
-                    <span className="ml-1 inline-flex gap-1 align-baseline">
-                      {sentence.sources.map((srcId) => {
-                        const num = sourceIndex.get(srcId)
-                        return (
-                          <button
-                            key={srcId}
-                            type="button"
-                            onClick={() => openSource(srcId)}
-                            title={srcId}
-                            className="rounded border border-blue-200 bg-blue-50 px-1 py-0.5 font-mono text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100"
-                          >
-                            {num !== undefined ? `[${num}]` : srcId}
-                          </button>
-                        )
-                      })}
-                    </span>
-                  )}
-                  {sentenceIndex < (c.sentences?.length ?? 0) - 1 ? ' ' : ''}
-                </span>
-              ))}
-            </p>
-          ) : (
-            <p className="text-sm leading-relaxed text-gray-800">{c.text || '—'}</p>
-          )}
-          {!c.sentences && (c.evidence?.length ?? 0) > 0 ? (
+          <p className="text-sm leading-relaxed text-gray-800">{c.text || '—'}</p>
+          {(c.evidence?.length ?? 0) > 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] tracking-wider text-gray-400 uppercase">来源：</span>
               {c.evidence!.map((srcId) => {
@@ -77,14 +48,6 @@ export function ClaimList({ claims, sourceList, emptyMessage }: ClaimListProps) 
                 )
               })}
             </div>
-          ) : !c.sentences ? (
-            c.is_hypothesis && (
-              <div className="mt-3">
-                <span className="rounded border border-yellow-200 bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-800">
-                  假设 · 未验证
-                </span>
-              </div>
-            )
           ) : (
             c.is_hypothesis && (
               <div className="mt-3">

@@ -25,7 +25,7 @@ Design decisions:
 import uuid
 from collections import OrderedDict
 
-from app.schemas.claim import Claim, ConfidenceLevel, Sentence
+from app.schemas.claim import Claim, ConfidenceLevel
 from app.schemas.knowledge import (
     CompetitorKnowledge,
     FeatureCategory,
@@ -134,13 +134,11 @@ def _make_claim(
     stripped = (text or "").strip()
     if not stripped:
         return None
-    sentence = Sentence(text=stripped, sources=list(source_ids))
     return Claim(
         claim_id=f"claim_{uuid.uuid4().hex[:8]}",
         text=stripped,
         confidence=confidence,
         evidence=list(source_ids),
-        sentences=[sentence],
         is_hypothesis=not bool(source_ids),
         created_by="AnalystAgent",
     )
