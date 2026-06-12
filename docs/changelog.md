@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - QAAgent now includes LLM advisory review with token tracking, purpose checks, custom-dimension checks, PM-section checks, and before/after rework comparison metrics.
 - QA advisory LLM findings are low severity only, so deterministic checks continue to control pass/fail.
 - WriterAgent now sends full structured knowledge to the writer path instead of summarizing or truncating it before generation.
+- AnalystAgent now correctly accumulates estimated cost across per-competitor LLM calls; `/metrics` also estimates cost for older traces that have token counts but a missing or zero `cost_usd`.
 
 ### Report UX and Print/PDF
 
@@ -29,7 +30,7 @@ All notable changes to this project will be documented in this file.
 
 ### Validation
 
-- Backend compile check passes with `E:\miniforge\envs\common\python.exe -m compileall backend/app`.
+- Backend compile check passes with `python -m compileall backend/app`.
 - Frontend `pnpm lint` and `pnpm build` pass.
 - Chrome DevTools MCP verified the report and print pages for `proj_b73c9e40c843`.
 

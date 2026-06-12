@@ -75,7 +75,7 @@ Volcengine Doubao（OpenAI 兼容 endpoint）+ Tavily Search + SQLite
 | npm | ≥ 9 |
 | Docker（可选） | ≥ 24，用于复刻线上后端镜像 |
 
-本项目开发使用的 Python 解释器：`E:\miniforge\envs\common\python.exe`。
+请使用 Python 3.11+ 环境运行后端；如使用 conda/venv，请先激活对应环境。
 
 主要技术栈：
 
@@ -110,8 +110,8 @@ cp .env.example .env
 
 ```bash
 cd backend
-E:\miniforge\envs\common\python.exe -m pip install -e .
-E:\miniforge\envs\common\python.exe -m uvicorn app.main:app --reload --port 8000
+python -m pip install -e .
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 - API 文档：http://localhost:8000/docs
@@ -148,13 +148,13 @@ docker run -p 7860:7860 --env-file .env agents
 
 ```bash
 cd backend
-E:\miniforge\envs\common\python.exe -m pytest
+python -m pytest
 ```
 
 含覆盖率：
 
 ```bash
-E:\miniforge\envs\common\python.exe -m pytest --cov=app --cov-report=term-missing
+python -m pytest --cov=app --cov-report=term-missing
 ```
 
 ---
@@ -284,6 +284,5 @@ AI-Powered-Agents/
 - [Schema 设计](docs/schema_design.md)
 - [Changelog](docs/changelog.md)
 - [项目状态](docs/project_status.md)
-- [竞赛提交材料](docs/competition_submission.md)
 - [产品规格](product_spec.md)
 - [工程规格](engineering_spec.md)
