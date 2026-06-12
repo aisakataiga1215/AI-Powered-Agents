@@ -24,7 +24,7 @@ export default function MetricsPage() {
         <p className="text-xs font-medium uppercase tracking-wider text-blue-700">Metrics</p>
         <h1 className="mt-2 text-3xl font-semibold text-gray-900">运行成本与 Token</h1>
         <p className="mt-2 max-w-xl text-sm text-gray-600">
-          汇总每次 AgentRun 的 token、估算成本和运行次数，用于评估模型调用成本与后续优化空间。
+          汇总每次 AgentRun 的 token、估算成本和运行次数，评估模型调用成本与<span className="whitespace-nowrap">优化空间。</span>
         </p>
       </header>
 

@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.db import models
 from app.schemas.agent_message import AgentMessage
@@ -198,12 +199,28 @@ def aggregate_costs(
         current["total_tokens"] = int(current["total_tokens"]) + tokens
         current["run_count"] = int(current["run_count"]) + 1
 
+    def estimated_cost(usage: dict[str, Any]) -> float:
+        try:
+            cost = float(usage.get("cost_usd") or 0.0)
+        except (TypeError, ValueError):
+            cost = 0.0
+        if cost > 0:
+            return cost
+        prompt = int(usage.get("prompt_tokens") or 0)
+        completion = int(usage.get("completion_tokens") or 0)
+        if prompt == 0 and completion == 0:
+            return 0.0
+        return (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
+
     for record in records:
         try:
             usage = json.loads(record.token_usage_json or "{}")
         except json.JSONDecodeError:
             usage = {}
-        cost = float(usage.get("cost_usd") or 0.0)
+        cost = estimated_cost(usage)
         tokens = int(usage.get("total_tokens") or 0)
         total_cost += cost
         total_tokens += tokens

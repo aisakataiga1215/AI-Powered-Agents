@@ -414,7 +414,7 @@ export default function NewProjectPage() {
           创建竞品分析项目
         </h1>
         <p className="mt-2 max-w-xl text-sm text-gray-600">
-          先明确分析主题、竞品和目标。启动后，采集、分析、撰写和 QA Agent 会按工作流依次执行。
+          先明确分析主题、竞品和目标。启动后，采集、分析、撰写和 QA Agent 会<span className="whitespace-nowrap">依次运行。</span>
         </p>
       </header>
 

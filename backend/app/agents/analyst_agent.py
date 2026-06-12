@@ -232,6 +232,15 @@ def _extract_token_usage(response: object) -> TokenUsage:
     return TokenUsage()
 
 
+def _merge_token_usage(left: TokenUsage, right: TokenUsage) -> TokenUsage:
+    return TokenUsage(
+        prompt_tokens=left.prompt_tokens + right.prompt_tokens,
+        completion_tokens=left.completion_tokens + right.completion_tokens,
+        total_tokens=left.total_tokens + right.total_tokens,
+        cost_usd=(left.cost_usd or 0.0) + (right.cost_usd or 0.0),
+    )
+
+
 def _extract_json_text(content: str) -> str:
     """Strip markdown fences the model may emit despite response_format."""
     text = (content or "").strip()
@@ -622,11 +631,7 @@ def run(
                 )
                 parse_status_by_competitor[competitor_name] = "function_calling_parsed"
                 usage = _extract_token_usage(raw_message)
-                total_usage = TokenUsage(
-                    prompt_tokens=total_usage.prompt_tokens + usage.prompt_tokens,
-                    completion_tokens=total_usage.completion_tokens + usage.completion_tokens,
-                    total_tokens=total_usage.total_tokens + usage.total_tokens,
-                )
+                total_usage = _merge_token_usage(total_usage, usage)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "AnalystAgent: function calling failed for '%s': %s; falling back to JSON output.",
@@ -644,11 +649,7 @@ def run(
                         "json_output_parsed" if raw_extraction is not None else "json_output_fallback_empty"
                     )
                     usage = _extract_token_usage(response)
-                    total_usage = TokenUsage(
-                        prompt_tokens=total_usage.prompt_tokens + usage.prompt_tokens,
-                        completion_tokens=total_usage.completion_tokens + usage.completion_tokens,
-                        total_tokens=total_usage.total_tokens + usage.total_tokens,
-                    )
+                    total_usage = _merge_token_usage(total_usage, usage)
                 except Exception as json_exc:  # noqa: BLE001
                     parse_status_by_competitor[competitor_name] = "llm_error_fallback_empty"
                     logger.error(
