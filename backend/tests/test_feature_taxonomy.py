@@ -46,7 +46,7 @@ class TestNormalizeFeatureCategory:
 
 class TestBuildFeatureComparisonMerge:
     def test_same_canonical_categories_are_merged_into_one_row(self):
-        """Two raw categories that both normalize to 'AI Agents' produce one row."""
+        """Agent-like raw categories merge into one horizontal capability row."""
         ck = CompetitorKnowledge(
             competitor_id="comp_test",
             competitor_name="TestCo",
@@ -62,7 +62,7 @@ class TestBuildFeatureComparisonMerge:
         )
         result = _build_feature_comparison([ck])
         assert "TestCo" in result
-        assert result["TestCo"].count("AI Agents:") == 1
+        assert result["TestCo"].count("Agent 工作流:") == 1
         assert "Inline Edit" in result["TestCo"]
         assert "Multi-Agent" in result["TestCo"]
 
@@ -81,8 +81,7 @@ class TestBuildFeatureComparisonMerge:
             ],
         )
         result = _build_feature_comparison([ck])
-        assert "AI Agents:" in result["TestCo"]
-        assert "Cloud Agents:" in result["TestCo"]
-        # Ensure they are separate rows, not one "AI Agents" row
-        assert result["TestCo"].count("AI Agents:") == 1
-        assert result["TestCo"].count("Cloud Agents:") == 1
+        assert "代码补全与生成:" in result["TestCo"]
+        assert "云任务与部署:" in result["TestCo"]
+        assert result["TestCo"].count("代码补全与生成:") == 1
+        assert result["TestCo"].count("云任务与部署:") == 1

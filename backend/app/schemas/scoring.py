@@ -24,3 +24,21 @@ class CompetitorScore(BaseModel):
         "Scores are weighted decision-support estimates based on collected "
         "evidence, not objective measurements."
     )
+
+
+class OpportunityDimension(BaseModel):
+    dimension_name: str
+    score: int = Field(ge=1, le=5)
+    weight: float = Field(ge=0, le=1)
+    rationale: str
+    evidence: list[str] = Field(default_factory=list)
+    source_confidence: SourceConfidence = "medium"
+
+
+class OpportunityScore(BaseModel):
+    overall_score: float = Field(ge=0, le=100)
+    dimensions: list[OpportunityDimension] = Field(default_factory=list)
+    scoring_note: str = (
+        "Opportunity scores are directional estimates for product planning "
+        "based on the collected competitive evidence."
+    )

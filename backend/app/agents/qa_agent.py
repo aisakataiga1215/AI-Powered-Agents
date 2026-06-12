@@ -1,28 +1,29 @@
 """QAAgent.
 
-Performs rule-based quality checks on a draft report and the structured
-knowledge that produced it.
-
-The MVP intentionally uses deterministic checks rather than an LLM so the
-QA decision is reproducible, fast, and explainable. Each violation
-becomes a :class:`QAIssue` with an explicit ``target_agent`` so the
-LangGraph router can dispatch rework precisely.
+Performs quality checks on a draft report and the structured knowledge
+that produced it. Deterministic checks decide pass/fail; an optional LLM
+review can add advisory low/medium issues for human review.
 """
 
+import json
 import re
 import time
 import uuid
+from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.claim import Claim
 from app.schemas.knowledge import CompetitorKnowledge
 from app.schemas.project import DEFAULT_ANALYSIS_PURPOSE
-from app.schemas.qa import IssueSeverity, IssueType, QAIssue, QAResult
+from app.schemas.qa import IssueSeverity, IssueType, QAComparison, QAIssue, QAResult
 from app.schemas.report import CompetitiveReport
 from app.schemas.source import SourceEvidence, SourceType
-from app.schemas.trace import AgentRun, AgentRunStatus
+from app.schemas.trace import AgentRun, AgentRunStatus, TokenUsage
 from app.services import coverage_evaluator, qa_service, trace_service
 
 logger = get_logger(__name__)
@@ -32,6 +33,57 @@ _MEDIUM_PENALTY = 5
 _PASS_THRESHOLD = 80
 _MAX_CLAIM_PREVIEW = 80
 _PRICE_PATTERN = re.compile(r"\$\s?(\d+(?:\.\d+)?)")
+_LLM_QA_MAX_REPORT_CHARS = 12000
+
+
+def _build_json_llm() -> ChatOpenAI:
+    if not settings.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured; QAAgent LLM review skipped.")
+    kwargs: dict[str, Any] = {
+        "model": settings.default_model,
+        "api_key": settings.openai_api_key,
+        "temperature": 0,
+        "model_kwargs": {"response_format": {"type": "json_object"}},
+    }
+    if settings.openai_base_url:
+        kwargs["base_url"] = settings.openai_base_url
+    if settings.llm_disable_thinking:
+        kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+    return ChatOpenAI(**kwargs)
+
+
+def _extract_token_usage(response: Any) -> TokenUsage:
+    meta = getattr(response, "usage_metadata", None)
+    if meta and isinstance(meta, dict):
+        prompt = int(meta.get("input_tokens", 0))
+        completion = int(meta.get("output_tokens", 0))
+        total = int(meta.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
+        return TokenUsage(prompt_tokens=prompt, completion_tokens=completion, total_tokens=total, cost_usd=cost)
+    resp_meta = getattr(response, "response_metadata", None) or {}
+    usage = resp_meta.get("token_usage") or resp_meta.get("usage") or {}
+    if usage:
+        prompt = int(usage.get("prompt_tokens", 0))
+        completion = int(usage.get("completion_tokens", 0))
+        total = int(usage.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
+        return TokenUsage(prompt_tokens=prompt, completion_tokens=completion, total_tokens=total, cost_usd=cost)
+    return TokenUsage()
+
+
+def _merge_token_usage(left: TokenUsage, right: TokenUsage) -> TokenUsage:
+    return TokenUsage(
+        prompt_tokens=left.prompt_tokens + right.prompt_tokens,
+        completion_tokens=left.completion_tokens + right.completion_tokens,
+        total_tokens=left.total_tokens + right.total_tokens,
+        cost_usd=left.cost_usd + right.cost_usd,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -621,7 +673,240 @@ def check_report_structure(report: CompetitiveReport) -> list[QAIssue]:
             )
         )
     return issues
-def _build_trace_output(result: QAResult, issues: list[QAIssue]) -> dict:
+
+
+def check_custom_dimensions(
+    report: CompetitiveReport,
+    custom_dimensions: list[str] | None,
+    issues: list[QAIssue],
+) -> None:
+    for dim in custom_dimensions or []:
+        score = (report.custom_dimension_analysis or {}).get(dim)
+        section = (report.custom_dimension_sections or {}).get(dim)
+        if not score and not section:
+            issues.append(
+                QAIssue(
+                    severity=IssueSeverity.medium,
+                    issue_type=IssueType.missing_custom_dimension_coverage,
+                    target_agent="WriterAgent",
+                    message=f"Custom dimension '{dim}' is missing from the report",
+                    suggested_action="Generate a scored custom_dimension_analysis entry with evidence and confidence.",
+                )
+            )
+            continue
+        if score and (not score.rationale or not score.evidence or score.source_confidence == "unknown"):
+            issues.append(
+                QAIssue(
+                    severity=IssueSeverity.medium,
+                    issue_type=IssueType.missing_custom_dimension_coverage,
+                    target_agent="WriterAgent",
+                    message=f"Custom dimension '{dim}' is missing score rationale, evidence, or confidence",
+                    suggested_action="Backfill score, rationale, cited evidence, and source_confidence for this custom dimension.",
+                )
+            )
+
+
+def check_scoring_rationale(
+    report: CompetitiveReport,
+    analysis_purpose: str,
+    issues: list[QAIssue],
+) -> None:
+    if analysis_purpose == "choose_product":
+        if not report.competitor_scores:
+            issues.append(
+                QAIssue(
+                    severity=IssueSeverity.medium,
+                    issue_type=IssueType.missing_score_rationale,
+                    target_agent="WriterAgent",
+                    message="Product selection scoring matrix is missing",
+                    suggested_action="Generate competitor_scores with weighted dimensions, rationale, and evidence.",
+                )
+            )
+            return
+        for name, score in report.competitor_scores.items():
+            if not score.dimensions or any(not d.rationale or not d.evidence for d in score.dimensions):
+                issues.append(
+                    QAIssue(
+                        severity=IssueSeverity.medium,
+                        issue_type=IssueType.missing_score_rationale,
+                        target_agent="WriterAgent",
+                        message=f"Product selection score for '{name}' lacks dimension rationale or evidence",
+                        suggested_action="Each scoring dimension must include rationale and source evidence.",
+                    )
+                )
+    elif analysis_purpose == "build_product":
+        score = report.opportunity_score
+        if not score or not score.dimensions:
+            issues.append(
+                QAIssue(
+                    severity=IssueSeverity.medium,
+                    issue_type=IssueType.missing_score_rationale,
+                    target_agent="WriterAgent",
+                    message="OpportunityScore is missing for build_product purpose",
+                    suggested_action="Generate opportunity_score with weighted dimensions, rationale, and evidence.",
+                )
+            )
+            return
+        if any(not d.rationale or not d.evidence for d in score.dimensions):
+            issues.append(
+                QAIssue(
+                    severity=IssueSeverity.medium,
+                    issue_type=IssueType.missing_score_rationale,
+                    target_agent="WriterAgent",
+                    message="OpportunityScore dimensions lack rationale or evidence",
+                    suggested_action="Each opportunity dimension must include rationale and source evidence.",
+                )
+            )
+
+
+def check_pm_sections(
+    report: CompetitiveReport,
+    analysis_purpose: str,
+    issues: list[QAIssue],
+) -> None:
+    if analysis_purpose not in {"understand_industry", "analyze_growth_ops"}:
+        return
+    if not report.market_background or not report.market_background.market_overview:
+        issues.append(
+            QAIssue(
+                severity=IssueSeverity.medium,
+                issue_type=IssueType.missing_market_background,
+                target_agent="WriterAgent",
+                message="Market background section is missing",
+                suggested_action="Generate market_background for industry/growth analysis purposes.",
+            )
+        )
+    if not report.feature_insights or not report.feature_insights.table_stakes:
+        issues.append(
+            QAIssue(
+                severity=IssueSeverity.medium,
+                issue_type=IssueType.missing_feature_insights,
+                target_agent="WriterAgent",
+                message="Feature insights section is missing",
+                suggested_action="Generate feature_insights with table stakes and differentiators.",
+            )
+        )
+    if not report.operation_monetization or not report.operation_monetization.gtm_profiles:
+        issues.append(
+            QAIssue(
+                severity=IssueSeverity.medium,
+                issue_type=IssueType.missing_operation_monetization,
+                target_agent="WriterAgent",
+                message="Operation and monetization section is missing",
+                suggested_action="Generate operation_monetization for industry/growth analysis purposes.",
+            )
+        )
+
+
+def _count_cited_claims(report: CompetitiveReport) -> tuple[int, int]:
+    claims: list[Claim] = []
+    claims.extend(report.executive_summary)
+    claims.extend(report.strategic_recommendations)
+    for ck in report.competitor_overview:
+        if ck.product_profile and ck.product_profile.positioning:
+            claims.append(ck.product_profile.positioning)
+        if ck.product_profile:
+            claims.extend(ck.product_profile.target_users)
+        if ck.pricing_model and ck.pricing_model.summary:
+            claims.append(ck.pricing_model.summary)
+        if ck.swot:
+            claims.extend(ck.swot.strengths)
+            claims.extend(ck.swot.weaknesses)
+            claims.extend(ck.swot.opportunities)
+            claims.extend(ck.swot.threats)
+    cited = sum(1 for claim in claims if claim.evidence)
+    return len(claims), cited
+
+
+def _citation_coverage(report: CompetitiveReport | None) -> float:
+    if report is None:
+        return 0.0
+    total, cited = _count_cited_claims(report)
+    if total == 0:
+        return 0.0
+    return round(cited / total, 3)
+
+
+def _build_qa_comparison(
+    previous_result: QAResult | None,
+    current_result: QAResult,
+    previous_report: CompetitiveReport | None,
+    current_report: CompetitiveReport,
+    rework_target: str | None,
+) -> QAComparison | None:
+    if previous_result is None:
+        return None
+    previous_claims, _ = _count_cited_claims(previous_report) if previous_report else (0, 0)
+    current_claims, _ = _count_cited_claims(current_report)
+    return QAComparison(
+        issues_before=len(previous_result.issues),
+        issues_high_before=sum(1 for i in previous_result.issues if i.severity == IssueSeverity.high),
+        qa_score_before=previous_result.score,
+        citation_coverage_before=_citation_coverage(previous_report),
+        issues_after=len(current_result.issues),
+        issues_high_after=sum(1 for i in current_result.issues if i.severity == IssueSeverity.high),
+        qa_score_after=current_result.score,
+        citation_coverage_after=_citation_coverage(current_report),
+        claims_affected=abs(current_claims - previous_claims),
+        rework_target=rework_target or "",
+    )
+
+
+def _run_llm_advisory_review(
+    report: CompetitiveReport,
+    analysis_purpose: str,
+) -> tuple[list[QAIssue], TokenUsage, str]:
+    if not settings.openai_api_key:
+        return [], TokenUsage(), "skipped_no_api_key"
+    try:
+        llm = _build_json_llm()
+        payload = {
+            "analysis_purpose": analysis_purpose,
+            "report": report.model_dump(mode="json"),
+        }
+        messages = [
+            SystemMessage(
+                content=(
+                    "You are an advisory QA reviewer for a competitive analysis report. "
+                    "Return JSON only: {\"issues\":[{\"severity\":\"low|medium\","
+                    "\"message\":\"...\",\"suggested_action\":\"...\"}]}. "
+                    "Do not return high severity issues. Limit to 5 issues."
+                )
+            ),
+            HumanMessage(content=json.dumps(payload, ensure_ascii=False)[:_LLM_QA_MAX_REPORT_CHARS]),
+        ]
+        response = llm.invoke(messages)
+        usage = _extract_token_usage(response)
+        content = getattr(response, "content", "") or "{}"
+        parsed = json.loads(content) if isinstance(content, str) else content
+        advisory: list[QAIssue] = []
+        for item in (parsed.get("issues") if isinstance(parsed, dict) else []) or []:
+            message = str(item.get("message") or "").strip()
+            if not message:
+                continue
+            advisory.append(
+                QAIssue(
+                    severity=IssueSeverity.low,
+                    issue_type=IssueType.llm_quality_issue,
+                    target_agent="WriterAgent",
+                    message=message[:500],
+                    suggested_action=str(item.get("suggested_action") or "Review and revise the report.").strip()[:500],
+                )
+            )
+            if len(advisory) >= 5:
+                break
+        return advisory, usage, "success"
+    except Exception as exc:
+        logger.warning("QAAgent LLM advisory review failed: %s", exc)
+        return [], TokenUsage(), "failed"
+
+
+def _build_trace_output(
+    result: QAResult,
+    issues: list[QAIssue],
+    comparison: QAComparison | None = None,
+    llm_review_status: str = "not_run",
+) -> dict:
     """Build the trace output dict for a completed QAAgent run.
 
     Extracted as a standalone function so it can be unit-tested without a
@@ -648,6 +933,9 @@ def _build_trace_output(result: QAResult, issues: list[QAIssue]) -> dict:
         "advisory_count": sum(
             1 for i in issues if i.severity == IssueSeverity.low
         ),
+        "llm_review_status": llm_review_status,
+        "llm_issue_count": sum(1 for i in issues if i.issue_type == IssueType.llm_quality_issue),
+        "qa_comparison": comparison.model_dump(mode="json") if comparison else None,
         "decision_summary": (
             f"QA {'passed' if result.passed else 'failed'} with score {result.score}/100 "
             f"and {len(issues)} issues."
@@ -685,6 +973,9 @@ def run(
     analysis_frameworks: list[str] | None = None,
     analysis_purpose: str = DEFAULT_ANALYSIS_PURPOSE,
     custom_dimensions: list[str] | None = None,
+    previous_qa_result: QAResult | None = None,
+    previous_report: CompetitiveReport | None = None,
+    rework_target: str | None = None,
 ) -> QAResult:
     """Run rule-based QA checks and persist the resulting :class:`QAResult`."""
     run_id = f"run_{uuid.uuid4().hex[:8]}"
@@ -702,6 +993,7 @@ def run(
             "analysis_frameworks": analysis_frameworks or ["swot"],
             "analysis_purpose": analysis_purpose,
             "custom_dimensions": custom_dimensions or [],
+            "has_previous_qa": previous_qa_result is not None,
             "decision_summary": "Run deterministic QA checks and choose the repair target when needed.",
         },
         status=AgentRunStatus.running,
@@ -723,8 +1015,16 @@ def run(
         check_source_coverage(sources, goals, issues)
         check_source_quality(sources, issues)
         check_brand_consistency(knowledge, sources, issues)
+        check_custom_dimensions(report, custom_dimensions, issues)
+        check_scoring_rationale(report, analysis_purpose, issues)
+        check_pm_sections(report, analysis_purpose, issues)
         # Advisory-only consistency checks — medium severity, never change pass/fail threshold.
         issues.extend(check_report_structure(report))
+        llm_issues, llm_usage, llm_review_status = _run_llm_advisory_review(
+            report,
+            analysis_purpose,
+        )
+        issues.extend(llm_issues)
 
         score = _score_issues(issues)
         passed = score >= _PASS_THRESHOLD and not _has_high_severity(issues)
@@ -735,6 +1035,13 @@ def run(
             score=score,
             issues=issues,
         )
+        comparison = _build_qa_comparison(
+            previous_qa_result,
+            result,
+            previous_report,
+            report,
+            rework_target,
+        )
         qa_service.save_qa_result(db, result)
 
         elapsed_ms = int((time.time() - start) * 1000)
@@ -742,7 +1049,8 @@ def run(
             db,
             run_id,
             status=AgentRunStatus.success,
-            output=_build_trace_output(result, issues),
+            output=_build_trace_output(result, issues, comparison, llm_review_status),
+            token_usage=llm_usage,
             latency_ms=elapsed_ms,
         )
         logger.info(

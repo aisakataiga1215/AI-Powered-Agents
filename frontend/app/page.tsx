@@ -83,7 +83,6 @@ interface AnalysisPurposeOption {
 }
 
 const ANALYSIS_PURPOSE_OPTIONS: AnalysisPurposeOption[] = [
-  { value: 'unknown', label: '先帮我推荐', description: '暂不限定目的，先用通用 SWOT 结构快速分析' },
   { value: 'build_product', label: '我想做类似产品', description: '发现市场空白、差异化机会和 MVP 方向' },
   { value: 'choose_product', label: '我想选择产品使用', description: '按适配度、价格、风险和证据排序' },
   { value: 'understand_industry', label: '我想了解行业', description: '梳理市场格局、用户分层和增长驱动' },
@@ -97,16 +96,16 @@ const FRAMEWORK_OPTIONS: { value: AnalysisFramework; label: string; description:
 ]
 
 const CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY: Record<IndustryType, string[]> = {
-  ai_saas: ['价格', '隐私', '本地部署', 'API', '企业版', '安全合规'],
-  ai_search: ['答案质量', '来源引用', '实时性', '多模态', '隐私', '付费限制'],
-  design_tools: ['协作体验', '模板生态', '品牌资产', '导出格式', '团队权限', '学习成本'],
-  ecommerce: ['商品供给', '价格竞争力', '履约配送', '商家生态', '交易保障', '会员体系'],
-  local_services: ['配送速度', '供给密度', '服务覆盖', '骑手/商家管理', '会员补贴', '售后体验'],
-  open_source: ['社区活跃度', '治理结构', '文档质量', '商业支持', '捐赠/会员', '生态项目'],
-  social: ['内容供给', '创作者激励', '社区氛围', '推荐机制', '互动玩法', '商业化干扰'],
-  general: ['用户体验', '核心功能', '价格', '渠道', '品牌信任', '风险'],
+  ai_saas: ['隐私', '本地部署', 'API', '安全合规'],
+  ai_search: ['答案质量', '来源引用', '实时性', '多模态'],
+  design_tools: ['协作体验', '模板生态', '导出格式', '学习成本'],
+  ecommerce: ['商品供给', '履约配送', '商家生态', '交易保障'],
+  local_services: ['配送速度', '供给密度', '服务覆盖', '售后体验'],
+  open_source: ['社区活跃度', '治理结构', '文档质量', '生态项目'],
+  social: ['内容供给', '创作者激励', '社区氛围', '推荐机制'],
+  general: ['用户体验', '核心功能', '渠道', '品牌信任'],
 }
-const MAX_CUSTOM_DIMENSIONS = 8
+const MAX_CUSTOM_DIMENSIONS = 4
 const DEFAULT_GOALS = ['user_personas', 'feature_comparison', 'pricing_analysis']
 const DEFAULT_FRAMEWORKS: AnalysisFramework[] = ['swot']
 
@@ -114,7 +113,7 @@ function defaultGoalsForIndustryType(): string[] {
   return [...DEFAULT_GOALS]
 }
 
-function defaultFrameworksForPurpose(value: AnalysisPurpose): AnalysisFramework[] {
+function defaultFrameworksForPurpose(value: AnalysisPurpose | ''): AnalysisFramework[] {
   if (value === 'build_product') return ['three_c', 'swot']
   if (value === 'choose_product') return ['swot']
   if (value === 'understand_industry') return ['three_c', 'swot']
@@ -205,7 +204,7 @@ export default function NewProjectPage() {
   const [creationMode, setCreationMode] = useState<CreationMode>('discover')
   const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('帮我分析一下 AI coding 的竞品')
   const [industryType, setIndustryType] = useState<IndustryType>('ai_saas')
-  const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose>('unknown')
+  const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose | ''>('')
   const [analysisFrameworks, setAnalysisFrameworks] = useState<AnalysisFramework[]>(DEFAULT_FRAMEWORKS)
   const [customDimensions, setCustomDimensions] = useState<string[]>([])
   const [dimInput, setDimInput] = useState('')
@@ -368,6 +367,7 @@ export default function NewProjectPage() {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!analysisPurpose) return
     const cleanedCompetitors = competitors
       .map((c) => ({
         name: c.name.trim(),
@@ -400,6 +400,7 @@ export default function NewProjectPage() {
     CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY.general
   const submitDisabled =
     createMutation.isPending ||
+    !analysisPurpose ||
     industry.trim().length === 0 ||
     competitors.every((c) => !c.name.trim() || !c.url.trim())
 
@@ -537,6 +538,9 @@ export default function NewProjectPage() {
             onChange={(e) => handlePurposeChange(e.target.value as AnalysisPurpose)}
             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           >
+            <option value="" disabled>
+              请选择分析目的
+            </option>
             {ANALYSIS_PURPOSE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label} — {option.description}

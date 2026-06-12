@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 
 from app.schemas.claim import Claim
 from app.schemas.knowledge import CompetitorKnowledge
-from app.schemas.scoring import CompetitorScore
+from app.schemas.pm_sections import FeatureInsights, MarketBackground, OperationMonetization
+from app.schemas.scoring import CompetitorScore, DimensionScore, OpportunityScore
 from app.schemas.source import SourceEvidence
 
 
@@ -34,8 +35,13 @@ class CompetitiveReport(BaseModel):
     selected_report_tabs: list[str] = Field(default_factory=list)
     framework_sections: dict = Field(default_factory=dict)
     custom_dimension_sections: dict = Field(default_factory=dict)
+    custom_dimension_analysis: dict[str, DimensionScore] = Field(default_factory=dict)
     purpose_sections: dict = Field(default_factory=dict)
     competitor_scores: dict[str, CompetitorScore] = Field(default_factory=dict)
+    opportunity_score: OpportunityScore | None = None
+    market_background: MarketBackground | None = None
+    feature_insights: FeatureInsights | None = None
+    operation_monetization: OperationMonetization | None = None
     analysis_objective: str = ""
     competitor_selection_rationale: dict = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

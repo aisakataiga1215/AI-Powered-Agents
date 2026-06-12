@@ -78,6 +78,12 @@ function buildReworkSteps(traces: AgentRun[]): StoryStep[] {
   const usedHintCount = Array.isArray(collectorAfterRouter?.output.rework_hints_used)
     ? collectorAfterRouter.output.rework_hints_used.length
     : 0
+  const comparison = isQAComparison(passedQaAfterFailure.output.qa_comparison)
+    ? passedQaAfterFailure.output.qa_comparison
+    : undefined
+  const comparisonDetail = comparison
+    ? `Score ${comparison.qa_score_before} → ${comparison.qa_score_after}; issues ${comparison.issues_before} → ${comparison.issues_after}; citation coverage ${Math.round(comparison.citation_coverage_before * 100)}% → ${Math.round(comparison.citation_coverage_after * 100)}%.`
+    : `Final QA score: ${passedQaAfterFailure.output.score ?? 'passed'}/100.`
 
   return [
     {
@@ -104,7 +110,7 @@ function buildReworkSteps(traces: AgentRun[]): StoryStep[] {
     },
     {
       title: '复检通过',
-      detail: `Final QA score: ${passedQaAfterFailure.output.score ?? 'passed'}/100.`,
+      detail: comparisonDetail,
       tone: 'success',
     },
   ]
@@ -112,6 +118,26 @@ function buildReworkSteps(traces: AgentRun[]): StoryStep[] {
 
 function isIssueLike(value: unknown): value is { message: string } {
   return Boolean(value && typeof value === 'object' && 'message' in value && typeof value.message === 'string')
+}
+
+function isQAComparison(value: unknown): value is {
+  qa_score_before: number
+  qa_score_after: number
+  issues_before: number
+  issues_after: number
+  citation_coverage_before: number
+  citation_coverage_after: number
+} {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.qa_score_before === 'number' &&
+    typeof record.qa_score_after === 'number' &&
+    typeof record.issues_before === 'number' &&
+    typeof record.issues_after === 'number' &&
+    typeof record.citation_coverage_before === 'number' &&
+    typeof record.citation_coverage_after === 'number'
+  )
 }
 
 function stepToneClass(tone: StoryStep['tone']): string {

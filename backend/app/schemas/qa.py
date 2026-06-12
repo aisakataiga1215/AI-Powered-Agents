@@ -39,6 +39,12 @@ class IssueType(str, Enum):
     source_type_content_mismatch = "source_type_content_mismatch"
     brand_mismatch = "brand_mismatch"
     report_consistency_issue = "report_consistency_issue"
+    missing_custom_dimension_coverage = "missing_custom_dimension_coverage"
+    missing_score_rationale = "missing_score_rationale"
+    missing_market_background = "missing_market_background"
+    missing_feature_insights = "missing_feature_insights"
+    missing_operation_monetization = "missing_operation_monetization"
+    llm_quality_issue = "llm_quality_issue"
 
 
 class QAIssue(BaseModel):
@@ -84,8 +90,11 @@ class QAComparison(BaseModel):
 
     issues_before: int = 0
     issues_high_before: int = 0
+    qa_score_before: int = 0
     citation_coverage_before: float = 0.0
     issues_after: int = 0
     issues_high_after: int = 0
+    qa_score_after: int = 0
     citation_coverage_after: float = 0.0
     claims_affected: int = 0
+    rework_target: str = ""

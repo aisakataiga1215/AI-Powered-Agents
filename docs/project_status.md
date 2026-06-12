@@ -2,11 +2,25 @@
 
 **Last updated:** 2026-06-11
 
-## Current Status: M18 Complete — LLM Provider Switch, Function Calling, and Prompt Bias Fix
+## Current Status: M19 Complete — Purpose-Aware Reports, QA Hardening, and Human Review UX
 
 ---
 
 ## Milestones
+
+### Milestone 19: Purpose-Aware Reports, QA Hardening, and Human Review UX ✅ COMPLETE
+
+- [x] **Purpose-specific report behavior**: analysis purpose now drives default frameworks, report tabs, scoring sections, PM sections, opportunity sections, and print/PDF output.
+- [x] **Product selection scoring restored**: weighted scoring matrix, recommendation ranking, decision matrix, and "who should avoid" guidance are available for choose-product reports.
+- [x] **Build-product opportunity scoring**: OpportunityScore includes dimensions, weights, evidence, confidence, and Chinese opportunity guidance.
+- [x] **Custom dimensions restored**: custom dimension analysis includes score, evidence, confidence, and dedicated report tabs.
+- [x] **Collector and QA LLM support**: CollectorAgent can review source relevance before Analyst input; QAAgent can run advisory LLM review with token tracking while keeping advisory issues low severity.
+- [x] **QA rework comparison metrics**: QA traces include before/after comparison fields for score, issues, citations, and claim count.
+- [x] **Writer input behavior**: WriterAgent receives full structured knowledge instead of a pre-summarized/truncated payload.
+- [x] **Human correction UX**: common report fields are edited as text or key/value lines; advanced JSON remains available only in an explicit advanced section.
+- [x] **Function-call artifact cleanup**: leaked `<parameter...>` fragments are sanitized in report display, backend read/write paths, and print/PDF rendering; embedded competitor-selection rationale is recovered when possible.
+- [x] **Report and print polish**: Sources tab added, opportunity labels localized, confidence labels localized, and feature comparison normalized into cross-competitor capability buckets.
+- [x] **Validation**: backend compile check, frontend lint/build, and Chrome DevTools MCP report/print checks pass.
 
 ### Milestone 18: LLM Provider Switch and Function Calling ✅ COMPLETE
 

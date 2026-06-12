@@ -26,8 +26,9 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.claim import Claim, Sentence
 from app.schemas.knowledge import CompetitorKnowledge
+from app.schemas.pm_sections import FeatureInsights, MarketBackground, OperationMonetization
 from app.schemas.report import CompetitiveReport
-from app.schemas.scoring import CompetitorScore, DimensionScore
+from app.schemas.scoring import CompetitorScore, DimensionScore, OpportunityDimension, OpportunityScore
 from app.schemas.source import SourceEvidence
 from app.schemas.trace import AgentRun, AgentRunStatus, TokenUsage
 from app.services import trace_service
@@ -41,6 +42,18 @@ _MAX_SOURCE_TITLE_CHARS = 90
 _MAX_REWORK_HINTS = 8
 _RAW_RESPONSE_LOG_CHARS = 2000
 _TRACE_PREVIEW_CHARS = 1200
+_PARAMETER_TAG_RE = re.compile(r"</?parameter[^>]*>", re.IGNORECASE)
+
+
+def _clean_function_call_artifacts(value: str) -> str:
+    """Remove leaked tool/function-call parameter fragments from display text."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    markers = [idx for idx in (text.find("<parameter"), text.find("</parameter")) if idx >= 0]
+    if markers:
+        text = text[: min(markers)]
+    return _PARAMETER_TAG_RE.sub("", text).strip()
 
 
 def _preview(text: str, limit: int = _TRACE_PREVIEW_CHARS) -> str:
@@ -106,6 +119,9 @@ def _build_user_message(
         '"selected_report_tabs": report tab keys in final display order,\n'
         '"framework_sections": object containing only requested framework sections; use keys "three_c" and/or "aarrr" when requested,\n'
         '"custom_dimension_sections": object keyed by requested custom dimension names,\n'
+        '"custom_dimension_analysis": scored evidence objects keyed by requested custom dimension names,\n'
+        '"opportunity_score": build_product-only opportunity score object, otherwise null,\n'
+        '"market_background", "feature_insights", and "operation_monetization": only for understand_industry or analyze_growth_ops,\n'
         '"analysis_objective": "one-sentence statement of what this analysis accomplishes",\n'
         '"competitor_selection_rationale": {<comp_name>: "why included based on its role"},\n'
     )
@@ -308,12 +324,20 @@ def _normalize_report_payload(data: Any) -> dict:
         data["framework_sections"] = {}
     if not isinstance(data.get("custom_dimension_sections"), dict):
         data["custom_dimension_sections"] = {}
+    if not isinstance(data.get("custom_dimension_analysis"), dict):
+        data["custom_dimension_analysis"] = {}
     if not isinstance(data.get("purpose_sections"), dict):
         data["purpose_sections"] = {}
     if not isinstance(data.get("competitor_scores"), dict):
         data["competitor_scores"] = {}
+    if not isinstance(data.get("opportunity_score"), dict):
+        data["opportunity_score"] = None
+    for key in ("market_background", "feature_insights", "operation_monetization"):
+        if not isinstance(data.get(key), dict):
+            data[key] = None
     if not isinstance(data.get("analysis_objective"), str):
         data["analysis_objective"] = ""
+    data["analysis_objective"] = _clean_function_call_artifacts(data["analysis_objective"])
     if not isinstance(data.get("competitor_selection_rationale"), dict):
         data["competitor_selection_rationale"] = {}
 
@@ -542,27 +566,75 @@ def _build_feature_comparison(
     for ck in knowledge:
         if not ck.feature_tree:
             continue
-        # Accumulate features per canonical category before building the string
+        # Accumulate features per normalized capability bucket before building
+        # the string. Raw LLM categories are often product-specific ("Cascade",
+        # "Composer", "TRAE Work"), so using them directly makes the UI look
+        # like a list of one-off rows instead of a horizontal comparison.
         merged: dict[str, list[str]] = {}
         for cat in ck.feature_tree:
-            canonical = normalize_feature_category(cat.category)
-            feature_names = [
-                f.name
-                for f in cat.features
-                if f.availability != "unknown" and f.name
-            ]
-            if canonical in merged:
-                merged[canonical].extend(feature_names)
-            else:
-                merged[canonical] = feature_names
+            for feature in cat.features:
+                if feature.availability == "unknown" or not feature.name:
+                    continue
+                bucket = _feature_capability_bucket(cat.category, feature.name, feature.description)
+                merged.setdefault(bucket, [])
+                if feature.name not in merged[bucket]:
+                    merged[bucket].append(feature.name)
         cat_parts = [
             f"{canonical}: {', '.join(names)}"
-            for canonical, names in merged.items()
+            for canonical, names in _ordered_feature_buckets(merged).items()
             if names
         ]
         if cat_parts:
             result[ck.competitor_name] = " | ".join(cat_parts)
     return result
+
+
+_FEATURE_BUCKETS = [
+    "代码补全与生成",
+    "Agent 工作流",
+    "IDE / 编辑器体验",
+    "代码库理解与搜索",
+    "评审与质量",
+    "团队协作",
+    "企业安全与管理",
+    "集成 / API / 扩展",
+    "云任务与部署",
+]
+
+
+def _feature_capability_bucket(category: str, name: str, description: str = "") -> str:
+    text = f"{category} {name} {description}".lower()
+    if any(k in text for k in ["review", "bug", "quality", "test", "debug"]):
+        return "评审与质量"
+    if any(k in text for k in ["sso", "saml", "oidc", "scim", "audit", "rbac", "privacy", "security", "admin", "permission", "governance"]):
+        return "企业安全与管理"
+    if any(k in text for k in ["team", "collaboration", "shared", "billing", "analytics", "marketplace"]):
+        return "团队协作"
+    if any(k in text for k in ["autocomplete", "completion", "generate", "chat", "command", "prompt"]):
+        return "代码补全与生成"
+    if any(k in text for k in ["search", "navigation", "context", "index", "codebase", "semantic"]):
+        return "代码库理解与搜索"
+    if any(k in text for k in ["api", "mcp", "plugin", "extension", "integration", "vscode", "vs code"]):
+        return "集成 / API / 扩展"
+    if any(k in text for k in ["deploy", "cloud", "remote", "workspace", "preview"]):
+        return "云任务与部署"
+    if any(k in text for k in ["agent", "composer", "cascade", "session", "delegate", "task"]):
+        return "Agent 工作流"
+    normalized = normalize_feature_category(category)
+    if normalized != category:
+        return normalized
+    return "IDE / 编辑器体验"
+
+
+def _ordered_feature_buckets(merged: dict[str, list[str]]) -> dict[str, list[str]]:
+    ordered: dict[str, list[str]] = {}
+    for bucket in _FEATURE_BUCKETS:
+        if bucket in merged:
+            ordered[bucket] = merged[bucket]
+    for bucket, names in merged.items():
+        if bucket not in ordered:
+            ordered[bucket] = names
+    return ordered
 
 
 def _build_pricing_comparison(
@@ -702,11 +774,49 @@ def _build_custom_dimension_sections(
     }
 
 
+def _build_custom_dimension_analysis(
+    knowledge: list[CompetitorKnowledge],
+    custom_dimensions: list[str] | None,
+    output_language: str,
+) -> dict[str, DimensionScore]:
+    if not custom_dimensions:
+        return {}
+    placeholder = "需要结合来源复核该维度。" if output_language == "zh" else "This dimension should be verified against the cited sources."
+    result: dict[str, DimensionScore] = {}
+    all_evidence: list[str] = []
+    for ck in knowledge:
+        for sid in _first_evidence(ck, limit=3) or list(ck.sources[:3]):
+            if sid and sid not in all_evidence:
+                all_evidence.append(sid)
+    evidence = all_evidence[:6]
+    confidence = _dimension_confidence(evidence)
+    score = 4 if confidence in {"high", "medium"} and len(knowledge) >= 2 else 3
+    weight = round(1 / len(custom_dimensions), 3)
+    for dim in custom_dimensions:
+        result[dim] = DimensionScore(
+            dimension_name=dim,
+            score=score,
+            weight=weight,
+            rationale=placeholder,
+            evidence=evidence,
+            source_confidence=confidence,
+        )
+    return result
+
+
 _CHOOSE_PRODUCT_WEIGHTS: tuple[tuple[str, float], ...] = (
-    ("场景适配", 0.30),
-    ("功能覆盖", 0.25),
-    ("价格与试用", 0.20),
-    ("风险与限制", 0.15),
+    ("场景适配", 0.22),
+    ("核心能力覆盖", 0.24),
+    ("价格价值", 0.22),
+    ("成熟度与可信度", 0.17),
+    ("风险控制", 0.15),
+)
+
+_BUILD_PRODUCT_OPPORTUNITY_WEIGHTS: tuple[tuple[str, float], ...] = (
+    ("差异化空间", 0.30),
+    ("功能缺口", 0.25),
+    ("商业化清晰度", 0.20),
+    ("进入风险", 0.15),
     ("证据充分度", 0.10),
 )
 
@@ -736,12 +846,71 @@ def _weakness_count(ck: CompetitorKnowledge) -> int:
     return len(ck.swot.weaknesses) if ck.swot else 0
 
 
+def _threat_count(ck: CompetitorKnowledge) -> int:
+    return len(ck.swot.threats) if ck.swot else 0
+
+
+def _first_paid_price(ck: CompetitorKnowledge) -> float | None:
+    if not ck.pricing_model:
+        return None
+    prices: list[float] = []
+    for plan in ck.pricing_model.plans:
+        raw = (plan.price or "").lower()
+        if "free" in raw or raw.strip() in {"$0", "0"}:
+            continue
+        match = re.search(r"\$?\s*(\d+(?:\.\d+)?)", raw)
+        if match:
+            prices.append(float(match.group(1)))
+    return min(prices) if prices else None
+
+
+def _has_enterprise_controls(ck: CompetitorKnowledge) -> bool:
+    text = " ".join(
+        [
+            feature.name + " " + feature.description
+            for category in ck.feature_tree
+            for feature in category.features
+        ]
+    ).lower()
+    return any(k in text for k in ["sso", "saml", "oidc", "scim", "audit", "rbac", "enterprise", "admin"])
+
+
+def _capability_bucket_count(ck: CompetitorKnowledge) -> int:
+    buckets: set[str] = set()
+    for category in ck.feature_tree:
+        for feature in category.features:
+            if feature.name and feature.availability != "unknown":
+                buckets.add(_feature_capability_bucket(category.category, feature.name, feature.description))
+    return len(buckets)
+
+
 def _dimension_confidence(evidence: list[str]) -> str:
     if len(evidence) >= 3:
         return "high"
     if len(evidence) >= 1:
         return "medium"
     return "low"
+
+
+def _score_relative(value: float, values: list[float], *, higher_is_better: bool = True) -> int:
+    if not values:
+        return 3
+    unique = sorted(set(values))
+    if len(unique) == 1:
+        return 3
+    low, high = min(unique), max(unique)
+    ratio = (value - low) / (high - low)
+    if not higher_is_better:
+        ratio = 1 - ratio
+    if ratio >= 0.85:
+        return 5
+    if ratio >= 0.60:
+        return 4
+    if ratio >= 0.35:
+        return 3
+    if ratio >= 0.15:
+        return 2
+    return 1
 
 
 def _build_choose_product_scores(
@@ -752,6 +921,15 @@ def _build_choose_product_scores(
     avoid: dict[str, str] = {}
     ranking: list[dict] = []
     decision_matrix: list[dict] = []
+    feature_counts_by_name = {ck.competitor_name: _feature_count(ck) for ck in knowledge}
+    bucket_counts_by_name = {ck.competitor_name: _capability_bucket_count(ck) for ck in knowledge}
+    paid_prices_by_name = {ck.competitor_name: _first_paid_price(ck) for ck in knowledge}
+    valid_paid_prices = [price for price in paid_prices_by_name.values() if price is not None]
+    source_counts_by_name = {ck.competitor_name: len(set(ck.sources)) for ck in knowledge}
+    risk_counts_by_name = {
+        ck.competitor_name: _weakness_count(ck) + _threat_count(ck)
+        for ck in knowledge
+    }
 
     for ck in knowledge:
         name = ck.competitor_name
@@ -762,24 +940,56 @@ def _build_choose_product_scores(
             if ck.product_profile
             else []
         )
-        feature_count = _feature_count(ck)
+        feature_count = feature_counts_by_name[name]
+        bucket_count = bucket_counts_by_name[name]
         plan_count = len(ck.pricing_model.plans) if ck.pricing_model else 0
         has_free = bool(ck.pricing_model and ck.pricing_model.has_free_plan)
-        weakness_count = _weakness_count(ck)
-        evidence_count = len(set(ck.sources or source_ids))
+        paid_price = paid_prices_by_name[name]
+        evidence_count = source_counts_by_name[name]
+        risk_count = risk_counts_by_name[name]
 
-        fit_score = 5 if personas else 4 if target_users else 3
-        feature_score = _score_from_thresholds(feature_count, (1, 3, 5, 8))
-        pricing_score = 5 if has_free else 4 if plan_count >= 2 else 3 if plan_count == 1 else 2
-        risk_score = 5 if weakness_count == 0 else 4 if weakness_count == 1 else 3 if weakness_count == 2 else 2
-        evidence_score = _score_from_thresholds(evidence_count, (1, 2, 4, 6))
+        persona_signal = len(personas) or len(target_users)
+        fit_score = min(5, 2 + min(persona_signal, 3))
+        if any("enterprise" in p.lower() or "team" in p.lower() for p in personas + target_users):
+            fit_score = min(5, fit_score + 1)
+
+        feature_score = round(
+            (
+                _score_relative(feature_count, list(feature_counts_by_name.values()))
+                + _score_relative(bucket_count, list(bucket_counts_by_name.values()))
+            )
+            / 2
+        )
+
+        if paid_price is None:
+            pricing_score = 2 if has_free else 1
+        else:
+            pricing_score = _score_relative(paid_price, valid_paid_prices, higher_is_better=False)
+            if has_free:
+                pricing_score = min(5, pricing_score + 1)
+            if plan_count >= 5 and paid_price <= 20:
+                pricing_score = min(5, pricing_score + 1)
+            if paid_price >= 50:
+                pricing_score = max(1, pricing_score - 1)
+
+        maturity_score = _score_relative(evidence_count, list(source_counts_by_name.values()))
+        if _has_enterprise_controls(ck):
+            maturity_score = min(5, maturity_score + 1)
+        if ck.pricing_model and ck.pricing_model.summary:
+            maturity_score = min(5, maturity_score + 1)
+
+        risk_score = _score_relative(risk_count, list(risk_counts_by_name.values()), higher_is_better=False)
+        if paid_price and paid_price >= 100:
+            risk_score = max(1, risk_score - 1)
+        if "credit" in ((ck.pricing_model.summary.text if ck.pricing_model and ck.pricing_model.summary else "")).lower():
+            risk_score = max(1, risk_score - 1)
 
         raw_dimensions = [
-            ("场景适配", fit_score, "用户画像或目标用户越明确，越容易判断是否适合当前使用场景。"),
-            ("功能覆盖", feature_score, f"已识别 {feature_count} 个可用或受限功能。"),
-            ("价格与试用", pricing_score, "有免费方案或清晰套餐时，采购和试用风险更低。"),
-            ("风险与限制", risk_score, f"结构化 SWOT 中识别到 {weakness_count} 个主要弱点。"),
-            ("证据充分度", evidence_score, f"当前绑定 {evidence_count} 个来源，来源越多评分越稳定。"),
+            ("场景适配", fit_score, "用户画像、目标用户和团队/企业适配度越明确，分数越高。"),
+            ("核心能力覆盖", feature_score, f"识别到 {feature_count} 个功能，覆盖 {bucket_count} 个横向能力桶。"),
+            ("价格价值", pricing_score, f"首个付费档约 {paid_price if paid_price is not None else '未知'} 美元/月，{'有' if has_free else '无'}免费档。"),
+            ("成熟度与可信度", maturity_score, f"绑定 {evidence_count} 个来源，并结合企业控制、定价摘要等成熟度信号。"),
+            ("风险控制", risk_score, f"SWOT 中识别到 {risk_count} 个弱点/威胁；高价或复杂 credit 计费会扣分。"),
         ]
         weights = dict(_CHOOSE_PRODUCT_WEIGHTS)
         dimensions = [
@@ -810,7 +1020,7 @@ def _build_choose_product_scores(
             avoid_reasons.append("预算敏感或必须提前核验价格的团队")
         if feature_count < 3:
             avoid_reasons.append("需要成熟完整功能栈的重度用户")
-        if weakness_count >= 2:
+        if risk_count >= 3:
             avoid_reasons.append("对稳定性、限制和迁移风险敏感的团队")
         avoid[name] = "；".join(avoid_reasons) if avoid_reasons else "暂无明显不建议人群，但仍应核验关键来源。"
 
@@ -840,6 +1050,241 @@ def _build_choose_product_scores(
             for label, weight in _CHOOSE_PRODUCT_WEIGHTS
         ],
     }
+
+
+def _build_product_opportunity(
+    knowledge: list[CompetitorKnowledge],
+    output_language: str,
+) -> tuple[OpportunityScore, dict]:
+    zh = output_language == "zh"
+    all_evidence: list[str] = []
+    feature_counts: list[int] = []
+    weakness_total = 0
+    opportunity_claims: list[str] = []
+    threat_claims: list[str] = []
+    monetization_signals = 0
+
+    for ck in knowledge:
+        feature_counts.append(_feature_count(ck))
+        weakness_total += _weakness_count(ck)
+        if ck.pricing_model and ck.pricing_model.plans:
+            monetization_signals += 1
+        if ck.swot:
+            opportunity_claims.extend(claim.text for claim in ck.swot.opportunities[:2])
+            threat_claims.extend(claim.text for claim in ck.swot.threats[:2])
+        for sid in _first_evidence(ck, limit=4) or list(ck.sources[:4]):
+            if sid and sid not in all_evidence:
+                all_evidence.append(sid)
+
+    evidence = all_evidence[:8]
+    max_features = max(feature_counts) if feature_counts else 0
+    min_features = min(feature_counts) if feature_counts else 0
+    spread = max_features - min_features
+    weights = dict(_BUILD_PRODUCT_OPPORTUNITY_WEIGHTS)
+    raw_dimensions = [
+        ("差异化空间", _score_from_thresholds(len(opportunity_claims) + spread, (1, 2, 4, 6)), "竞品能力差异和机会描述越多，越容易找到可切入定位。"),
+        ("功能缺口", _score_from_thresholds(spread + weakness_total, (1, 2, 4, 7)), "竞品功能覆盖不均或弱点越明显，越可能形成 MVP 切口。"),
+        ("商业化清晰度", _score_from_thresholds(monetization_signals, (1, 2, 3, 4)), "越多竞品披露套餐或收费方式，说明商业化路径越可参考。"),
+        ("进入风险", max(1, 6 - _score_from_thresholds(len(threat_claims) + weakness_total, (1, 2, 4, 7))), "威胁和弱点越集中，进入风险越高，该维度分数相应降低。"),
+        ("证据充分度", _score_from_thresholds(len(evidence), (1, 2, 4, 6)), f"当前机会判断绑定 {len(evidence)} 个来源。"),
+    ]
+    dimensions = [
+        OpportunityDimension(
+            dimension_name=label,
+            score=score,
+            weight=weights[label],
+            rationale=rationale,
+            evidence=evidence,
+            source_confidence=_dimension_confidence(evidence),
+        )
+        for label, score, rationale in raw_dimensions
+    ]
+    overall = round(sum(dim.score * dim.weight for dim in dimensions) * 20, 1)
+    opportunity_score = OpportunityScore(
+        overall_score=overall,
+        dimensions=dimensions,
+        scoring_note=(
+            "机会评分是基于已采集竞品证据的方向性判断，用于产品规划，不代表客观市场规模。"
+            if zh
+            else "Opportunity scores are directional estimates for product planning based on the collected competitive evidence."
+        ),
+    )
+    market_gaps = (
+        _build_zh_market_gaps(
+            feature_spread=spread,
+            weakness_total=weakness_total,
+            monetization_signals=monetization_signals,
+            evidence_count=len(evidence),
+        )
+        if zh
+        else opportunity_claims[:5] or ["Insufficient evidence; add user interviews or competitor community feedback."]
+    )
+    pitfalls = (
+        _build_zh_pitfalls(
+            threat_count=len(threat_claims),
+            weakness_total=weakness_total,
+            monetization_signals=monetization_signals,
+        )
+        if zh
+        else threat_claims[:5] or ["Avoid copying surface-level competitor features without enough evidence."]
+    )
+    purpose_sections = {
+        "opportunity_summary": {
+            "overall_score": overall,
+            "summary": (
+                "适合从明确用户场景、功能缺口和商业化路径交集处寻找切入点。"
+                if zh
+                else "Look for entry points where user scenarios, feature gaps, and monetization paths overlap."
+            ),
+        },
+        "market_gaps": market_gaps,
+        "features_to_learn_from": [
+            {
+                "competitor_name": ck.competitor_name,
+                "features": [
+                    feature.name
+                    for category in ck.feature_tree[:2]
+                    for feature in category.features[:3]
+                    if feature.name
+                ][:5],
+            }
+            for ck in knowledge
+        ],
+        "pitfalls_to_avoid": pitfalls,
+        "mvp_direction": (
+            "优先验证一个高频、证据充分、竞品体验仍有缺口的核心工作流。"
+            if zh
+            else "Validate one high-frequency workflow with enough evidence and a visible competitor experience gap first."
+        ),
+    }
+    return opportunity_score, purpose_sections
+
+
+def _build_zh_market_gaps(
+    *,
+    feature_spread: int,
+    weakness_total: int,
+    monetization_signals: int,
+    evidence_count: int,
+) -> list[str]:
+    gaps = [
+        "从高频但体验仍不稳定的开发工作流切入，而不是直接复制头部工具的完整功能栈。",
+    ]
+    if feature_spread > 0:
+        gaps.append("竞品功能覆盖存在差异，可优先寻找覆盖不足但用户频繁使用的能力切口。")
+    if weakness_total > 0:
+        gaps.append("把竞品 SWOT 中反复出现的弱点转化为产品定位，例如价格理解成本、平台覆盖或团队管理体验。")
+    if monetization_signals > 0:
+        gaps.append("主流竞品已有付费路径，新产品应在套餐边界、用量规则和试用门槛上降低决策成本。")
+    if evidence_count < 4:
+        gaps.append("当前证据仍偏少，进入前需要补充用户访谈、社区反馈或真实使用记录。")
+    return gaps[:5]
+
+
+def _build_zh_pitfalls(
+    *,
+    threat_count: int,
+    weakness_total: int,
+    monetization_signals: int,
+) -> list[str]:
+    pitfalls = [
+        "避免只做功能清单式跟随，必须先证明目标用户愿意为具体工作流改善付费。",
+        "避免在核心体验未验证前过早堆叠 Agent、模型和插件能力。",
+    ]
+    if threat_count > 0:
+        pitfalls.append("注意头部竞品和大厂工具的快速跟进风险，差异化需要绑定明确场景。")
+    if weakness_total > 0:
+        pitfalls.append("不要重复竞品已有负反馈，尤其是复杂计费、平台限制和迁移成本。")
+    if monetization_signals > 0:
+        pitfalls.append("商业化设计要避免额度规则过复杂，否则容易在试用到付费阶段流失。")
+    return pitfalls[:5]
+
+
+def _build_pm_sections(
+    knowledge: list[CompetitorKnowledge],
+    analysis_purpose: str,
+    output_language: str,
+) -> tuple[MarketBackground | None, FeatureInsights | None, OperationMonetization | None, dict]:
+    if analysis_purpose not in {"understand_industry", "analyze_growth_ops"}:
+        return None, None, None, {}
+
+    zh = output_language == "zh"
+    names = [ck.competitor_name for ck in knowledge if ck.competitor_name]
+    evidence_count = len({sid for ck in knowledge for sid in ck.sources})
+    overview = (
+        f"本次行业分析覆盖 {len(names)} 个产品，基于 {evidence_count} 个来源梳理市场背景、能力共性与商业化模式。"
+        if zh
+        else f"This industry analysis covers {len(names)} products and uses {evidence_count} sources to summarize market context, common capabilities, and monetization patterns."
+    )
+    strengths: list[str] = []
+    opportunities: list[str] = []
+    threats: list[str] = []
+    monetization: list[str] = []
+    differentiators: dict[str, list[str]] = {}
+    table_stakes: dict[str, int] = {}
+    gtm_profiles: dict[str, str] = {}
+
+    for ck in knowledge:
+        if ck.swot:
+            strengths.extend(claim.text for claim in ck.swot.strengths[:2])
+            opportunities.extend(claim.text for claim in ck.swot.opportunities[:2])
+            threats.extend(claim.text for claim in ck.swot.threats[:2])
+        feature_names = [
+            feature.name
+            for category in ck.feature_tree[:3]
+            for feature in category.features[:4]
+            if feature.name
+        ]
+        differentiators[ck.competitor_name] = feature_names[:6]
+        for name in feature_names[:8]:
+            table_stakes[name] = table_stakes.get(name, 0) + 1
+        if ck.pricing_model and ck.pricing_model.plans:
+            monetization.append(
+                f"{ck.competitor_name}: {len(ck.pricing_model.plans)} pricing plan(s)"
+            )
+        if ck.product_profile and ck.product_profile.positioning:
+            gtm_profiles[ck.competitor_name] = ck.product_profile.positioning.text
+        else:
+            gtm_profiles[ck.competitor_name] = "暂无足够证据" if zh else "Insufficient evidence"
+
+    common_features = [
+        name
+        for name, count in sorted(table_stakes.items(), key=lambda item: item[1], reverse=True)
+        if count > 1
+    ][:8]
+    if not common_features:
+        common_features = list(table_stakes.keys())[:6]
+
+    market_background = MarketBackground(
+        market_overview=overview,
+        key_trends=(strengths[:5] or (["暂无足够证据"] if zh else ["Insufficient evidence"])),
+        growth_drivers=(opportunities[:5] or (["暂无足够证据"] if zh else ["Insufficient evidence"])),
+        market_challenges=(threats[:5] or (["暂无足够证据"] if zh else ["Insufficient evidence"])),
+    )
+    feature_insights = FeatureInsights(
+        table_stakes=common_features,
+        differentiators=differentiators,
+        feature_gaps=opportunities[:5],
+    )
+    operation_monetization = OperationMonetization(
+        gtm_profiles=gtm_profiles,
+        monetization_patterns=monetization[:8],
+        aarrr_notes={
+            "Acquisition": [gtm_profiles[name] for name in names[:5] if name in gtm_profiles],
+            "Activation": common_features[:5],
+            "Retention": strengths[:5],
+            "Revenue": monetization[:5],
+            "Referral": opportunities[:5],
+        },
+    )
+    purpose_sections = {
+        "pm_report": {
+            "market_background": market_background.model_dump(mode="json"),
+            "feature_insights": feature_insights.model_dump(mode="json"),
+            "operation_monetization": operation_monetization.model_dump(mode="json"),
+        }
+    }
+    return market_background, feature_insights, operation_monetization, purpose_sections
 
 
 def _first_evidence(ck: CompetitorKnowledge, limit: int = 3) -> list[str]:
@@ -932,6 +1377,39 @@ def _backfill_required_sections(
             ]
 
 
+def _clean_report_title(
+    title: str,
+    analysis_purpose: str,
+    knowledge: list[CompetitorKnowledge],
+    output_language: str,
+) -> str:
+    raw = " ".join((title or "").split())
+    polluted = (
+        "<parameter" in raw
+        or "</parameter" in raw
+        or '"executive_summary"' in raw
+        or len(raw) > 120
+    )
+    if raw and not polluted:
+        return raw
+    names = "、".join(ck.competitor_name for ck in knowledge if ck.competitor_name)
+    if output_language == "zh":
+        purpose_label = {
+            "choose_product": "选型分析",
+            "build_product": "产品机会分析",
+            "understand_industry": "行业分析",
+            "analyze_growth_ops": "增长与商业化分析",
+        }.get(analysis_purpose, "竞品分析")
+        return f"{names} {purpose_label}" if names else "竞品分析报告"
+    purpose_label = {
+        "choose_product": "Product Selection Analysis",
+        "build_product": "Product Opportunity Analysis",
+        "understand_industry": "Industry Analysis",
+        "analyze_growth_ops": "Growth and Monetization Analysis",
+    }.get(analysis_purpose, "Competitive Analysis")
+    return f"{names} {purpose_label}" if names else "Competitive Analysis Report"
+
+
 def _bind_report_fields(
     report: CompetitiveReport,
     project_id: str,
@@ -946,11 +1424,24 @@ def _bind_report_fields(
     """Backfill fields the LLM commonly omits or fills incorrectly."""
     report.project_id = project_id
     report.analysis_purpose = analysis_purpose
+    report.title = _clean_report_title(
+        report.title,
+        analysis_purpose,
+        competitor_knowledge,
+        output_language,
+    )
+    report.analysis_objective = _clean_function_call_artifacts(report.analysis_objective)
     report.analysis_frameworks = analysis_frameworks or ["swot"]
     report.selected_report_tabs = _selected_report_tabs(goals, report.analysis_frameworks, custom_dimensions)
-    if analysis_purpose == "choose_product" and "scoring" not in report.selected_report_tabs:
+    purpose_tab = {
+        "choose_product": "scoring",
+        "build_product": "opportunity",
+        "understand_industry": "pm_sections",
+        "analyze_growth_ops": "pm_sections",
+    }.get(analysis_purpose)
+    if purpose_tab and purpose_tab not in report.selected_report_tabs:
         insert_at = report.selected_report_tabs.index("recommendations") if "recommendations" in report.selected_report_tabs else len(report.selected_report_tabs)
-        report.selected_report_tabs.insert(insert_at, "scoring")
+        report.selected_report_tabs.insert(insert_at, purpose_tab)
     # Always use the analyst's structured knowledge as the authoritative
     # competitor_overview so QA's pricing_consistency check compares the same
     # data source that _build_pricing_comparison uses.
@@ -990,18 +1481,66 @@ def _bind_report_fields(
         **generated_custom_sections,
         **(report.custom_dimension_sections or {}),
     }
+    generated_custom_analysis = _build_custom_dimension_analysis(
+        competitor_knowledge,
+        custom_dimensions,
+        output_language,
+    )
+    report.custom_dimension_analysis = {
+        **generated_custom_analysis,
+        **(report.custom_dimension_analysis or {}),
+    }
     if analysis_purpose == "choose_product":
         generated_scores, generated_purpose = _build_choose_product_scores(
             competitor_knowledge
         )
         report.competitor_scores = {
-            **generated_scores,
             **(report.competitor_scores or {}),
+            **generated_scores,
         }
+        report.purpose_sections = {
+            **(report.purpose_sections or {}),
+            **generated_purpose,
+        }
+        report.opportunity_score = None
+        report.market_background = None
+        report.feature_insights = None
+        report.operation_monetization = None
+    elif analysis_purpose == "build_product":
+        generated_opportunity, generated_purpose = _build_product_opportunity(
+            competitor_knowledge,
+            output_language,
+        )
+        report.opportunity_score = report.opportunity_score or generated_opportunity
         report.purpose_sections = {
             **generated_purpose,
             **(report.purpose_sections or {}),
         }
+        report.competitor_scores = {}
+        report.market_background = None
+        report.feature_insights = None
+        report.operation_monetization = None
+    elif analysis_purpose in {"understand_industry", "analyze_growth_ops"}:
+        market_background, feature_insights, operation_monetization, generated_purpose = _build_pm_sections(
+            competitor_knowledge,
+            analysis_purpose,
+            output_language,
+        )
+        report.market_background = report.market_background or market_background
+        report.feature_insights = report.feature_insights or feature_insights
+        report.operation_monetization = report.operation_monetization or operation_monetization
+        report.purpose_sections = {
+            **generated_purpose,
+            **(report.purpose_sections or {}),
+        }
+        report.competitor_scores = {}
+        report.opportunity_score = None
+    else:
+        report.competitor_scores = {}
+        report.opportunity_score = None
+        report.market_background = None
+        report.feature_insights = None
+        report.operation_monetization = None
 
     # Inject deterministic pricing table into markdown (replace or append).
     pricing_md = _build_pricing_markdown(competitor_knowledge, output_language)

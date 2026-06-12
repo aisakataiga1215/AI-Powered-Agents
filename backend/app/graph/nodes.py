@@ -200,7 +200,10 @@ def write_report_node(state: WorkflowState) -> dict:
                 "source_count": len(report.source_list),
             },
         )
-        return {"report": report}
+        update: dict = {"report": report}
+        if state.get("report") is not None:
+            update["previous_report"] = state["report"]
+        return update
     finally:
         db.close()
 
@@ -231,6 +234,9 @@ def qa_review_node(state: WorkflowState) -> dict:
             analysis_frameworks=state.get("analysis_frameworks", ["swot"]),
             analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
             custom_dimensions=state.get("custom_dimensions", []),
+            previous_qa_result=state.get("qa_result"),
+            previous_report=state.get("previous_report"),
+            rework_target=state.get("rework_target"),
         )
         _record_message(
             db,

@@ -99,8 +99,8 @@ def test_writer_serialize_knowledge_truncates_long_payloads():
     )
     rendered = writer_agent._serialize_knowledge([knowledge])
     assert "Cursor" in rendered
-    # Truncation marker appears when payload exceeds the cap.
-    assert "...(truncated)" in rendered
+    assert "x" * 10000 in rendered
+    assert "...(truncated)" not in rendered
 
 
 def test_writer_render_source_index_lists_all_sources():

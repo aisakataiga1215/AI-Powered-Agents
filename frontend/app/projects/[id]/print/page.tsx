@@ -14,6 +14,8 @@ import type {
   CompetitorCollectionStats,
   CompetitorKnowledge,
   CompetitorScore,
+  DimensionScore,
+  OpportunityScore,
   QAResult,
   QATraceOutput,
   SourceEvidence,
@@ -46,7 +48,10 @@ export default function PrintPage({ params }: PageProps) {
     queryFn: () => api.getProject(id),
   })
 
-  const report = reportQuery.data
+  const report = useMemo(
+    () => (reportQuery.data ? sanitizePrintReport(reportQuery.data) : undefined),
+    [reportQuery.data]
+  )
   const traces = useMemo(() => tracesQuery.data?.traces ?? [], [tracesQuery.data])
   const projectStatus = projectQuery.data?.status
   const requestedCompetitors = useMemo(() => projectQuery.data?.competitors ?? [], [projectQuery.data])
@@ -99,12 +104,14 @@ export default function PrintPage({ params }: PageProps) {
     Object.keys(report.swot_comparison ?? {}).length > 0 ||
     (report.competitor_overview ?? []).some((c) => c.swot)
   const selectedTabs = report.selected_report_tabs?.length
-    ? ensureStandardTabs(
-      report.selected_report_tabs,
-      report.custom_dimension_sections,
-      report.analysis_purpose,
-      report.competitor_scores
-    )
+      ? ensureStandardTabs(
+        report.selected_report_tabs,
+        report.custom_dimension_sections,
+        report.custom_dimension_analysis,
+        report.analysis_purpose,
+        report.competitor_scores,
+        report
+      )
     : ensureStandardTabs(
       buildSelectedReportTabs(
         projectQuery.data?.goals ?? [],
@@ -112,8 +119,10 @@ export default function PrintPage({ params }: PageProps) {
         projectQuery.data?.custom_dimensions ?? []
       ),
       report.custom_dimension_sections,
+      report.custom_dimension_analysis,
       report.analysis_purpose,
-      report.competitor_scores
+      report.competitor_scores,
+      report
     )
   const hasTab = (value: string, legacyValue?: string) =>
     selectedTabs.includes(value) || (legacyValue ? selectedTabs.includes(legacyValue) : false)
@@ -184,6 +193,23 @@ export default function PrintPage({ params }: PageProps) {
           />
         ) : (
           <>
+        {(report.analysis_objective || (report.competitor_selection_rationale && Object.keys(report.competitor_selection_rationale).length > 0)) && (
+          <PrintSection title="分析目标">
+            {report.analysis_objective && (
+              <p className="text-sm leading-relaxed text-gray-700">{report.analysis_objective}</p>
+            )}
+            {report.competitor_selection_rationale && Object.keys(report.competitor_selection_rationale).length > 0 && (
+              <ul className="mt-3 space-y-1 text-sm text-gray-700">
+                {Object.entries(report.competitor_selection_rationale).map(([name, rationale]) => (
+                  <li key={name}>
+                    <strong>{name}：</strong>{rationale}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PrintSection>
+        )}
+
         {/* Executive Summary */}
         {hasTab('summary') && (report.executive_summary?.length ?? 0) > 0 && (
           <PrintSection title="执行摘要">
@@ -267,7 +293,11 @@ export default function PrintPage({ params }: PageProps) {
             const dim = tab.slice('custom_dimension:'.length)
             return (
               <PrintSection key={tab} title={dim} breakBefore>
-                <PrintStructuredSection data={report.custom_dimension_sections?.[dim]} emptyMessage="暂无足够证据。" />
+                <PrintCustomDimensionSection
+                  dimension={dim}
+                  analysis={report.custom_dimension_analysis?.[dim]}
+                  detail={report.custom_dimension_sections?.[dim]}
+                />
               </PrintSection>
             )
           })}
@@ -278,6 +308,23 @@ export default function PrintPage({ params }: PageProps) {
               competitorScores={report.competitor_scores ?? {}}
               purposeSections={report.purpose_sections ?? {}}
             />
+          </PrintSection>
+        )}
+
+        {hasTab('opportunity') && (
+          <PrintSection title="机会评分" breakBefore>
+            <PrintOpportunitySection
+              opportunityScore={report.opportunity_score}
+              purposeSections={report.purpose_sections ?? {}}
+            />
+          </PrintSection>
+        )}
+
+        {hasTab('pm_sections') && (
+          <PrintSection title="PM 报告" breakBefore>
+            <PrintStructuredSection data={report.market_background} emptyMessage="暂无市场背景。" />
+            <PrintStructuredSection data={report.feature_insights} emptyMessage="暂无功能洞察。" />
+            <PrintStructuredSection data={report.operation_monetization} emptyMessage="暂无运营与商业化分析。" />
           </PrintSection>
         )}
 
@@ -767,6 +814,72 @@ function PrintScoringSection({
   )
 }
 
+function PrintCustomDimensionSection({
+  dimension,
+  analysis,
+  detail,
+}: {
+  dimension: string
+  analysis?: DimensionScore
+  detail?: unknown
+}) {
+  if (!analysis && !detail) return <p className="text-sm text-gray-500">暂无足够证据。</p>
+  return (
+    <div className="space-y-3">
+      {analysis && (
+        <section className="rounded border border-gray-200 p-3">
+          <h3 className="text-sm font-semibold text-gray-900">{dimension}</h3>
+          <PrintDimensionScore dimension={analysis} />
+        </section>
+      )}
+      <PrintStructuredSection data={detail} emptyMessage="暂无维度明细。" />
+    </div>
+  )
+}
+
+function PrintOpportunitySection({
+  opportunityScore,
+  purposeSections,
+}: {
+  opportunityScore?: OpportunityScore | null
+  purposeSections: Record<string, unknown>
+}) {
+  if (!opportunityScore) return <p className="text-sm text-gray-500">暂无机会评分。</p>
+  return (
+    <div className="space-y-4">
+      <div className="rounded border border-gray-200 p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">OpportunityScore</h3>
+          <span className="font-semibold text-blue-700">{opportunityScore.overall_score.toFixed(1)}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {opportunityScore.dimensions.map((dimension) => (
+            <PrintDimensionScore key={dimension.dimension_name} dimension={dimension} />
+          ))}
+        </div>
+      </div>
+      <PrintStructuredSection data={purposeSections} emptyMessage="暂无机会建议。" />
+    </div>
+  )
+}
+
+function PrintDimensionScore({ dimension }: { dimension: DimensionScore }) {
+  return (
+    <div className="rounded border border-gray-200 p-2 text-sm">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-gray-900">{dimension.dimension_name}</span>
+        <span>{dimension.score}/5</span>
+      </div>
+      <p className="mt-1 text-xs text-gray-600">{dimension.rationale}</p>
+      <p className="mt-1 text-xs text-gray-400">
+        权重 {dimension.weight != null ? `${Math.round(dimension.weight * 100)}%` : '-'} ·
+        置信度 {confidenceLabel(dimension.source_confidence)} ·
+        证据 {(dimension.evidence ?? []).join(', ') || '-'}
+      </p>
+    </div>
+  )
+}
+
 function PrintGuidance({ title, data }: { title: string; data: Record<string, unknown> }) {
   const entries = Object.entries(data)
   if (entries.length === 0) return null
@@ -803,7 +916,7 @@ function renderPrintStructuredValue(value: unknown): ReactNode {
       <div className="space-y-3">
         {Object.entries(value as Record<string, unknown>).map(([key, child]) => (
           <section key={key} className="rounded border border-gray-200 p-3">
-            <h3 className="text-sm font-semibold text-gray-900">{key}</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{structuredLabel(key)}</h3>
             <div className="mt-2 text-sm text-gray-700">{renderPrintStructuredValue(child)}</div>
           </section>
         ))}
@@ -811,6 +924,40 @@ function renderPrintStructuredValue(value: unknown): ReactNode {
     )
   }
   return <span>{String(value)}</span>
+}
+
+function structuredLabel(key: string): string {
+  const labels: Record<string, string> = {
+    opportunity_summary: '机会概览',
+    overall_score: '综合分',
+    summary: '摘要',
+    market_gaps: '市场缺口',
+    features_to_learn_from: '可借鉴功能',
+    competitor_name: '竞品',
+    features: '功能',
+    pitfalls_to_avoid: '需要规避的问题',
+    mvp_direction: 'MVP 方向',
+    best_for: '适合谁',
+    who_should_avoid: '哪些人不建议选',
+    recommendation_ranking: '推荐排序',
+    decision_matrix: '决策矩阵',
+    pm_report: 'PM 报告',
+    market_overview: '市场概览',
+    segment_map: '用户 / 场景分层',
+    table_stakes: '基础能力',
+    differentiators: '差异化能力',
+    gtm_profiles: '渠道与定位',
+    monetization_patterns: '商业化模式',
+    growth_loops: '增长路径',
+  }
+  return labels[key] ?? key
+}
+
+function confidenceLabel(value: string | undefined): string {
+  if (value === 'high') return '高'
+  if (value === 'medium') return '中'
+  if (value === 'low') return '低'
+  return '未知'
 }
 
 // ─── SWOT section (print-safe, no interactive source panel) ───────────────────
@@ -1072,6 +1219,50 @@ function extractLatestQA(traces: AgentRun[]): QAResult | undefined {
   return { passed: out.passed, score: out.score, issues: out.issues ?? [] }
 }
 
+function cleanDisplayText(value: string | undefined | null): string {
+  let text = String(value ?? '').trim()
+  if (!text) return ''
+  const markers = [text.indexOf('<parameter'), text.indexOf('</parameter')].filter((idx) => idx >= 0)
+  if (markers.length > 0) {
+    text = text.slice(0, Math.min(...markers))
+  }
+  return text.replace(/<\/?parameter[^>]*>/gi, '').trim()
+}
+
+function extractEmbeddedRationale(value: string | undefined | null): Record<string, string> {
+  const text = String(value ?? '')
+  const match = text.match(/<parameter\s+name=["']competitor_selection_rationale["'][^>]*>(\{[\s\S]*?\})(?:\s*<\/parameter>)?/i)
+  if (!match) return {}
+  try {
+    const parsed = JSON.parse(match[1]) as Record<string, unknown>
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([key, item]) => key.trim() && String(item ?? '').trim())
+        .map(([key, item]) => [key, String(item)])
+    )
+  } catch {
+    return {}
+  }
+}
+
+function sanitizePrintReport(report: CompetitiveReport): CompetitiveReport {
+  const embeddedRationale = extractEmbeddedRationale(report.analysis_objective)
+  const currentRationale = report.competitor_selection_rationale ?? {}
+  return {
+    ...report,
+    title: cleanDisplayText(report.title) || 'Competitive Analysis Report',
+    analysis_objective: cleanDisplayText(report.analysis_objective),
+    competitor_selection_rationale:
+      Object.keys(currentRationale).length > 0 ? currentRationale : embeddedRationale,
+    executive_summary: (report.executive_summary ?? [])
+      .map((claim) => ({ ...claim, text: cleanDisplayText(claim.text) }))
+      .filter((claim) => claim.text),
+    strategic_recommendations: (report.strategic_recommendations ?? [])
+      .map((claim) => ({ ...claim, text: cleanDisplayText(claim.text) }))
+      .filter((claim) => claim.text),
+  }
+}
+
 // ─── String map coercion ──────────────────────────────────────────────────────
 
 function normalizeStringMap(input: unknown): Record<string, string> {
@@ -1104,6 +1295,7 @@ function buildSelectedReportTabs(goals: string[], frameworks: string[], customDi
     if (!tabs.includes(key)) tabs.push(key)
   }
   tabs.push('recommendations')
+  tabs.push('sources')
   tabs.push('qa')
   return tabs
 }
@@ -1111,21 +1303,29 @@ function buildSelectedReportTabs(goals: string[], frameworks: string[], customDi
 function ensureStandardTabs(
   tabs: string[],
   customDimensionSections?: Record<string, unknown>,
+  customDimensionAnalysis?: Record<string, unknown>,
   analysisPurpose?: string,
-  competitorScores?: Record<string, unknown>
+  competitorScores?: Record<string, unknown>,
+  report?: CompetitiveReport
 ): string[] {
   let next = [...tabs]
-  for (const dim of Object.keys(customDimensionSections ?? {})) {
+  const customDimensionNames = new Set([
+    ...Object.keys(customDimensionSections ?? {}),
+    ...Object.keys(customDimensionAnalysis ?? {}),
+  ])
+  for (const dim of customDimensionNames) {
     const key = `custom_dimension:${dim}`
     if (!next.includes(key)) {
       const qaIndex = next.indexOf('qa')
-      const insertAt = qaIndex === -1 ? next.length : qaIndex
+      const sourcesIndex = next.indexOf('sources')
+      const insertAt = sourcesIndex !== -1 ? sourcesIndex : qaIndex === -1 ? next.length : qaIndex
       next = [...next.slice(0, insertAt), key, ...next.slice(insertAt)]
     }
   }
   if (!next.includes('recommendations')) {
     const qaIndex = next.indexOf('qa')
-    const insertAt = qaIndex === -1 ? next.length : qaIndex
+    const sourcesIndex = next.indexOf('sources')
+    const insertAt = sourcesIndex !== -1 ? sourcesIndex : qaIndex === -1 ? next.length : qaIndex
     next = [...next.slice(0, insertAt), 'recommendations', ...next.slice(insertAt)]
   }
   const hasScoringData =
@@ -1135,6 +1335,27 @@ function ensureStandardTabs(
     const recommendationsIndex = next.indexOf('recommendations')
     const insertAt = recommendationsIndex === -1 ? next.length : recommendationsIndex
     next = [...next.slice(0, insertAt), 'scoring', ...next.slice(insertAt)]
+  }
+  const hasOpportunityData =
+    analysisPurpose === 'build_product' ||
+    Boolean(report?.opportunity_score)
+  if (!next.includes('opportunity') && hasOpportunityData) {
+    const recommendationsIndex = next.indexOf('recommendations')
+    const insertAt = recommendationsIndex === -1 ? next.length : recommendationsIndex
+    next = [...next.slice(0, insertAt), 'opportunity', ...next.slice(insertAt)]
+  }
+  const hasPmData =
+    analysisPurpose === 'understand_industry' ||
+    analysisPurpose === 'analyze_growth_ops' ||
+    Boolean(report?.market_background || report?.feature_insights || report?.operation_monetization)
+  if (!next.includes('pm_sections') && hasPmData) {
+    const recommendationsIndex = next.indexOf('recommendations')
+    const insertAt = recommendationsIndex === -1 ? next.length : recommendationsIndex
+    next = [...next.slice(0, insertAt), 'pm_sections', ...next.slice(insertAt)]
+  }
+  if (!next.includes('sources')) {
+    const qaIndex = next.indexOf('qa')
+    next = qaIndex === -1 ? [...next, 'sources'] : [...next.slice(0, qaIndex), 'sources', ...next.slice(qaIndex)]
   }
   return next
 }

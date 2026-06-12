@@ -19,7 +19,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { api } from '@/lib/api'
-import type { AgentRun, Claim, CompetitorInProject, CompetitiveReport, CompetitorKnowledge, CompetitorScore, QAResult, QATraceOutput, SourceEvidence } from '@/lib/types'
+import type { AgentRun, Claim, CompetitorInProject, CompetitiveReport, CompetitorKnowledge, CompetitorScore, DimensionScore, OpportunityScore, QAResult, QATraceOutput, SourceEvidence } from '@/lib/types'
 import { useSourcePanel } from '@/lib/store'
 import { formatDateTime } from '@/lib/formatDateTime'
 
@@ -132,8 +132,10 @@ export default function ReportPage({ params }: PageProps) {
     return ensureStandardTabs(
       selected,
       report?.custom_dimension_sections,
+      report?.custom_dimension_analysis,
       report?.analysis_purpose,
-      report?.competitor_scores
+      report?.competitor_scores,
+      report
     ).map((value) => {
       if (value === 'qa') return qaTab
       return { value, label: tabLabel(value) }
@@ -166,7 +168,7 @@ export default function ReportPage({ params }: PageProps) {
     )
   }
 
-  const report = reportQuery.data!
+  const report = sanitizeReportForDisplay(reportQuery.data!)
 
   const qaScore = qaResult?.score ?? 0
   const citedSources = report.source_list?.length ?? 0
@@ -318,15 +320,29 @@ export default function ReportPage({ params }: PageProps) {
             <StructuredSection data={report.framework_sections?.aarrr} emptyMessage="暂无 AARRR 分析。" />
           )}
           {currentTab.startsWith('custom_dimension:') && (
-            <StructuredSection
-              data={report.custom_dimension_sections?.[currentTab.slice('custom_dimension:'.length)]}
-              emptyMessage="暂无足够证据。"
+            <CustomDimensionTab
+              dimension={currentTab.slice('custom_dimension:'.length)}
+              analysis={report.custom_dimension_analysis?.[currentTab.slice('custom_dimension:'.length)]}
+              detail={report.custom_dimension_sections?.[currentTab.slice('custom_dimension:'.length)]}
             />
           )}
           {currentTab === 'scoring' && (
             <ScoringMatrix
               competitorScores={report.competitor_scores}
               purposeSections={report.purpose_sections}
+            />
+          )}
+          {currentTab === 'opportunity' && (
+            <OpportunityTab
+              opportunityScore={report.opportunity_score}
+              purposeSections={report.purpose_sections}
+            />
+          )}
+          {currentTab === 'pm_sections' && (
+            <PMSectionsTab
+              marketBackground={report.market_background}
+              featureInsights={report.feature_insights}
+              operationMonetization={report.operation_monetization}
             />
           )}
           {currentTab === 'recommendations' && (
@@ -412,16 +428,23 @@ function HumanCorrectionPanel({
   const [objective, setObjective] = useState(report.analysis_objective ?? '')
   const [summary, setSummary] = useState(claimsToLines(report.executive_summary))
   const [recommendations, setRecommendations] = useState(claimsToLines(report.strategic_recommendations))
-  const [competitorOverview, setCompetitorOverview] = useState(toPrettyJson(report.competitor_overview ?? []))
-  const [features, setFeatures] = useState(toPrettyJson(report.feature_comparison ?? {}))
-  const [pricing, setPricing] = useState(toPrettyJson(report.pricing_comparison ?? {}))
-  const [personas, setPersonas] = useState(toPrettyJson(report.user_persona_comparison ?? {}))
-  const [swot, setSwot] = useState(toPrettyJson(report.swot_comparison ?? {}))
-  const [frameworks, setFrameworks] = useState(toPrettyJson(report.framework_sections ?? {}))
-  const [customDimensions, setCustomDimensions] = useState(toPrettyJson(report.custom_dimension_sections ?? {}))
-  const [competitorScores, setCompetitorScores] = useState(toPrettyJson(report.competitor_scores ?? {}))
-  const [purposeSections, setPurposeSections] = useState(toPrettyJson(report.purpose_sections ?? {}))
-  const [rationale, setRationale] = useState(toPrettyJson(report.competitor_selection_rationale ?? {}))
+  const [features, setFeatures] = useState(recordToEditableLines(report.feature_comparison ?? {}))
+  const [pricing, setPricing] = useState(recordToEditableLines(report.pricing_comparison ?? {}))
+  const [personas, setPersonas] = useState(readableObjectText(report.user_persona_comparison ?? {}))
+  const [swot, setSwot] = useState(readableObjectText(report.swot_comparison ?? {}))
+  const [frameworks, setFrameworks] = useState(readableObjectText(report.framework_sections ?? {}))
+  const [customDimensions, setCustomDimensions] = useState(readableObjectText(report.custom_dimension_sections ?? {}))
+  const [purposeSections, setPurposeSections] = useState(readableObjectText(report.purpose_sections ?? {}))
+  const [rationale, setRationale] = useState(recordToEditableLines(report.competitor_selection_rationale ?? {}))
+  const [advancedFields, setAdvancedFields] = useState(toPrettyJson({
+    competitor_overview: report.competitor_overview ?? [],
+    custom_dimension_analysis: report.custom_dimension_analysis ?? {},
+    competitor_scores: report.competitor_scores ?? {},
+    opportunity_score: report.opportunity_score ?? null,
+    market_background: report.market_background ?? null,
+    feature_insights: report.feature_insights ?? null,
+    operation_monetization: report.operation_monetization ?? null,
+  }))
   const [parseError, setParseError] = useState<string | null>(null)
   const markdownPreview = useMemo(
     () =>
@@ -430,14 +453,12 @@ function HumanCorrectionPanel({
         objective,
         summary,
         recommendations,
-        competitorOverview,
         features,
         pricing,
         personas,
         swot,
         frameworks,
         customDimensions,
-        competitorScores,
         purposeSections,
         rationale,
       }),
@@ -446,14 +467,12 @@ function HumanCorrectionPanel({
       objective,
       summary,
       recommendations,
-      competitorOverview,
       features,
       pricing,
       personas,
       swot,
       frameworks,
       customDimensions,
-      competitorScores,
       purposeSections,
       rationale,
     ]
@@ -462,21 +481,27 @@ function HumanCorrectionPanel({
   const save = () => {
     try {
       setParseError(null)
+      const advanced = parseJsonField<Record<string, unknown>>(advancedFields, '高级结构化字段')
       onSave({
         title,
         analysis_objective: objective,
         executive_summary: mergeClaimLines(report.executive_summary, summary),
         strategic_recommendations: mergeClaimLines(report.strategic_recommendations, recommendations),
-        competitor_overview: parseJsonField<CompetitorKnowledge[]>(competitorOverview, '竞品画像'),
-        feature_comparison: parseJsonField<Record<string, string>>(features, '功能对比'),
-        pricing_comparison: parseJsonField<Record<string, string>>(pricing, '定价模式'),
-        user_persona_comparison: parseJsonField<Record<string, unknown>>(personas, '用户画像对比'),
-        swot_comparison: parseJsonField<Record<string, unknown>>(swot, 'SWOT'),
-        framework_sections: parseJsonField<Record<string, unknown>>(frameworks, '分析框架'),
-        custom_dimension_sections: parseJsonField<Record<string, unknown>>(customDimensions, '自定义维度'),
-        competitor_scores: parseJsonField<Record<string, CompetitorScore>>(competitorScores, '产品选择评分'),
-        purpose_sections: parseJsonField<Record<string, unknown>>(purposeSections, '选择建议'),
-        competitor_selection_rationale: parseJsonField<Record<string, string>>(rationale, '竞品选择说明'),
+        feature_comparison: editableLinesToRecord(features),
+        pricing_comparison: editableLinesToRecord(pricing),
+        user_persona_comparison: editableTextToObject(personas, report.user_persona_comparison ?? {}),
+        swot_comparison: editableTextToObject(swot, report.swot_comparison ?? {}),
+        framework_sections: editableTextToObject(frameworks, report.framework_sections ?? {}),
+        custom_dimension_sections: editableTextToObject(customDimensions, report.custom_dimension_sections ?? {}),
+        purpose_sections: editableTextToObject(purposeSections, report.purpose_sections ?? {}),
+        competitor_selection_rationale: editableLinesToRecord(rationale),
+        competitor_overview: (advanced.competitor_overview ?? report.competitor_overview) as CompetitorKnowledge[],
+        custom_dimension_analysis: (advanced.custom_dimension_analysis ?? report.custom_dimension_analysis ?? {}) as Record<string, DimensionScore>,
+        competitor_scores: (advanced.competitor_scores ?? report.competitor_scores ?? {}) as Record<string, CompetitorScore>,
+        opportunity_score: (advanced.opportunity_score ?? report.opportunity_score ?? null) as OpportunityScore | null,
+        market_background: (advanced.market_background ?? report.market_background ?? null) as Record<string, unknown> | null,
+        feature_insights: (advanced.feature_insights ?? report.feature_insights ?? null) as Record<string, unknown> | null,
+        operation_monetization: (advanced.operation_monetization ?? report.operation_monetization ?? null) as Record<string, unknown> | null,
       })
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'JSON 格式不正确。')
@@ -505,16 +530,21 @@ function HumanCorrectionPanel({
         </label>
         <EditableTextBlock label="摘要" value={summary} onChange={setSummary} />
         <EditableTextBlock label="建议" value={recommendations} onChange={setRecommendations} />
-        <EditableJsonBlock label="竞品画像 / 用户画像" value={competitorOverview} onChange={setCompetitorOverview} rows={12} />
-        <EditableJsonBlock label="功能对比" value={features} onChange={setFeatures} />
-        <EditableJsonBlock label="定价模式" value={pricing} onChange={setPricing} />
-        <EditableJsonBlock label="用户画像对比" value={personas} onChange={setPersonas} />
-        <EditableJsonBlock label="SWOT" value={swot} onChange={setSwot} rows={8} />
-        <EditableJsonBlock label="分析框架" value={frameworks} onChange={setFrameworks} rows={8} />
-        <EditableJsonBlock label="自定义维度" value={customDimensions} onChange={setCustomDimensions} rows={8} />
-        <EditableJsonBlock label="产品选择评分" value={competitorScores} onChange={setCompetitorScores} rows={8} />
-        <EditableJsonBlock label="选择建议 / 不建议人群" value={purposeSections} onChange={setPurposeSections} rows={8} />
-        <EditableJsonBlock label="竞品选择说明" value={rationale} onChange={setRationale} />
+        <EditableKeyValueBlock label="功能对比" value={features} onChange={setFeatures} />
+        <EditableKeyValueBlock label="定价模式" value={pricing} onChange={setPricing} />
+        <EditableTextBlock label="用户画像" value={personas} onChange={setPersonas} rows={6} />
+        <EditableTextBlock label="SWOT" value={swot} onChange={setSwot} rows={6} />
+        <EditableTextBlock label="分析框架" value={frameworks} onChange={setFrameworks} rows={6} />
+        <EditableTextBlock label="自定义维度" value={customDimensions} onChange={setCustomDimensions} rows={6} />
+        <EditableTextBlock label="目的相关建议" value={purposeSections} onChange={setPurposeSections} rows={6} />
+        <EditableKeyValueBlock label="竞品选择说明" value={rationale} onChange={setRationale} />
+        <details className="rounded-md border border-gray-200 bg-gray-50 p-3">
+          <summary className="cursor-pointer text-sm font-medium text-gray-700">高级结构化字段</summary>
+          <p className="mt-2 text-xs text-gray-500">
+            这里保留给需要精细修改评分、机会分和原始竞品画像的高级用户；普通修正不用展开。
+          </p>
+          <EditableJsonBlock label="高级字段" value={advancedFields} onChange={setAdvancedFields} rows={12} />
+        </details>
         <label className="grid gap-1 text-sm">
           <span className="font-medium text-gray-800">Markdown 正文</span>
           <textarea
@@ -556,6 +586,31 @@ function EditableTextBlock({
   label,
   value,
   onChange,
+  rows = 4,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  rows?: number
+}) {
+  return (
+    <label className="grid gap-1 text-sm">
+      <span className="font-medium text-gray-800">{label}</span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={rows}
+        className="rounded-md border border-gray-300 px-3 py-2 text-sm leading-relaxed outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+      />
+      <span className="text-xs text-gray-500">每行一条，保存时会保留原有引用和置信度。</span>
+    </label>
+  )
+}
+
+function EditableKeyValueBlock({
+  label,
+  value,
+  onChange,
 }: {
   label: string
   value: string
@@ -567,10 +622,10 @@ function EditableTextBlock({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        rows={4}
+        rows={5}
         className="rounded-md border border-gray-300 px-3 py-2 text-sm leading-relaxed outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
       />
-      <span className="text-xs text-gray-500">每行一条，保存时会保留原有引用和置信度。</span>
+      <span className="text-xs text-gray-500">格式：每行一个条目，例如 Cursor：适合重度 AI 编码用户。</span>
     </label>
   )
 }
@@ -600,7 +655,7 @@ function EditableJsonBlock({
 }
 
 function claimsToLines(claims: Claim[] | undefined): string {
-  return (claims ?? []).map((claim) => claim.text).join('\n')
+  return (claims ?? []).map((claim) => cleanDisplayText(claim.text)).join('\n')
 }
 
 function mergeClaimLines(existing: Claim[] | undefined, lines: string): Claim[] {
@@ -615,7 +670,65 @@ function mergeClaimLines(existing: Claim[] | undefined, lines: string): Claim[] 
 }
 
 function toPrettyJson(value: unknown): string {
-  return JSON.stringify(value ?? {}, null, 2)
+  return JSON.stringify(value === undefined ? {} : value, null, 2)
+}
+
+function recordToEditableLines(value: Record<string, unknown>): string {
+  return Object.entries(value ?? {})
+    .map(([key, item]) => `${key}: ${typeof item === 'string' ? item : readableObjectText(item)}`)
+    .join('\n')
+}
+
+function editableLinesToRecord(value: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line, index) => {
+      const colonIndex = line.search(/[:：]/)
+      if (colonIndex > 0) {
+        const key = line.slice(0, colonIndex).trim()
+        const text = line.slice(colonIndex + 1).trim()
+        if (key && text) result[key] = text
+      } else {
+        result[`修正 ${index + 1}`] = line
+      }
+    })
+  return result
+}
+
+function readableObjectText(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return cleanDisplayText(value)
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') return cleanDisplayText(item)
+        if (item && typeof item === 'object' && 'text' in item) {
+          return cleanDisplayText(String((item as Record<string, unknown>).text ?? ''))
+        }
+        return readableObjectText(item)
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => {
+        const text = readableObjectText(item)
+        return text ? `${key}: ${text}` : key
+      })
+      .join('\n')
+  }
+  return String(value)
+}
+
+function editableTextToObject(value: string, existing: Record<string, unknown>): Record<string, unknown> {
+  const text = value.trim()
+  if (!text) return {}
+  if (text === readableObjectText(existing).trim()) return existing
+  return editableLinesToRecord(text)
 }
 
 function parseJsonField<T>(value: string, label: string): T {
@@ -626,19 +739,80 @@ function parseJsonField<T>(value: string, label: string): T {
   }
 }
 
+function cleanDisplayText(value: string | undefined | null): string {
+  let text = String(value ?? '').trim()
+  if (!text) return ''
+  const markers = [text.indexOf('<parameter'), text.indexOf('</parameter')].filter((idx) => idx >= 0)
+  if (markers.length > 0) {
+    text = text.slice(0, Math.min(...markers))
+  }
+  return text.replace(/<\/?parameter[^>]*>/gi, '').trim()
+}
+
+function extractEmbeddedRationale(value: string | undefined | null): Record<string, string> {
+  const text = String(value ?? '')
+  const match = text.match(/<parameter\s+name=["']competitor_selection_rationale["'][^>]*>(\{[\s\S]*?\})(?:\s*<\/parameter>)?/i)
+  if (!match) return {}
+  try {
+    const parsed = JSON.parse(match[1]) as Record<string, unknown>
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([key, item]) => key.trim() && String(item ?? '').trim())
+        .map(([key, item]) => [key, String(item)])
+    )
+  } catch {
+    return {}
+  }
+}
+
+function sanitizeReportForDisplay(report: CompetitiveReport): CompetitiveReport {
+  const embeddedRationale = extractEmbeddedRationale(report.analysis_objective)
+  const currentRationale = report.competitor_selection_rationale ?? {}
+  return {
+    ...report,
+    title: cleanDisplayText(report.title) || 'Competitive Analysis Report',
+    analysis_objective: cleanDisplayText(report.analysis_objective),
+    competitor_selection_rationale:
+      Object.keys(currentRationale).length > 0 ? currentRationale : embeddedRationale,
+    executive_summary: (report.executive_summary ?? []).map((claim) => ({
+      ...claim,
+      text: cleanDisplayText(claim.text),
+    })).filter((claim) => claim.text),
+    strategic_recommendations: (report.strategic_recommendations ?? []).map((claim) => ({
+      ...claim,
+      text: cleanDisplayText(claim.text),
+    })).filter((claim) => claim.text),
+    markdown_content: rebuildMarkdownFromDisplayReport(report, Object.keys(currentRationale).length > 0 ? currentRationale : embeddedRationale),
+  }
+}
+
+function rebuildMarkdownFromDisplayReport(report: CompetitiveReport, rationale?: Record<string, string>): string {
+  const title = cleanDisplayText(report.title) || 'Competitive Analysis Report'
+  const lines = [`# ${title}`, '']
+  appendTextSection(lines, 'Analysis Objective', cleanDisplayText(report.analysis_objective))
+  appendLineListSection(lines, 'Executive Summary', claimsToLines(report.executive_summary))
+  appendPreviewSection(lines, 'Feature Comparison', recordToEditableLines(report.feature_comparison ?? {}))
+  appendPreviewSection(lines, 'Pricing Comparison', recordToEditableLines(report.pricing_comparison ?? {}))
+  appendPreviewSection(lines, 'User Personas', readableObjectText(report.user_persona_comparison ?? {}))
+  appendPreviewSection(lines, 'SWOT', readableObjectText(report.swot_comparison ?? {}))
+  appendPreviewSection(lines, 'Analysis Frameworks', readableObjectText(report.framework_sections ?? {}))
+  appendPreviewSection(lines, 'Purpose Guidance', readableObjectText(report.purpose_sections ?? {}))
+  appendPreviewSection(lines, 'Competitor Selection Rationale', recordToEditableLines(rationale ?? report.competitor_selection_rationale ?? {}))
+  appendLineListSection(lines, 'Strategic Recommendations', claimsToLines(report.strategic_recommendations))
+  return lines.join('\n').trim()
+}
+
 function buildCorrectionMarkdownPreview({
   title,
   objective,
   summary,
   recommendations,
-  competitorOverview,
   features,
   pricing,
   personas,
   swot,
   frameworks,
   customDimensions,
-  competitorScores,
   purposeSections,
   rationale,
 }: {
@@ -646,30 +820,26 @@ function buildCorrectionMarkdownPreview({
   objective: string
   summary: string
   recommendations: string
-  competitorOverview: string
   features: string
   pricing: string
   personas: string
   swot: string
   frameworks: string
   customDimensions: string
-  competitorScores: string
   purposeSections: string
   rationale: string
 }): string {
   const lines = [`# ${title || 'Competitive Analysis Report'}`, '']
   appendTextSection(lines, 'Analysis Objective', objective)
   appendLineListSection(lines, 'Executive Summary', summary)
-  appendJsonPreviewSection(lines, 'Competitor Overview', competitorOverview)
-  appendJsonPreviewSection(lines, 'Feature Comparison', features)
-  appendJsonPreviewSection(lines, 'Pricing Comparison', pricing)
-  appendJsonPreviewSection(lines, 'User Personas', personas)
-  appendJsonPreviewSection(lines, 'SWOT', swot)
-  appendJsonPreviewSection(lines, 'Analysis Frameworks', frameworks)
-  appendJsonPreviewSection(lines, 'Custom Dimensions', customDimensions)
-  appendJsonPreviewSection(lines, 'Product Selection Scores', competitorScores)
-  appendJsonPreviewSection(lines, 'Product Selection Guidance', purposeSections)
-  appendJsonPreviewSection(lines, 'Competitor Selection Rationale', rationale)
+  appendPreviewSection(lines, 'Feature Comparison', features)
+  appendPreviewSection(lines, 'Pricing Comparison', pricing)
+  appendPreviewSection(lines, 'User Personas', personas)
+  appendPreviewSection(lines, 'SWOT', swot)
+  appendPreviewSection(lines, 'Analysis Frameworks', frameworks)
+  appendPreviewSection(lines, 'Custom Dimension Details', customDimensions)
+  appendPreviewSection(lines, 'Purpose Guidance', purposeSections)
+  appendPreviewSection(lines, 'Competitor Selection Rationale', rationale)
   appendLineListSection(lines, 'Strategic Recommendations', recommendations)
   return lines.join('\n').trim()
 }
@@ -686,7 +856,7 @@ function appendLineListSection(lines: string[], title: string, value: string) {
   lines.push(`## ${title}`, '', ...items.map((item) => `- ${item}`), '')
 }
 
-function appendJsonPreviewSection(lines: string[], title: string, value: string) {
+function appendPreviewSection(lines: string[], title: string, value: string) {
   const text = value.trim()
   if (!text || text === '{}' || text === '[]') return
   lines.push(`## ${title}`, '', text, '')
@@ -904,11 +1074,17 @@ function buildSelectedReportTabs(goals: string[], frameworks: string[], customDi
 function ensureStandardTabs(
   tabs: string[],
   customDimensionSections?: Record<string, unknown>,
+  customDimensionAnalysis?: Record<string, unknown>,
   analysisPurpose?: string,
-  competitorScores?: Record<string, unknown>
+  competitorScores?: Record<string, unknown>,
+  report?: CompetitiveReport
 ): string[] {
   let next = [...tabs]
-  for (const dim of Object.keys(customDimensionSections ?? {})) {
+  const customDimensionNames = new Set([
+    ...Object.keys(customDimensionSections ?? {}),
+    ...Object.keys(customDimensionAnalysis ?? {}),
+  ])
+  for (const dim of customDimensionNames) {
     const key = `custom_dimension:${dim}`
     if (!next.includes(key)) {
       const qaIndex = next.indexOf('qa')
@@ -933,6 +1109,23 @@ function ensureStandardTabs(
     const insertAt = recommendationsIndex !== -1 ? recommendationsIndex : next.length
     next = [...next.slice(0, insertAt), 'scoring', ...next.slice(insertAt)]
   }
+  const hasOpportunityData =
+    analysisPurpose === 'build_product' ||
+    Boolean(report?.opportunity_score)
+  if (!next.includes('opportunity') && hasOpportunityData) {
+    const recommendationsIndex = next.indexOf('recommendations')
+    const insertAt = recommendationsIndex !== -1 ? recommendationsIndex : next.length
+    next = [...next.slice(0, insertAt), 'opportunity', ...next.slice(insertAt)]
+  }
+  const hasPmData =
+    analysisPurpose === 'understand_industry' ||
+    analysisPurpose === 'analyze_growth_ops' ||
+    Boolean(report?.market_background || report?.feature_insights || report?.operation_monetization)
+  if (!next.includes('pm_sections') && hasPmData) {
+    const recommendationsIndex = next.indexOf('recommendations')
+    const insertAt = recommendationsIndex !== -1 ? recommendationsIndex : next.length
+    next = [...next.slice(0, insertAt), 'pm_sections', ...next.slice(insertAt)]
+  }
   if (!next.includes('sources')) {
     const qaIndex = next.indexOf('qa')
     if (qaIndex === -1) return [...next, 'sources']
@@ -951,10 +1144,122 @@ function tabLabel(value: string): string {
   if (value === 'three_c') return '3C'
   if (value === 'aarrr') return 'AARRR'
   if (value === 'scoring') return '评分'
+  if (value === 'opportunity') return '机会'
+  if (value === 'pm_sections') return 'PM 报告'
   if (value === 'recommendations') return '建议'
   if (value === 'sources') return 'Sources'
   if (value.startsWith('custom_dimension:')) return value.slice('custom_dimension:'.length)
   return value
+}
+
+function OpportunityTab({
+  opportunityScore,
+  purposeSections,
+}: {
+  opportunityScore?: OpportunityScore | null
+  purposeSections?: Record<string, unknown>
+}) {
+  if (!opportunityScore) {
+    return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">暂无机会评分。</p>
+  }
+  return (
+    <div className="space-y-4">
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">OpportunityScore</h2>
+            <p className="mt-1 text-xs text-gray-500">{opportunityScore.scoring_note}</p>
+          </div>
+          <span className="rounded bg-blue-50 px-2 py-1 text-sm font-bold text-blue-700">
+            {opportunityScore.overall_score.toFixed(1)}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {opportunityScore.dimensions.map((dimension) => (
+            <DimensionScoreCard key={dimension.dimension_name} dimension={dimension} />
+          ))}
+        </div>
+      </section>
+      <StructuredSection data={purposeSections} emptyMessage="暂无机会建议。" />
+    </div>
+  )
+}
+
+function PMSectionsTab({
+  marketBackground,
+  featureInsights,
+  operationMonetization,
+}: {
+  marketBackground?: Record<string, unknown> | null
+  featureInsights?: Record<string, unknown> | null
+  operationMonetization?: Record<string, unknown> | null
+}) {
+  if (!marketBackground && !featureInsights && !operationMonetization) {
+    return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">暂无 PM 报告内容。</p>
+  }
+  return (
+    <div className="space-y-4">
+      <StructuredCard title="市场背景" data={marketBackground} />
+      <StructuredCard title="功能洞察" data={featureInsights} />
+      <StructuredCard title="运营与商业化" data={operationMonetization} />
+    </div>
+  )
+}
+
+function CustomDimensionTab({
+  dimension,
+  analysis,
+  detail,
+}: {
+  dimension: string
+  analysis?: DimensionScore
+  detail?: unknown
+}) {
+  if (!analysis && !detail) {
+    return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">暂无足够证据。</p>
+  }
+  return (
+    <div className="space-y-4">
+      {analysis && (
+        <section className="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 className="text-base font-semibold text-gray-900">{dimension}</h2>
+          <div className="mt-3">
+            <DimensionScoreCard dimension={analysis} />
+          </div>
+        </section>
+      )}
+      <StructuredSection data={detail} emptyMessage="暂无维度明细。" />
+    </div>
+  )
+}
+
+function DimensionScoreCard({ dimension }: { dimension: DimensionScore }) {
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-gray-900">{dimension.dimension_name}</h3>
+        <span className="rounded bg-white px-2 py-1 text-xs font-bold text-gray-700">
+          {dimension.score}/5
+        </span>
+      </div>
+      <p className="mt-2 text-sm text-gray-600">{dimension.rationale}</p>
+      <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+        {dimension.weight != null && <span>权重 {Math.round(dimension.weight * 100)}%</span>}
+        <span>置信度 {confidenceLabel(dimension.source_confidence)}</span>
+        {dimension.evidence?.length > 0 && <span>证据 {dimension.evidence.join(', ')}</span>}
+      </div>
+    </div>
+  )
+}
+
+function StructuredCard({ title, data }: { title: string; data?: unknown }) {
+  if (!data) return null
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <h2 className="mb-3 text-base font-semibold text-gray-900">{title}</h2>
+      <StructuredSection data={data} emptyMessage="暂无内容。" />
+    </section>
+  )
 }
 
 function PersonaTab({ competitors }: { competitors: CompetitorKnowledge[] }) {
@@ -1082,7 +1387,7 @@ function renderStructuredValue(value: unknown): ReactNode {
       <div className="space-y-3">
         {Object.entries(value as Record<string, unknown>).map(([key, child]) => (
           <section key={key} className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="text-sm font-semibold text-gray-900">{key}</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{structuredLabel(key)}</h3>
             <div className="mt-2 text-sm text-gray-700">{renderStructuredValue(child)}</div>
           </section>
         ))}
@@ -1090,6 +1395,40 @@ function renderStructuredValue(value: unknown): ReactNode {
     )
   }
   return <span>{String(value)}</span>
+}
+
+function structuredLabel(key: string): string {
+  const labels: Record<string, string> = {
+    opportunity_summary: '机会概览',
+    overall_score: '综合分',
+    summary: '摘要',
+    market_gaps: '市场缺口',
+    features_to_learn_from: '可借鉴功能',
+    competitor_name: '竞品',
+    features: '功能',
+    pitfalls_to_avoid: '需要规避的问题',
+    mvp_direction: 'MVP 方向',
+    best_for: '适合谁',
+    who_should_avoid: '哪些人不建议选',
+    recommendation_ranking: '推荐排序',
+    decision_matrix: '决策矩阵',
+    pm_report: 'PM 报告',
+    market_overview: '市场概览',
+    segment_map: '用户 / 场景分层',
+    table_stakes: '基础能力',
+    differentiators: '差异化能力',
+    gtm_profiles: '渠道与定位',
+    monetization_patterns: '商业化模式',
+    growth_loops: '增长路径',
+  }
+  return labels[key] ?? key
+}
+
+function confidenceLabel(value: string | undefined): string {
+  if (value === 'high') return '高'
+  if (value === 'medium') return '中'
+  if (value === 'low') return '低'
+  return '未知'
 }
 
 function computeDroppedCompetitors(

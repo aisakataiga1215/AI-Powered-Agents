@@ -5,6 +5,7 @@ WriterAgent and exposes a retrieval helper for the API layer.
 """
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -13,6 +14,53 @@ from sqlalchemy.orm import Session
 from app.db import models
 from app.schemas.report import CompetitiveReport
 from app.services.markdown_renderer import render_report_markdown
+
+_PARAMETER_TAG_RE = re.compile(r"</?parameter[^>]*>", re.IGNORECASE)
+_RATIONALE_PARAM_RE = re.compile(
+    r"<parameter\s+name=[\"']competitor_selection_rationale[\"'][^>]*>(\{.*?\})(?:\s*</parameter>)?",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _clean_function_call_artifacts(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    markers = [idx for idx in (text.find("<parameter"), text.find("</parameter")) if idx >= 0]
+    if markers:
+        text = text[: min(markers)]
+    return _PARAMETER_TAG_RE.sub("", text).strip()
+
+
+def _extract_rationale_from_objective(value: object) -> dict[str, str]:
+    text = str(value or "")
+    match = _RATIONALE_PARAM_RE.search(text)
+    if not match:
+        return {}
+    try:
+        parsed = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(k): str(v) for k, v in parsed.items() if str(k).strip() and str(v).strip()}
+
+
+def _sanitize_report_payload(payload: dict) -> dict:
+    cleaned = dict(payload)
+    embedded_rationale = _extract_rationale_from_objective(cleaned.get("analysis_objective"))
+    existing_rationale = cleaned.get("competitor_selection_rationale")
+    if embedded_rationale and not (isinstance(existing_rationale, dict) and existing_rationale):
+        cleaned["competitor_selection_rationale"] = embedded_rationale
+    cleaned["title"] = _clean_function_call_artifacts(cleaned.get("title")) or "Competitive Analysis Report"
+    cleaned["analysis_objective"] = _clean_function_call_artifacts(cleaned.get("analysis_objective"))
+    for key in ("executive_summary", "strategic_recommendations"):
+        claims = cleaned.get(key)
+        if isinstance(claims, list):
+            for claim in claims:
+                if isinstance(claim, dict) and isinstance(claim.get("text"), str):
+                    claim["text"] = _clean_function_call_artifacts(claim["text"])
+    return cleaned
 
 
 def _render_human_corrected_markdown(report: CompetitiveReport) -> str:
@@ -113,6 +161,7 @@ def save_report_from_payload(
     payload["project_id"] = project_id
     payload.pop("report_id", None)
     payload.pop("created_at", None)
+    payload = _sanitize_report_payload(payload)
     report = CompetitiveReport.model_validate(payload)
     report.markdown_content = _render_human_corrected_markdown(report)
     return save_report(db, project_id, report)
@@ -135,7 +184,12 @@ def serialize_report(record: models.Report) -> dict:
         payload = {}
     payload["report_id"] = record.id
     payload["project_id"] = record.project_id
-    payload["markdown_content"] = record.markdown_content
+    payload = _sanitize_report_payload(payload)
+    try:
+        report = CompetitiveReport.model_validate(payload)
+        payload["markdown_content"] = _render_human_corrected_markdown(report)
+    except Exception:
+        payload["markdown_content"] = record.markdown_content
     payload["created_at"] = (
         record.created_at.replace(tzinfo=timezone.utc).isoformat()
         if isinstance(record.created_at, datetime)

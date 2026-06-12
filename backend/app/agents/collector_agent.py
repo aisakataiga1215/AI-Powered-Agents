@@ -16,16 +16,20 @@ trace timeline can replay the execution.
 
 import time
 import uuid
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urlparse, urlunparse, urlencode, parse_qsl
 
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.source import Reliability, SourceEvidence, SourceType
-from app.schemas.trace import AgentRun, AgentRunStatus
+from app.schemas.trace import AgentRun, AgentRunStatus, TokenUsage
 from app.services import (
     coverage_evaluator,
     crawler_service,
@@ -43,6 +47,8 @@ from app.utils.sanitizer import sanitize_text
 # Research kinds that may contain PII (interview transcripts, free-text
 # survey answers). Other kinds (``notes``, etc.) are passed through as-is.
 _PII_RESEARCH_KINDS = {"survey", "interview"}
+_RELEVANCE_REVIEW_MAX_SOURCES = 30
+_RELEVANCE_SOURCE_PREVIEW_CHARS = 900
 
 logger = get_logger(__name__)
 
@@ -91,6 +97,122 @@ def _deduplicate_urls(urls: list[str]) -> list[str]:
             seen.add(norm)
             result.append(url)
     return result
+
+
+def _build_json_llm() -> ChatOpenAI:
+    if not settings.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured; CollectorAgent relevance review skipped.")
+    kwargs: dict[str, Any] = {
+        "model": settings.default_model,
+        "api_key": settings.openai_api_key,
+        "temperature": 0,
+        "model_kwargs": {"response_format": {"type": "json_object"}},
+    }
+    if settings.openai_base_url:
+        kwargs["base_url"] = settings.openai_base_url
+    if settings.llm_disable_thinking:
+        kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+    return ChatOpenAI(**kwargs)
+
+
+def _extract_token_usage(response: Any) -> TokenUsage:
+    meta = getattr(response, "usage_metadata", None)
+    if meta and isinstance(meta, dict):
+        prompt = int(meta.get("input_tokens", 0))
+        completion = int(meta.get("output_tokens", 0))
+        total = int(meta.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
+        return TokenUsage(prompt_tokens=prompt, completion_tokens=completion, total_tokens=total, cost_usd=cost)
+    resp_meta = getattr(response, "response_metadata", None) or {}
+    usage = resp_meta.get("token_usage") or resp_meta.get("usage") or {}
+    if usage:
+        prompt = int(usage.get("prompt_tokens", 0))
+        completion = int(usage.get("completion_tokens", 0))
+        total = int(usage.get("total_tokens", 0))
+        cost = (
+            prompt * settings.openai_input_price_per_1m
+            + completion * settings.openai_output_price_per_1m
+        ) / 1_000_000
+        return TokenUsage(prompt_tokens=prompt, completion_tokens=completion, total_tokens=total, cost_usd=cost)
+    return TokenUsage()
+
+
+def _review_source_relevance(
+    sources: list[SourceEvidence],
+    competitors: list[dict],
+    industry_type: str,
+) -> tuple[list[SourceEvidence], dict[str, dict], TokenUsage, str]:
+    if not sources:
+        return sources, {}, TokenUsage(), "not_run"
+    if not settings.openai_api_key:
+        return sources, {}, TokenUsage(), "skipped_no_api_key"
+    try:
+        competitor_names = [
+            c.get("name", "")
+            for c in competitors
+            if isinstance(c, dict) and c.get("name")
+        ]
+        review_sources = sources[:_RELEVANCE_REVIEW_MAX_SOURCES]
+        payload = {
+            "industry_type": industry_type,
+            "competitors": competitor_names,
+            "sources": [
+                {
+                    "source_id": source.source_id,
+                    "competitor_name": source.competitor_name,
+                    "source_type": source.source_type.value,
+                    "url": source.url,
+                    "title": source.title,
+                    "snippet": source.snippet,
+                    "content_preview": (source.content or "")[:_RELEVANCE_SOURCE_PREVIEW_CHARS],
+                }
+                for source in review_sources
+            ],
+        }
+        response = _build_json_llm().invoke([
+            SystemMessage(
+                content=(
+                    "Classify whether each source is relevant to the named competitor and product analysis. "
+                    "Return JSON only: {\"sources\":[{\"source_id\":\"...\",\"action\":\"keep|weak|skip_for_analysis\","
+                    "\"reason\":\"...\"}]}. Use skip_for_analysis only for clearly unrelated pages."
+                )
+            ),
+            HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
+        ])
+        usage = _extract_token_usage(response)
+        content = getattr(response, "content", "") or "{}"
+        parsed = json.loads(content) if isinstance(content, str) else content
+        decisions: dict[str, dict] = {}
+        for item in (parsed.get("sources") if isinstance(parsed, dict) else []) or []:
+            source_id = str(item.get("source_id") or "")
+            if not source_id:
+                continue
+            action = item.get("action")
+            if action not in {"keep", "weak", "skip_for_analysis"}:
+                action = "weak"
+            decisions[source_id] = {
+                "action": action,
+                "reason": str(item.get("reason") or "")[:300],
+            }
+        reviewed_ids = {source.source_id for source in review_sources}
+        for source in sources:
+            if source.source_id not in decisions:
+                decisions[source.source_id] = {
+                    "action": "keep" if source.source_id in reviewed_ids else "not_reviewed",
+                    "reason": "" if source.source_id in reviewed_ids else "Relevance review source cap reached.",
+                }
+        analysis_sources = [
+            source
+            for source in sources
+            if decisions.get(source.source_id, {}).get("action") != "skip_for_analysis"
+        ]
+        return analysis_sources, decisions, usage, "success"
+    except Exception as exc:
+        logger.warning("CollectorAgent relevance review failed: %s", exc)
+        return sources, {}, TokenUsage(), "failed"
 
 
 @dataclass
@@ -521,6 +643,12 @@ def run(
         if all_sources:
             source_service.save_sources(db, project_id, all_sources)
 
+        analysis_sources, relevance_by_source_id, relevance_usage, relevance_status = _review_source_relevance(
+            all_sources,
+            competitors,
+            industry_type,
+        )
+
         # Coverage map for trace (used by frontend inferDropReason).
         coverage_by_competitor: dict = {}
         for comp_name, cov in coverage_evaluator.evaluate_per_competitor(all_sources).items():
@@ -566,8 +694,12 @@ def run(
                 "data_mode": data_mode,
                 "industry_type": industry_type,
                 "source_count": len(all_sources),
+                "analysis_source_count": len(analysis_sources),
+                "skipped_for_analysis_count": len(all_sources) - len(analysis_sources),
                 "manual_source_count": len(manual_sources),
                 "failed_urls": all_failed_urls,
+                "relevance_review_status": relevance_status,
+                "relevance_by_source_id": relevance_by_source_id,
                 "source_coverage_by_competitor": coverage_by_competitor,
                 "collection_stats_by_competitor": collection_stats,
                 "attempted_urls_by_competitor": attempted_urls_by_competitor,
@@ -594,6 +726,7 @@ def run(
                     else ""
                 ),
             },
+            token_usage=relevance_usage,
             latency_ms=elapsed_ms,
         )
         logger.info(
@@ -603,7 +736,7 @@ def run(
             data_mode,
             industry_type,
         )
-        return all_sources
+        return analysis_sources
 
     except Exception as exc:
         elapsed_ms = int((time.time() - start) * 1000)

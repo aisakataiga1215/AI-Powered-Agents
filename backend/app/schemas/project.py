@@ -93,7 +93,7 @@ class ResearchInput(BaseModel):
 class ProjectCreate(BaseModel):
     industry: str
     industry_type: IndustryType = "general"
-    analysis_purpose: AnalysisPurpose = DEFAULT_ANALYSIS_PURPOSE
+    analysis_purpose: AnalysisPurpose = "understand_industry"
     analysis_frameworks: list[AnalysisFramework] = Field(default_factory=lambda: list(DEFAULT_ANALYSIS_FRAMEWORKS))
     custom_dimensions: list[str] = Field(default_factory=list)
     competitors: list[CompetitorInput]
@@ -106,7 +106,10 @@ class ProjectCreate(BaseModel):
     @field_validator("analysis_purpose", mode="before")
     @classmethod
     def normalize_purpose(cls, value: str | None) -> AnalysisPurpose:
-        return normalize_analysis_purpose(value, strict=True)
+        purpose = normalize_analysis_purpose(value, strict=True)
+        if purpose == DEFAULT_ANALYSIS_PURPOSE:
+            raise ValueError("analysis_purpose is required")
+        return purpose
 
     @field_validator("analysis_frameworks", mode="before")
     @classmethod

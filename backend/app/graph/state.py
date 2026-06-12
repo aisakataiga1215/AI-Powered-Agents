@@ -34,6 +34,7 @@ class WorkflowState(TypedDict, total=False):
     sources: list[SourceEvidence]
     competitor_knowledge: list[CompetitorKnowledge]
     report: Optional[CompetitiveReport]
+    previous_report: Optional[CompetitiveReport]
     qa_result: Optional[QAResult]
     rework_count: int
     rework_target: Optional[str]  # "CollectorAgent" | "AnalystAgent" | "WriterAgent"

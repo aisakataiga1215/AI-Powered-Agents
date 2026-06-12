@@ -152,6 +152,7 @@ def test_project_create_defaults_and_status_enum():
     )
     assert payload.output_language == "en"
     assert payload.report_depth == "standard"
+    assert payload.analysis_purpose == "understand_industry"
     assert ProjectStatus("created") is ProjectStatus.created
 
 

@@ -125,7 +125,7 @@ def test_get_project_returns_project_response_shape(client):
     assert body["project_id"] == project_id
     assert body["industry"] == "AI Coding Tools"
     assert body["goals"] == ["swot"]
-    assert body["analysis_purpose"] == "unknown"
+    assert body["analysis_purpose"] == "understand_industry"
     assert body["analysis_frameworks"] == ["swot"]
     assert body["status"] == "created"
 

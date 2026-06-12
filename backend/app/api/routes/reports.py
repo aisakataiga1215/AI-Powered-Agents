@@ -56,8 +56,13 @@ def patch_project_report(
         "strategic_recommendations",
         "framework_sections",
         "custom_dimension_sections",
+        "custom_dimension_analysis",
         "purpose_sections",
         "competitor_scores",
+        "opportunity_score",
+        "market_background",
+        "feature_insights",
+        "operation_monetization",
         "analysis_objective",
         "competitor_selection_rationale",
     }

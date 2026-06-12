@@ -48,7 +48,7 @@ export function ScoringMatrix({ competitorScores, purposeSections }: Props) {
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-gray-900">产品选择评分</h2>
-            <p className="mt-1 text-xs text-gray-500">按场景适配、功能、价格、风险和证据充分度加权计算。</p>
+            <p className="mt-1 text-xs text-gray-500">按场景适配、核心能力、价格价值、成熟度和风险控制加权计算。</p>
           </div>
           <span className="text-xs text-gray-500">{names.length} 个产品</span>
         </div>

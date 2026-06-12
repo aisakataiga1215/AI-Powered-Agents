@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — Purpose-Aware Reports, QA Hardening, and Human Review UX
+
+### Purpose-Aware Reports
+
+- Updated analysis purpose handling to four explicit intents: build product, choose product, understand industry, and analyze growth/ops.
+- Purpose now controls default frameworks, purpose-specific report tabs, scoring sections, PM sections, and print/PDF output.
+- Restored product-selection scoring with weighted dimensions, recommendation ranking, decision matrix, and "who should avoid" guidance.
+- Added build-product OpportunityScore with dimensions, evidence, confidence, and Chinese opportunity guidance.
+- Restored custom dimension analysis with score, evidence, confidence, and dedicated tabs.
+
+### Agent and QA Improvements
+
+- CollectorAgent can run an LLM relevance review to keep weak or unrelated sources out of Analyst input while preserving them in the source list.
+- QAAgent now includes LLM advisory review with token tracking, purpose checks, custom-dimension checks, PM-section checks, and before/after rework comparison metrics.
+- QA advisory LLM findings are low severity only, so deterministic checks continue to control pass/fail.
+- WriterAgent now sends full structured knowledge to the writer path instead of summarizing or truncating it before generation.
+
+### Report UX and Print/PDF
+
+- Added Sources tab and synchronized purpose-specific sections with the print/PDF page.
+- Reworked human report correction so common fields are edited as normal text or key/value lines instead of raw JSON; advanced JSON remains behind an explicit advanced section.
+- Sanitized leaked function-calling `<parameter...>` fragments in report title/objective/markdown display, backend read/write paths, and print/PDF rendering.
+- Localized structured opportunity labels such as opportunity summary, market gaps, features to learn from, pitfalls, MVP direction, and confidence labels.
+- Updated feature comparison to capability buckets so rows compare horizontally across competitors instead of showing mostly one-off feature names.
+
+### Validation
+
+- Backend compile check passes with `E:\miniforge\envs\common\python.exe -m compileall backend/app`.
+- Frontend `pnpm lint` and `pnpm build` pass.
+- Chrome DevTools MCP verified the report and print pages for `proj_b73c9e40c843`.
+
+---
+
 ## [Unreleased] — LLM Provider Switch and Function Calling
 
 ### LLM Provider

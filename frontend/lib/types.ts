@@ -35,7 +35,6 @@ export type IndustryType =
   | 'general'
 
 export type AnalysisPurpose =
-  | 'unknown'
   | 'build_product'
   | 'choose_product'
   | 'understand_industry'
@@ -67,6 +66,12 @@ export interface CompetitorScore {
   scoring_note?: string
 }
 
+export interface OpportunityScore {
+  overall_score: number
+  dimensions: DimensionScore[]
+  scoring_note?: string
+}
+
 export interface CompetitorInput {
   name: string
   url: string
@@ -93,7 +98,7 @@ export interface CompetitorInProject {
 export interface ProjectCreate {
   industry: string
   industry_type?: IndustryType
-  analysis_purpose?: AnalysisPurpose
+  analysis_purpose: AnalysisPurpose
   analysis_frameworks?: AnalysisFramework[]
   custom_dimensions?: string[]
   competitors: CompetitorInput[]
@@ -372,8 +377,13 @@ export interface CompetitiveReport {
   selected_report_tabs?: string[]
   framework_sections?: Record<string, unknown>
   custom_dimension_sections?: Record<string, unknown>
+  custom_dimension_analysis?: Record<string, DimensionScore>
   purpose_sections?: Record<string, unknown>
   competitor_scores?: Record<string, CompetitorScore>
+  opportunity_score?: OpportunityScore | null
+  market_background?: Record<string, unknown> | null
+  feature_insights?: Record<string, unknown> | null
+  operation_monetization?: Record<string, unknown> | null
   analysis_objective?: string
   competitor_selection_rationale?: Record<string, string>
 }
@@ -403,6 +413,19 @@ export interface QAResult {
   created_at?: string
 }
 
+export interface QAComparison {
+  issues_before: number
+  issues_high_before: number
+  qa_score_before: number
+  citation_coverage_before: number
+  issues_after: number
+  issues_high_after: number
+  qa_score_after: number
+  citation_coverage_after: number
+  claims_affected: number
+  rework_target?: string
+}
+
 /**
  * Shape of the QAAgent trace output stored in AgentRun.output.
  * Extends QAResult fields with pre-computed severity breakdown counts.
@@ -418,4 +441,7 @@ export interface QATraceOutput {
   low_severity_count: number
   blocking_issue_count: number
   advisory_count: number
+  llm_review_status?: string
+  llm_issue_count?: number
+  qa_comparison?: QAComparison | null
 }
