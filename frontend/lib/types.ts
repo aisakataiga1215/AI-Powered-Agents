@@ -35,10 +35,13 @@ export type IndustryType =
   | 'general'
 
 export type AnalysisPurpose =
-  | 'build_similar_product'
-  | 'choose_product_to_use'
-  | 'market_research'
-  | 'competitor_success_analysis'
+  | 'unknown'
+  | 'build_product'
+  | 'choose_product'
+  | 'understand_industry'
+  | 'analyze_growth_ops'
+
+export type AnalysisFramework = 'swot' | 'three_c' | 'aarrr'
 
 export type CompetitorRole =
   | 'direct_competitor'
@@ -51,9 +54,17 @@ export type SourceConfidence = 'high' | 'medium' | 'low' | 'unknown'
 export interface DimensionScore {
   dimension_name: string
   score: number
+  weight?: number
   rationale: string
   evidence: string[]
   source_confidence: SourceConfidence
+}
+
+export interface CompetitorScore {
+  competitor_name: string
+  overall_score: number
+  dimensions: DimensionScore[]
+  scoring_note?: string
 }
 
 export interface CompetitorInput {
@@ -83,6 +94,7 @@ export interface ProjectCreate {
   industry: string
   industry_type?: IndustryType
   analysis_purpose?: AnalysisPurpose
+  analysis_frameworks?: AnalysisFramework[]
   custom_dimensions?: string[]
   competitors: CompetitorInput[]
   goals: string[]
@@ -97,6 +109,7 @@ export interface ProjectResponse {
   industry: string
   industry_type?: string
   analysis_purpose?: string
+  analysis_frameworks?: string[]
   custom_dimensions?: string[]
   goals: string[]
   status: ProjectStatus
@@ -355,6 +368,12 @@ export interface CompetitiveReport {
   markdown_content: string
   created_at: string
   analysis_purpose?: string
+  analysis_frameworks?: string[]
+  selected_report_tabs?: string[]
+  framework_sections?: Record<string, unknown>
+  custom_dimension_sections?: Record<string, unknown>
+  purpose_sections?: Record<string, unknown>
+  competitor_scores?: Record<string, CompetitorScore>
   analysis_objective?: string
   competitor_selection_rationale?: Record<string, string>
 }

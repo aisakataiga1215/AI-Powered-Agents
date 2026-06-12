@@ -13,13 +13,13 @@
  */
 
 import Link from 'next/link'
-import { use, useMemo, useState } from 'react'
+import { use, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { api } from '@/lib/api'
-import type { AgentRun, CompetitorInProject, CompetitiveReport, QAResult, QATraceOutput, SourceEvidence } from '@/lib/types'
+import type { AgentRun, Claim, CompetitorInProject, CompetitiveReport, CompetitorKnowledge, CompetitorScore, QAResult, QATraceOutput, SourceEvidence } from '@/lib/types'
 import { useSourcePanel } from '@/lib/store'
 import { formatDateTime } from '@/lib/formatDateTime'
 
@@ -29,6 +29,7 @@ import type { DroppedCompetitor } from '@/components/report-viewer/DroppedCompet
 import { FeatureComparisonTable } from '@/components/report-viewer/FeatureComparisonTable'
 import { InsufficientDataView } from '@/components/report-viewer/InsufficientDataView'
 import { PricingComparisonTable } from '@/components/report-viewer/PricingComparisonTable'
+import { ScoringMatrix } from '@/components/report-viewer/ScoringMatrix'
 import { SWOTView } from '@/components/report-viewer/SWOTView'
 import { TabsBar, type TabItem } from '@/components/report-viewer/TabsBar'
 import { QaStatusBanner } from '@/components/qa/QaStatusBanner'
@@ -39,7 +40,7 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-type TabValue = 'summary' | 'pricing' | 'features' | 'swot' | 'recommendations' | 'markdown' | 'qa'
+type TabValue = string
 
 export default function ReportPage({ params }: PageProps) {
   const { id } = use(params)
@@ -63,7 +64,7 @@ export default function ReportPage({ params }: PageProps) {
   })
 
   const correctionMutation = useMutation({
-    mutationFn: (payload: { title: string; markdown_content: string }) =>
+    mutationFn: (payload: Partial<CompetitiveReport>) =>
       api.patchReport(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['report', id] })
@@ -98,14 +99,7 @@ export default function ReportPage({ params }: PageProps) {
     const highCount   = allIssues.filter((i) => i.severity === 'high').length
     const mediumCount = allIssues.filter((i) => i.severity === 'medium').length
     const lowCount    = allIssues.filter((i) => i.severity === 'low').length
-    const baseTabs: TabItem[] = [
-      { value: 'summary', label: '摘要' },
-      { value: 'pricing', label: '定价' },
-      { value: 'features', label: '功能' },
-      { value: 'swot', label: 'SWOT' },
-      { value: 'recommendations', label: '建议' },
-      { value: 'markdown', label: 'Markdown' },
-      {
+    const qaTab: TabItem = {
         value: 'qa',
         label: 'QA 结果',
         badge:
@@ -126,10 +120,29 @@ export default function ReportPage({ params }: PageProps) {
               通过
             </span>
           ) : null,
-      },
-    ]
-    return baseTabs
-  }, [qaResult])
+      }
+    const report = reportQuery.data
+    const selected = report?.selected_report_tabs?.length
+      ? report.selected_report_tabs
+      : buildSelectedReportTabs(
+        projectQuery.data?.goals ?? [],
+        projectQuery.data?.analysis_frameworks ?? report?.analysis_frameworks ?? ['swot'],
+        projectQuery.data?.custom_dimensions ?? []
+      )
+    return ensureStandardTabs(
+      selected,
+      report?.custom_dimension_sections,
+      report?.analysis_purpose,
+      report?.competitor_scores
+    ).map((value) => {
+      if (value === 'qa') return qaTab
+      return { value, label: tabLabel(value) }
+    })
+  }, [projectQuery.data, qaResult, reportQuery.data])
+
+  const currentTab = tabs.some((tab) => tab.value === activeTab)
+    ? activeTab
+    : tabs[0]?.value ?? activeTab
 
   if (reportQuery.isLoading) {
     return <ReportSkeleton id={id} />
@@ -232,10 +245,10 @@ export default function ReportPage({ params }: PageProps) {
           />
         ) : (
           <>
-            <TabsBar items={tabs} value={activeTab} onChange={(v) => setActiveTab(v as TabValue)} />
+            <TabsBar items={tabs} value={currentTab} onChange={(v) => setActiveTab(v as TabValue)} />
 
         <section role="tabpanel" className="pt-2">
-          {activeTab === 'summary' && (
+          {currentTab === 'summary' && (
             <>
               {(report.analysis_objective || (report.competitor_selection_rationale && Object.keys(report.competitor_selection_rationale).length > 0)) && (
                 <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
@@ -258,36 +271,75 @@ export default function ReportPage({ params }: PageProps) {
               />
             </>
           )}
-          {activeTab === 'pricing' && (
+          {currentTab === 'pricing' && (
             <PricingComparisonTable
               data={normalizeStringMap(report.pricing_comparison)}
               emptyMessage="暂无定价数据。"
             />
           )}
-          {activeTab === 'features' && (
+          {currentTab === 'pricing_analysis' && (
+            <PricingComparisonTable
+              data={normalizeStringMap(report.pricing_comparison)}
+              emptyMessage="暂无定价数据。"
+            />
+          )}
+          {currentTab === 'features' && (
             <FeatureComparisonTable
               data={normalizeStringMap(report.feature_comparison)}
               emptyMessage="暂无功能数据。"
             />
           )}
-          {activeTab === 'swot' && (
+          {currentTab === 'feature_comparison' && (
+            <FeatureComparisonTable
+              data={normalizeStringMap(report.feature_comparison)}
+              emptyMessage="暂无功能数据。"
+            />
+          )}
+          {currentTab === 'user_personas' && (
+            <PersonaTab competitors={report.competitor_overview ?? []} />
+          )}
+          {currentTab === 'user_reviews' && (
+            <UserReviewsTab sourceList={report.source_list ?? []} />
+          )}
+          {currentTab === 'sources' && (
+            <SourcesTab sourceList={report.source_list ?? []} />
+          )}
+          {currentTab === 'swot' && (
             <SWOTView
               swotComparison={report.swot_comparison ?? {}}
               competitorOverview={report.competitor_overview ?? []}
               sourceList={report.source_list ?? []}
             />
           )}
-          {activeTab === 'recommendations' && (
+          {currentTab === 'three_c' && (
+            <StructuredSection data={report.framework_sections?.three_c} emptyMessage="暂无 3C 分析。" />
+          )}
+          {currentTab === 'aarrr' && (
+            <StructuredSection data={report.framework_sections?.aarrr} emptyMessage="暂无 AARRR 分析。" />
+          )}
+          {currentTab.startsWith('custom_dimension:') && (
+            <StructuredSection
+              data={report.custom_dimension_sections?.[currentTab.slice('custom_dimension:'.length)]}
+              emptyMessage="暂无足够证据。"
+            />
+          )}
+          {currentTab === 'scoring' && (
+            <ScoringMatrix
+              competitorScores={report.competitor_scores}
+              purposeSections={report.purpose_sections}
+            />
+          )}
+          {currentTab === 'recommendations' && (
             <ClaimList
               claims={report.strategic_recommendations}
               sourceList={report.source_list}
               emptyMessage="暂无战略建议。"
             />
           )}
-          {activeTab === 'markdown' && (
+          {currentTab === 'markdown' && (
             <MarkdownTab markdown={report.markdown_content} sourceList={report.source_list} />
           )}
-          {activeTab === 'qa' && (
+          {currentTab === 'qa' && (
             <>
               {qaResult ? (
                 <QAResultBanner result={qaResult} />
@@ -354,10 +406,82 @@ function HumanCorrectionPanel({
   isPending: boolean
   error: unknown
   onCancel: () => void
-  onSave: (payload: { title: string; markdown_content: string }) => void
+  onSave: (payload: Partial<CompetitiveReport>) => void
 }) {
   const [title, setTitle] = useState(report.title)
-  const [markdown, setMarkdown] = useState(report.markdown_content ?? '')
+  const [objective, setObjective] = useState(report.analysis_objective ?? '')
+  const [summary, setSummary] = useState(claimsToLines(report.executive_summary))
+  const [recommendations, setRecommendations] = useState(claimsToLines(report.strategic_recommendations))
+  const [competitorOverview, setCompetitorOverview] = useState(toPrettyJson(report.competitor_overview ?? []))
+  const [features, setFeatures] = useState(toPrettyJson(report.feature_comparison ?? {}))
+  const [pricing, setPricing] = useState(toPrettyJson(report.pricing_comparison ?? {}))
+  const [personas, setPersonas] = useState(toPrettyJson(report.user_persona_comparison ?? {}))
+  const [swot, setSwot] = useState(toPrettyJson(report.swot_comparison ?? {}))
+  const [frameworks, setFrameworks] = useState(toPrettyJson(report.framework_sections ?? {}))
+  const [customDimensions, setCustomDimensions] = useState(toPrettyJson(report.custom_dimension_sections ?? {}))
+  const [competitorScores, setCompetitorScores] = useState(toPrettyJson(report.competitor_scores ?? {}))
+  const [purposeSections, setPurposeSections] = useState(toPrettyJson(report.purpose_sections ?? {}))
+  const [rationale, setRationale] = useState(toPrettyJson(report.competitor_selection_rationale ?? {}))
+  const [parseError, setParseError] = useState<string | null>(null)
+  const markdownPreview = useMemo(
+    () =>
+      buildCorrectionMarkdownPreview({
+        title,
+        objective,
+        summary,
+        recommendations,
+        competitorOverview,
+        features,
+        pricing,
+        personas,
+        swot,
+        frameworks,
+        customDimensions,
+        competitorScores,
+        purposeSections,
+        rationale,
+      }),
+    [
+      title,
+      objective,
+      summary,
+      recommendations,
+      competitorOverview,
+      features,
+      pricing,
+      personas,
+      swot,
+      frameworks,
+      customDimensions,
+      competitorScores,
+      purposeSections,
+      rationale,
+    ]
+  )
+
+  const save = () => {
+    try {
+      setParseError(null)
+      onSave({
+        title,
+        analysis_objective: objective,
+        executive_summary: mergeClaimLines(report.executive_summary, summary),
+        strategic_recommendations: mergeClaimLines(report.strategic_recommendations, recommendations),
+        competitor_overview: parseJsonField<CompetitorKnowledge[]>(competitorOverview, '竞品画像'),
+        feature_comparison: parseJsonField<Record<string, string>>(features, '功能对比'),
+        pricing_comparison: parseJsonField<Record<string, string>>(pricing, '定价模式'),
+        user_persona_comparison: parseJsonField<Record<string, unknown>>(personas, '用户画像对比'),
+        swot_comparison: parseJsonField<Record<string, unknown>>(swot, 'SWOT'),
+        framework_sections: parseJsonField<Record<string, unknown>>(frameworks, '分析框架'),
+        custom_dimension_sections: parseJsonField<Record<string, unknown>>(customDimensions, '自定义维度'),
+        competitor_scores: parseJsonField<Record<string, CompetitorScore>>(competitorScores, '产品选择评分'),
+        purpose_sections: parseJsonField<Record<string, unknown>>(purposeSections, '选择建议'),
+        competitor_selection_rationale: parseJsonField<Record<string, string>>(rationale, '竞品选择说明'),
+      })
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : 'JSON 格式不正确。')
+    }
+  }
 
   return (
     <section className="mt-3 rounded-lg border border-blue-200 bg-white p-4 shadow-sm">
@@ -371,24 +495,46 @@ function HumanCorrectionPanel({
           />
         </label>
         <label className="grid gap-1 text-sm">
-          <span className="font-medium text-gray-800">Markdown 正文</span>
+          <span className="font-medium text-gray-800">分析目标说明</span>
           <textarea
-            value={markdown}
-            onChange={(event) => setMarkdown(event.target.value)}
-            rows={10}
-            className="min-h-64 rounded-md border border-gray-300 px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            value={objective}
+            onChange={(event) => setObjective(event.target.value)}
+            rows={2}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm leading-relaxed outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
           />
         </label>
+        <EditableTextBlock label="摘要" value={summary} onChange={setSummary} />
+        <EditableTextBlock label="建议" value={recommendations} onChange={setRecommendations} />
+        <EditableJsonBlock label="竞品画像 / 用户画像" value={competitorOverview} onChange={setCompetitorOverview} rows={12} />
+        <EditableJsonBlock label="功能对比" value={features} onChange={setFeatures} />
+        <EditableJsonBlock label="定价模式" value={pricing} onChange={setPricing} />
+        <EditableJsonBlock label="用户画像对比" value={personas} onChange={setPersonas} />
+        <EditableJsonBlock label="SWOT" value={swot} onChange={setSwot} rows={8} />
+        <EditableJsonBlock label="分析框架" value={frameworks} onChange={setFrameworks} rows={8} />
+        <EditableJsonBlock label="自定义维度" value={customDimensions} onChange={setCustomDimensions} rows={8} />
+        <EditableJsonBlock label="产品选择评分" value={competitorScores} onChange={setCompetitorScores} rows={8} />
+        <EditableJsonBlock label="选择建议 / 不建议人群" value={purposeSections} onChange={setPurposeSections} rows={8} />
+        <EditableJsonBlock label="竞品选择说明" value={rationale} onChange={setRationale} />
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium text-gray-800">Markdown 正文</span>
+          <textarea
+            value={markdownPreview}
+            readOnly
+            rows={10}
+            className="min-h-40 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs leading-relaxed text-gray-500"
+          />
+          <span className="text-xs text-gray-500">Markdown 会根据上面的结构化内容自动重新生成。</span>
+        </label>
       </div>
-      {Boolean(error) && (
+      {Boolean(parseError || error) && (
         <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-          {error instanceof Error ? error.message : '保存失败。'}
+          {parseError || (error instanceof Error ? error.message : '保存失败。')}
         </p>
       )}
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => onSave({ title, markdown_content: markdown })}
+          onClick={save}
           disabled={isPending || !title.trim()}
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
@@ -404,6 +550,146 @@ function HumanCorrectionPanel({
       </div>
     </section>
   )
+}
+
+function EditableTextBlock({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="grid gap-1 text-sm">
+      <span className="font-medium text-gray-800">{label}</span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={4}
+        className="rounded-md border border-gray-300 px-3 py-2 text-sm leading-relaxed outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+      />
+      <span className="text-xs text-gray-500">每行一条，保存时会保留原有引用和置信度。</span>
+    </label>
+  )
+}
+
+function EditableJsonBlock({
+  label,
+  value,
+  onChange,
+  rows = 6,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  rows?: number
+}) {
+  return (
+    <label className="grid gap-1 text-sm">
+      <span className="font-medium text-gray-800">{label}</span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={rows}
+        className="rounded-md border border-gray-300 px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+      />
+    </label>
+  )
+}
+
+function claimsToLines(claims: Claim[] | undefined): string {
+  return (claims ?? []).map((claim) => claim.text).join('\n')
+}
+
+function mergeClaimLines(existing: Claim[] | undefined, lines: string): Claim[] {
+  return lines
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((text, index) => ({
+      ...(existing?.[index] ?? { evidence: [], confidence: 'medium', is_hypothesis: true }),
+      text,
+    }))
+}
+
+function toPrettyJson(value: unknown): string {
+  return JSON.stringify(value ?? {}, null, 2)
+}
+
+function parseJsonField<T>(value: string, label: string): T {
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    throw new Error(`${label} 的 JSON 格式不正确。`)
+  }
+}
+
+function buildCorrectionMarkdownPreview({
+  title,
+  objective,
+  summary,
+  recommendations,
+  competitorOverview,
+  features,
+  pricing,
+  personas,
+  swot,
+  frameworks,
+  customDimensions,
+  competitorScores,
+  purposeSections,
+  rationale,
+}: {
+  title: string
+  objective: string
+  summary: string
+  recommendations: string
+  competitorOverview: string
+  features: string
+  pricing: string
+  personas: string
+  swot: string
+  frameworks: string
+  customDimensions: string
+  competitorScores: string
+  purposeSections: string
+  rationale: string
+}): string {
+  const lines = [`# ${title || 'Competitive Analysis Report'}`, '']
+  appendTextSection(lines, 'Analysis Objective', objective)
+  appendLineListSection(lines, 'Executive Summary', summary)
+  appendJsonPreviewSection(lines, 'Competitor Overview', competitorOverview)
+  appendJsonPreviewSection(lines, 'Feature Comparison', features)
+  appendJsonPreviewSection(lines, 'Pricing Comparison', pricing)
+  appendJsonPreviewSection(lines, 'User Personas', personas)
+  appendJsonPreviewSection(lines, 'SWOT', swot)
+  appendJsonPreviewSection(lines, 'Analysis Frameworks', frameworks)
+  appendJsonPreviewSection(lines, 'Custom Dimensions', customDimensions)
+  appendJsonPreviewSection(lines, 'Product Selection Scores', competitorScores)
+  appendJsonPreviewSection(lines, 'Product Selection Guidance', purposeSections)
+  appendJsonPreviewSection(lines, 'Competitor Selection Rationale', rationale)
+  appendLineListSection(lines, 'Strategic Recommendations', recommendations)
+  return lines.join('\n').trim()
+}
+
+function appendTextSection(lines: string[], title: string, value: string) {
+  const text = value.trim()
+  if (!text) return
+  lines.push(`## ${title}`, '', text, '')
+}
+
+function appendLineListSection(lines: string[], title: string, value: string) {
+  const items = value.split('\n').map((line) => line.trim()).filter(Boolean)
+  if (items.length === 0) return
+  lines.push(`## ${title}`, '', ...items.map((item) => `- ${item}`), '')
+}
+
+function appendJsonPreviewSection(lines: string[], title: string, value: string) {
+  const text = value.trim()
+  if (!text || text === '{}' || text === '[]') return
+  lines.push(`## ${title}`, '', text, '')
 }
 
 function SourceCountChip({ sourceList }: { sourceList: SourceEvidence[] }) {
@@ -595,6 +881,215 @@ function normalizeStringMap(input: unknown): Record<string, string> {
     }
   }
   return out
+}
+
+function buildSelectedReportTabs(goals: string[], frameworks: string[], customDimensions: string[]): string[] {
+  const tabs = ['summary']
+  for (const value of goals) {
+    if (!tabs.includes(value)) tabs.push(value)
+  }
+  for (const value of frameworks.length > 0 ? frameworks : ['swot']) {
+    if (!tabs.includes(value)) tabs.push(value)
+  }
+  for (const dim of customDimensions) {
+    const key = `custom_dimension:${dim}`
+    if (!tabs.includes(key)) tabs.push(key)
+  }
+  tabs.push('recommendations')
+  tabs.push('sources')
+  tabs.push('qa')
+  return tabs
+}
+
+function ensureStandardTabs(
+  tabs: string[],
+  customDimensionSections?: Record<string, unknown>,
+  analysisPurpose?: string,
+  competitorScores?: Record<string, unknown>
+): string[] {
+  let next = [...tabs]
+  for (const dim of Object.keys(customDimensionSections ?? {})) {
+    const key = `custom_dimension:${dim}`
+    if (!next.includes(key)) {
+      const qaIndex = next.indexOf('qa')
+      const sourcesIndex = next.indexOf('sources')
+      const insertAt =
+        sourcesIndex !== -1 ? sourcesIndex : qaIndex !== -1 ? qaIndex : next.length
+      next = [...next.slice(0, insertAt), key, ...next.slice(insertAt)]
+    }
+  }
+  if (!next.includes('recommendations')) {
+    const qaIndex = next.indexOf('qa')
+    const sourcesIndex = next.indexOf('sources')
+    const insertAt =
+      sourcesIndex !== -1 ? sourcesIndex : qaIndex !== -1 ? qaIndex : next.length
+    next = [...next.slice(0, insertAt), 'recommendations', ...next.slice(insertAt)]
+  }
+  const hasScoringData =
+    analysisPurpose === 'choose_product' ||
+    Object.keys(competitorScores ?? {}).length > 0
+  if (!next.includes('scoring') && hasScoringData) {
+    const recommendationsIndex = next.indexOf('recommendations')
+    const insertAt = recommendationsIndex !== -1 ? recommendationsIndex : next.length
+    next = [...next.slice(0, insertAt), 'scoring', ...next.slice(insertAt)]
+  }
+  if (!next.includes('sources')) {
+    const qaIndex = next.indexOf('qa')
+    if (qaIndex === -1) return [...next, 'sources']
+    next = [...next.slice(0, qaIndex), 'sources', ...next.slice(qaIndex)]
+  }
+  return next
+}
+
+function tabLabel(value: string): string {
+  if (value === 'summary') return '摘要'
+  if (value === 'feature_comparison' || value === 'features') return '功能对比'
+  if (value === 'pricing_analysis' || value === 'pricing') return '定价模式'
+  if (value === 'user_personas') return '用户画像'
+  if (value === 'user_reviews') return '用户评价'
+  if (value === 'swot') return 'SWOT'
+  if (value === 'three_c') return '3C'
+  if (value === 'aarrr') return 'AARRR'
+  if (value === 'scoring') return '评分'
+  if (value === 'recommendations') return '建议'
+  if (value === 'sources') return 'Sources'
+  if (value.startsWith('custom_dimension:')) return value.slice('custom_dimension:'.length)
+  return value
+}
+
+function PersonaTab({ competitors }: { competitors: CompetitorKnowledge[] }) {
+  const withPersonas = competitors.filter((c) => (c.user_personas?.length ?? 0) > 0)
+  if (withPersonas.length === 0) {
+    return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">暂无用户画像数据。</p>
+  }
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {withPersonas.map((comp) => (
+        <div key={comp.competitor_id ?? comp.competitor_name} className="rounded-lg border border-gray-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-gray-900">{comp.competitor_name}</h3>
+          <div className="mt-3 space-y-3">
+            {comp.user_personas.map((persona, index) => (
+              <div key={`${persona.name}-${index}`} className="text-sm">
+                <div className="font-medium text-gray-900">{persona.name}</div>
+                <p className="mt-1 text-gray-600">{persona.description}</p>
+                {(persona.needs?.length ?? 0) > 0 && (
+                  <p className="mt-1 text-xs text-gray-500">需求：{persona.needs.join('、')}</p>
+                )}
+                {(persona.pain_points?.length ?? 0) > 0 && (
+                  <p className="mt-1 text-xs text-gray-500">痛点：{persona.pain_points.join('、')}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function UserReviewsTab({ sourceList }: { sourceList: SourceEvidence[] }) {
+  const manualSources = sourceList.filter((source) =>
+    source.data_source === 'manual' || String(source.source_type).includes('manual')
+  )
+  if (manualSources.length === 0) {
+    return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">暂无研究输入。</p>
+  }
+  return (
+    <div className="space-y-3">
+      {manualSources.map((source) => (
+        <article key={source.source_id} className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="text-sm font-semibold text-gray-900">{source.title || '研究输入'}</div>
+          <div className="mt-1 text-xs text-gray-500">{source.competitor_name || '所有竞品'}</div>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{source.content || source.snippet}</p>
+        </article>
+      ))}
+    </div>
+  )
+}
+
+function SourcesTab({ sourceList }: { sourceList: SourceEvidence[] }) {
+  if (sourceList.length === 0) {
+    return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">暂无来源链接。</p>
+  }
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Sources</h2>
+          <p className="mt-1 text-xs text-gray-500">报告引用和采集到的全部来源链接。</p>
+        </div>
+        <span className="text-xs text-gray-500">{sourceList.length} 个来源</span>
+      </div>
+      <ol className="space-y-3">
+        {sourceList.map((source, index) => (
+          <li key={source.source_id} className="rounded-lg border border-gray-200 p-3">
+            <div className="flex flex-wrap items-start gap-2">
+              <span className="mt-0.5 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-500">
+                {index + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="break-words text-sm font-semibold text-blue-700 underline hover:text-blue-800"
+                >
+                  {source.title || source.url}
+                </a>
+                <p className="mt-1 break-all font-mono text-[11px] text-gray-500">{source.url}</p>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                  <span>{source.competitor_name || '未标注竞品'}</span>
+                  <span>{source.source_type}</span>
+                  <span>{source.data_source ?? 'unknown'}</span>
+                  <span>可靠性 {source.reliability}</span>
+                  <span>{formatDateTime(source.retrieved_at)}</span>
+                </div>
+                {(source.snippet || source.content) && (
+                  <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-gray-600">
+                    {source.snippet || source.content}
+                  </p>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+function StructuredSection({ data, emptyMessage }: { data: unknown; emptyMessage: string }) {
+  if (!data || (typeof data === 'object' && Object.keys(data as Record<string, unknown>).length === 0)) {
+    return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">{emptyMessage}</p>
+  }
+  return <div className="space-y-3">{renderStructuredValue(data)}</div>
+}
+
+function renderStructuredValue(value: unknown): ReactNode {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? (
+      <ul className="space-y-2">
+        {value.map((item, index) => (
+          <li key={index} className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700">
+            {renderStructuredValue(item)}
+          </li>
+        ))}
+      </ul>
+    ) : null
+  }
+  if (value && typeof value === 'object') {
+    return (
+      <div className="space-y-3">
+        {Object.entries(value as Record<string, unknown>).map(([key, child]) => (
+          <section key={key} className="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-gray-900">{key}</h3>
+            <div className="mt-2 text-sm text-gray-700">{renderStructuredValue(child)}</div>
+          </section>
+        ))}
+      </div>
+    )
+  }
+  return <span>{String(value)}</span>
 }
 
 function computeDroppedCompetitors(

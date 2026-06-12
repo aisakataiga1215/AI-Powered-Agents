@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { use, useMemo } from 'react'
+import { use, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
@@ -13,6 +13,7 @@ import type {
   CompetitiveReport,
   CompetitorCollectionStats,
   CompetitorKnowledge,
+  CompetitorScore,
   QAResult,
   QATraceOutput,
   SourceEvidence,
@@ -97,6 +98,25 @@ export default function PrintPage({ params }: PageProps) {
   const hasSwot =
     Object.keys(report.swot_comparison ?? {}).length > 0 ||
     (report.competitor_overview ?? []).some((c) => c.swot)
+  const selectedTabs = report.selected_report_tabs?.length
+    ? ensureStandardTabs(
+      report.selected_report_tabs,
+      report.custom_dimension_sections,
+      report.analysis_purpose,
+      report.competitor_scores
+    )
+    : ensureStandardTabs(
+      buildSelectedReportTabs(
+        projectQuery.data?.goals ?? [],
+        projectQuery.data?.analysis_frameworks ?? report.analysis_frameworks ?? ['swot'],
+        projectQuery.data?.custom_dimensions ?? []
+      ),
+      report.custom_dimension_sections,
+      report.analysis_purpose,
+      report.competitor_scores
+    )
+  const hasTab = (value: string, legacyValue?: string) =>
+    selectedTabs.includes(value) || (legacyValue ? selectedTabs.includes(legacyValue) : false)
 
   return (
     <div className="bg-white">
@@ -165,7 +185,7 @@ export default function PrintPage({ params }: PageProps) {
         ) : (
           <>
         {/* Executive Summary */}
-        {(report.executive_summary?.length ?? 0) > 0 && (
+        {hasTab('summary') && (report.executive_summary?.length ?? 0) > 0 && (
           <PrintSection title="执行摘要">
             <PrintClaimList claims={report.executive_summary} citationIndex={citationIndex} />
           </PrintSection>
@@ -186,7 +206,7 @@ export default function PrintPage({ params }: PageProps) {
         )}
 
         {/* Feature Comparison */}
-        {Object.keys(report.feature_comparison ?? {}).length > 0 && (
+        {hasTab('feature_comparison', 'features') && Object.keys(report.feature_comparison ?? {}).length > 0 && (
           <PrintSection title="功能对比" breakBefore>
             <FeatureComparisonTable
               data={normalizeStringMap(report.feature_comparison)}
@@ -196,7 +216,7 @@ export default function PrintPage({ params }: PageProps) {
         )}
 
         {/* Pricing Comparison */}
-        {Object.keys(report.pricing_comparison ?? {}).length > 0 && (
+        {hasTab('pricing_analysis', 'pricing') && Object.keys(report.pricing_comparison ?? {}).length > 0 && (
           <PrintSection title="定价对比" breakBefore>
             <PricingComparisonTable
               data={normalizeStringMap(report.pricing_comparison)}
@@ -206,14 +226,20 @@ export default function PrintPage({ params }: PageProps) {
         )}
 
         {/* User Persona Comparison */}
-        {(report.competitor_overview ?? []).some((c) => (c.user_personas?.length ?? 0) > 0) && (
+        {hasTab('user_personas') && (report.competitor_overview ?? []).some((c) => (c.user_personas?.length ?? 0) > 0) && (
           <PrintSection title="用户画像对比" breakBefore>
             <PrintPersonaSection competitors={report.competitor_overview} />
           </PrintSection>
         )}
 
+        {hasTab('user_reviews') && (
+          <PrintSection title="用户评价" breakBefore>
+            <PrintUserReviewsSection sourceList={report.source_list ?? []} />
+          </PrintSection>
+        )}
+
         {/* SWOT Analysis */}
-        {hasSwot && (
+        {hasTab('swot') && hasSwot && (
           <PrintSection title="SWOT 分析" breakBefore>
             <PrintSWOTSection
               swotComparison={report.swot_comparison ?? {}}
@@ -223,8 +249,40 @@ export default function PrintPage({ params }: PageProps) {
           </PrintSection>
         )}
 
+        {hasTab('three_c') && (
+          <PrintSection title="3C 分析" breakBefore>
+            <PrintStructuredSection data={report.framework_sections?.three_c} emptyMessage="暂无 3C 分析。" />
+          </PrintSection>
+        )}
+
+        {hasTab('aarrr') && (
+          <PrintSection title="AARRR 分析" breakBefore>
+            <PrintStructuredSection data={report.framework_sections?.aarrr} emptyMessage="暂无 AARRR 分析。" />
+          </PrintSection>
+        )}
+
+        {selectedTabs
+          .filter((tab) => tab.startsWith('custom_dimension:'))
+          .map((tab) => {
+            const dim = tab.slice('custom_dimension:'.length)
+            return (
+              <PrintSection key={tab} title={dim} breakBefore>
+                <PrintStructuredSection data={report.custom_dimension_sections?.[dim]} emptyMessage="暂无足够证据。" />
+              </PrintSection>
+            )
+          })}
+
+        {hasTab('scoring') && (
+          <PrintSection title="产品选择评分" breakBefore>
+            <PrintScoringSection
+              competitorScores={report.competitor_scores ?? {}}
+              purposeSections={report.purpose_sections ?? {}}
+            />
+          </PrintSection>
+        )}
+
         {/* Strategic Recommendations */}
-        {(report.strategic_recommendations?.length ?? 0) > 0 && (
+        {hasTab('recommendations') && (report.strategic_recommendations?.length ?? 0) > 0 && (
           <PrintSection title="战略建议">
             <PrintClaimList
               claims={report.strategic_recommendations}
@@ -234,7 +292,7 @@ export default function PrintPage({ params }: PageProps) {
         )}
 
         {/* QA Result */}
-        {qaResult && (
+        {hasTab('qa') && qaResult && (
           <PrintSection title="QA 结果">
             <PrintQAResult result={qaResult} />
           </PrintSection>
@@ -629,6 +687,132 @@ function PrintPersonaSection({ competitors }: { competitors: CompetitorKnowledge
   )
 }
 
+function PrintUserReviewsSection({ sourceList }: { sourceList: SourceEvidence[] }) {
+  const manualSources = sourceList.filter((source) =>
+    source.data_source === 'manual' || String(source.source_type).includes('manual')
+  )
+  if (manualSources.length === 0) {
+    return <p className="text-sm text-gray-500">暂无研究输入。</p>
+  }
+  return (
+    <div className="space-y-3">
+      {manualSources.map((source) => (
+        <article key={source.source_id} className="rounded border border-gray-200 p-3">
+          <div className="text-sm font-semibold text-gray-900">{source.title || '研究输入'}</div>
+          <div className="mt-1 text-xs text-gray-500">{source.competitor_name || '所有竞品'}</div>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{source.content || source.snippet}</p>
+        </article>
+      ))}
+    </div>
+  )
+}
+
+function PrintStructuredSection({ data, emptyMessage }: { data: unknown; emptyMessage: string }) {
+  if (!data || (typeof data === 'object' && Object.keys(data as Record<string, unknown>).length === 0)) {
+    return <p className="text-sm text-gray-500">{emptyMessage}</p>
+  }
+  return <div className="space-y-3">{renderPrintStructuredValue(data)}</div>
+}
+
+function PrintScoringSection({
+  competitorScores,
+  purposeSections,
+}: {
+  competitorScores: Record<string, CompetitorScore>
+  purposeSections: Record<string, unknown>
+}) {
+  const names = Object.keys(competitorScores).sort(
+    (a, b) => (competitorScores[b]?.overall_score ?? 0) - (competitorScores[a]?.overall_score ?? 0)
+  )
+  if (names.length === 0) return <p className="text-sm text-gray-500">暂无产品选择评分。</p>
+  const dimensionNames = Array.from(
+    new Set(names.flatMap((name) => competitorScores[name]?.dimensions?.map((d) => d.dimension_name) ?? []))
+  )
+  const avoid = isRecord(purposeSections.who_should_avoid) ? purposeSections.who_should_avoid : {}
+  const bestFor = isRecord(purposeSections.best_for) ? purposeSections.best_for : {}
+  return (
+    <div className="space-y-4">
+      <table className="w-full border-collapse text-xs">
+        <thead>
+          <tr className="bg-gray-50">
+            <th className="border border-gray-200 px-2 py-1 text-left">维度</th>
+            <th className="border border-gray-200 px-2 py-1 text-right">权重</th>
+            {names.map((name) => <th key={name} className="border border-gray-200 px-2 py-1">{name}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {dimensionNames.map((dimName) => {
+            const first = names.map((name) => competitorScores[name]?.dimensions?.find((d) => d.dimension_name === dimName)).find(Boolean)
+            return (
+              <tr key={dimName}>
+                <td className="border border-gray-200 px-2 py-1 font-medium">{dimName}</td>
+                <td className="border border-gray-200 px-2 py-1 text-right">{first?.weight != null ? `${Math.round(first.weight * 100)}%` : '-'}</td>
+                {names.map((name) => {
+                  const dim = competitorScores[name]?.dimensions?.find((d) => d.dimension_name === dimName)
+                  return <td key={name} className="border border-gray-200 px-2 py-1 text-center">{dim ? `${dim.score}/5` : '-'}</td>
+                })}
+              </tr>
+            )
+          })}
+          <tr className="bg-gray-50 font-semibold">
+            <td className="border border-gray-200 px-2 py-1">总分</td>
+            <td className="border border-gray-200 px-2 py-1" />
+            {names.map((name) => <td key={name} className="border border-gray-200 px-2 py-1 text-center">{competitorScores[name]?.overall_score?.toFixed(1)}</td>)}
+          </tr>
+        </tbody>
+      </table>
+      <PrintGuidance title="适合谁" data={bestFor} />
+      <PrintGuidance title="哪些人不建议选" data={avoid} />
+    </div>
+  )
+}
+
+function PrintGuidance({ title, data }: { title: string; data: Record<string, unknown> }) {
+  const entries = Object.entries(data)
+  if (entries.length === 0) return null
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-semibold text-gray-900">{title}</h3>
+      <ul className="space-y-1 text-sm">
+        {entries.map(([name, value]) => (
+          <li key={name}><span className="font-medium">{name}: </span>{String(value)}</li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function renderPrintStructuredValue(value: unknown): ReactNode {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? (
+      <ul className="space-y-2 text-sm">
+        {value.map((item, index) => (
+          <li key={index} className="rounded border border-gray-200 p-2">
+            {renderPrintStructuredValue(item)}
+          </li>
+        ))}
+      </ul>
+    ) : null
+  }
+  if (value && typeof value === 'object') {
+    return (
+      <div className="space-y-3">
+        {Object.entries(value as Record<string, unknown>).map(([key, child]) => (
+          <section key={key} className="rounded border border-gray-200 p-3">
+            <h3 className="text-sm font-semibold text-gray-900">{key}</h3>
+            <div className="mt-2 text-sm text-gray-700">{renderPrintStructuredValue(child)}</div>
+          </section>
+        ))}
+      </div>
+    )
+  }
+  return <span>{String(value)}</span>
+}
+
 // ─── SWOT section (print-safe, no interactive source panel) ───────────────────
 
 type SwotQuadrant = 'strengths' | 'weaknesses' | 'opportunities' | 'threats'
@@ -905,6 +1089,54 @@ function normalizeStringMap(input: unknown): Record<string, string> {
     }
   }
   return out
+}
+
+function buildSelectedReportTabs(goals: string[], frameworks: string[], customDimensions: string[]): string[] {
+  const tabs = ['summary']
+  for (const value of goals) {
+    if (!tabs.includes(value)) tabs.push(value)
+  }
+  for (const value of frameworks.length > 0 ? frameworks : ['swot']) {
+    if (!tabs.includes(value)) tabs.push(value)
+  }
+  for (const dim of customDimensions) {
+    const key = `custom_dimension:${dim}`
+    if (!tabs.includes(key)) tabs.push(key)
+  }
+  tabs.push('recommendations')
+  tabs.push('qa')
+  return tabs
+}
+
+function ensureStandardTabs(
+  tabs: string[],
+  customDimensionSections?: Record<string, unknown>,
+  analysisPurpose?: string,
+  competitorScores?: Record<string, unknown>
+): string[] {
+  let next = [...tabs]
+  for (const dim of Object.keys(customDimensionSections ?? {})) {
+    const key = `custom_dimension:${dim}`
+    if (!next.includes(key)) {
+      const qaIndex = next.indexOf('qa')
+      const insertAt = qaIndex === -1 ? next.length : qaIndex
+      next = [...next.slice(0, insertAt), key, ...next.slice(insertAt)]
+    }
+  }
+  if (!next.includes('recommendations')) {
+    const qaIndex = next.indexOf('qa')
+    const insertAt = qaIndex === -1 ? next.length : qaIndex
+    next = [...next.slice(0, insertAt), 'recommendations', ...next.slice(insertAt)]
+  }
+  const hasScoringData =
+    analysisPurpose === 'choose_product' ||
+    Object.keys(competitorScores ?? {}).length > 0
+  if (!next.includes('scoring') && hasScoringData) {
+    const recommendationsIndex = next.indexOf('recommendations')
+    const insertAt = recommendationsIndex === -1 ? next.length : recommendationsIndex
+    next = [...next.slice(0, insertAt), 'scoring', ...next.slice(insertAt)]
+  }
+  return next
 }
 
 // ─── SWOT helpers (ported from SWOTView.tsx) ──────────────────────────────────

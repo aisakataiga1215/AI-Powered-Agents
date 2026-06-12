@@ -33,7 +33,8 @@ class Project(Base):
     report_depth = Column(String, nullable=False, default="standard")
     data_mode = Column(String, nullable=False, default="demo")
     industry_type = Column(String, nullable=False, default="general")
-    analysis_purpose = Column(String, nullable=False, default="market_research")
+    analysis_purpose = Column(String, nullable=False, default="unknown")
+    analysis_frameworks = Column(String, nullable=False, default='["swot"]')   # JSON list
     custom_dimensions = Column(String, nullable=False, default="[]")   # JSON list
     research_inputs = Column(Text, nullable=False, default="[]")   # JSON list
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

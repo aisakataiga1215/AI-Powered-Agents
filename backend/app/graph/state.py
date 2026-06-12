@@ -24,10 +24,11 @@ class WorkflowState(TypedDict, total=False):
     project_id: str
     competitors: list[dict]  # [{"name": str, "url": str}]
     goals: list[str]
+    analysis_frameworks: list[str]
     output_language: str
     data_mode: str  # "demo" | "live_with_fallback"
     industry_type: str  # "ai_saas" | "ecommerce" | "local_services" | "social" | "general"
-    analysis_purpose: str  # decision-support purpose, e.g. "build_similar_product"
+    analysis_purpose: str  # decision-support purpose, e.g. "build_product"
     custom_dimensions: list[str]
     research_inputs: list[dict]
     sources: list[SourceEvidence]

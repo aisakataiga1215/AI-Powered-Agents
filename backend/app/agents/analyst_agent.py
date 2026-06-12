@@ -19,6 +19,7 @@ validators or by the normalizer rather than crashing the agent.
 """
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -29,7 +30,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.knowledge import CompetitorKnowledge
-from app.schemas.raw_extraction import RawCompetitorExtraction
+from app.schemas.raw_extraction import (
+    RawCompetitorExtraction,
+    RawFeature,
+    RawPricingPlan,
+)
 from app.schemas.source import SourceEvidence
 from app.schemas.trace import AgentRun, AgentRunStatus, TokenUsage
 from app.services import normalization_service, trace_service
@@ -40,6 +45,7 @@ _PROMPT_PATH = Path(__file__).parent / "prompts" / "analyst.md"
 _MAX_CONTENT_CHARS = 2000
 _RAW_LOG_CHARS = 1000
 _TRACE_PREVIEW_CHARS = 1200
+_PRICE_RE = re.compile(r"\$\s?\d+(?:\.\d+)?")
 
 
 def _preview(text: str, limit: int = _TRACE_PREVIEW_CHARS) -> str:
@@ -65,8 +71,9 @@ def _build_user_message(
     competitor_name: str,
     sources: list[SourceEvidence],
     goals: list[str],
-    rework_hints: list[str] | None,
-    analysis_purpose: str = "market_research",
+    analysis_frameworks: list[str] | None = None,
+    rework_hints: list[str] | None = None,
+    analysis_purpose: str = "unknown",
     competitor_role: str = "direct_competitor",
     custom_dimensions: list[str] | None = None,
 ) -> str:
@@ -91,24 +98,24 @@ def _build_user_message(
         )
 
     purpose_section = ""
-    if analysis_purpose == "build_similar_product":
+    if analysis_purpose == "build_product":
         purpose_section = (
             "\n\nAnalysis purpose: BUILD A SIMILAR PRODUCT. Focus on: market gaps this competitor "
             "fails to address, pain points they don't solve, risky product decisions, "
             "and technical approaches worth learning from."
         )
-    elif analysis_purpose == "choose_product_to_use":
+    elif analysis_purpose == "choose_product":
         purpose_section = (
             "\n\nAnalysis purpose: CHOOSE A PRODUCT TO USE. Focus on: strengths and weaknesses "
             "for different user profiles, pricing value, ease of onboarding, maturity, "
             "reliability, and clear differentiators."
         )
-    elif analysis_purpose == "market_research":
+    elif analysis_purpose == "understand_industry":
         purpose_section = (
             "\n\nAnalysis purpose: MARKET RESEARCH. Focus on: market segments, major players, "
             "target users, growth drivers, business models, entry barriers, and opportunities."
         )
-    elif analysis_purpose == "competitor_success_analysis":
+    elif analysis_purpose == "analyze_growth_ops":
         purpose_section = (
             "\n\nAnalysis purpose: COMPETITOR SUCCESS ANALYSIS. Focus on: positioning, growth path, "
             "core product mechanisms, GTM, monetization, user feedback, and defensible success factors."
@@ -142,6 +149,7 @@ def _build_user_message(
     return (
         f"Competitor: {competitor_name}\n"
         f"Goals: {', '.join(goals) if goals else '(none)'}\n"
+        f"Frameworks: {', '.join(analysis_frameworks or ['swot'])}\n"
         f"{hints_section}"
         f"{purpose_section}"
         f"{role_section}"
@@ -274,13 +282,252 @@ def _parse_raw_extraction(
         return None
 
 
+def _source_type_value(source: SourceEvidence) -> str:
+    source_type = getattr(source, "source_type", "")
+    return getattr(source_type, "value", str(source_type))
+
+
+def _first_text(*values: str | None, limit: int = 320) -> str:
+    for value in values:
+        text = " ".join((value or "").split())
+        if text:
+            return text[:limit]
+    return ""
+
+
+def _source_fallback_extraction(
+    competitor_name: str,
+    sources: list[SourceEvidence],
+) -> RawCompetitorExtraction | None:
+    """Build minimal useful extraction from collected sources when LLM is empty."""
+    if not sources:
+        return None
+
+    official_sources = [
+        source for source in sources
+        if _source_type_value(source) in {"official_website", "docs", "features_page"}
+    ]
+    pricing_sources = [
+        source for source in sources
+        if _source_type_value(source) == "pricing_page"
+    ]
+    feedback_sources = [
+        source for source in sources
+        if _source_type_value(source) == "review"
+        or getattr(source, "data_source", None) == "manual"
+    ]
+
+    primary = (official_sources or sources)[0]
+    positioning = _first_text(primary.snippet, primary.content, primary.title)
+
+    feature_items: list[RawFeature] = []
+    seen_features: set[str] = set()
+    for source in official_sources or sources:
+        title = _first_text(source.title, source.snippet, limit=90)
+        if not title:
+            continue
+        normalized_title = title.lower()
+        if normalized_title in seen_features:
+            continue
+        seen_features.add(normalized_title)
+        feature_items.append(
+            RawFeature(
+                name=title,
+                category="Product",
+                availability="available",
+                description=_first_text(source.snippet, source.content, limit=220),
+            )
+        )
+        if len(feature_items) >= 6:
+            break
+
+    pricing_summary = ""
+    pricing_url = ""
+    pricing_plans: list[RawPricingPlan] = []
+    has_free_plan = False
+    if pricing_sources:
+        pricing_source = pricing_sources[0]
+        pricing_url = pricing_source.url
+        pricing_summary = _first_text(
+            pricing_source.snippet,
+            pricing_source.content,
+            pricing_source.title,
+        )
+        pricing_text = f"{pricing_summary} {pricing_source.title}".lower()
+        has_free_plan = "free" in pricing_text or "免费" in pricing_text
+        pricing_plans = _extract_fallback_pricing_plans(
+            f"{pricing_source.title} {pricing_source.snippet} {pricing_source.content}"
+        )
+        if not pricing_plans:
+            pricing_plans.append(
+                RawPricingPlan(
+                    name="Pricing information",
+                    price="See pricing page",
+                    billing_cycle="unknown",
+                    features=[pricing_summary] if pricing_summary else [],
+                )
+            )
+
+    feedback_summary = ""
+    positive_points: list[str] = []
+    negative_points: list[str] = []
+    if feedback_sources:
+        feedback_summary = _first_text(
+            feedback_sources[0].snippet,
+            feedback_sources[0].content,
+            feedback_sources[0].title,
+        )
+        if feedback_summary:
+            positive_points.append(feedback_summary)
+
+    target_users: list[str] = []
+    combined = " ".join(
+        _first_text(source.title, source.snippet, source.content, limit=200).lower()
+        for source in sources[:5]
+    )
+    if any(term in combined for term in ["developer", "code", "coding", "ide", "工程师", "开发"]):
+        target_users.append("Developers and engineering teams")
+    elif any(term in combined for term in ["marketer", "growth", "sales", "运营", "增长"]):
+        target_users.append("Growth, marketing, and operations teams")
+    elif positioning:
+        target_users.append(f"Users evaluating {competitor_name}")
+
+    weakness = ""
+    if pricing_summary:
+        weakness = (
+            "Pricing and package fit need manual verification against the "
+            "pricing source before purchase or benchmark decisions."
+        )
+    elif positioning:
+        weakness = (
+            "Public evidence is concentrated in official positioning pages, "
+            "so limitations and trade-offs require additional validation."
+        )
+
+    opportunity = ""
+    if target_users and feature_items:
+        opportunity = (
+            f"{target_users[0]} can be served through the product capabilities "
+            f"visible in collected sources, including {feature_items[0].name}."
+        )
+    elif positioning:
+        opportunity = (
+            "The positioning evidence suggests adjacent use cases that can be "
+            "benchmarked for product and go-to-market planning."
+        )
+
+    threat = ""
+    if feature_items or pricing_summary:
+        threat = (
+            "Comparable products can compete on overlapping features, pricing, "
+            "and onboarding unless differentiation is validated with user evidence."
+        )
+    elif positioning:
+        threat = (
+            "The publicly visible positioning may be easy for competitors to copy "
+            "without stronger evidence of defensibility."
+        )
+
+    raw = RawCompetitorExtraction(
+        name=competitor_name,
+        website=primary.url,
+        company=competitor_name,
+        positioning=positioning,
+        target_users=target_users,
+        features=feature_items,
+        has_free_plan=has_free_plan,
+        pricing_url=pricing_url,
+        pricing_plans=pricing_plans,
+        pricing_summary=pricing_summary,
+        positive_points=positive_points,
+        negative_points=negative_points,
+        user_feedback_summary=feedback_summary,
+        strengths=[positioning] if positioning else [],
+        weaknesses=[weakness] if weakness else [],
+        opportunities=[opportunity] if opportunity else [],
+        threats=[threat] if threat else [],
+    )
+
+    if (
+        raw.positioning
+        or raw.features
+        or raw.pricing_summary
+        or raw.pricing_plans
+        or raw.target_users
+    ):
+        return raw
+    return None
+
+
+def _extract_fallback_pricing_plans(text: str) -> list[RawPricingPlan]:
+    normalized = " ".join((text or "").split())
+    if not normalized:
+        return []
+
+    plans: list[RawPricingPlan] = []
+    lowered = normalized.lower()
+    if "free" in lowered or "免费" in lowered:
+        plans.append(
+            RawPricingPlan(
+                name="Free",
+                price="free",
+                billing_cycle="monthly",
+                features=[],
+            )
+        )
+
+    seen_prices: set[str] = set()
+    for match in _PRICE_RE.finditer(normalized):
+        price = match.group(0).replace(" ", "")
+        if price in seen_prices:
+            continue
+        seen_prices.add(price)
+        start = max(0, match.start() - 40)
+        end = min(len(normalized), match.end() + 80)
+        context = normalized[start:end]
+        cycle_text = context.lower()
+        billing_cycle = "yearly" if any(term in cycle_text for term in ["year", "annual", "yearly", "年"]) else "monthly"
+        name = "Paid plan"
+        before = normalized[start:match.start()].strip(" ,;:|-/")
+        words = [word.strip(" ,;:|-/") for word in before.split() if word.strip(" ,;:|-/")]
+        if words:
+            candidate = words[-1]
+            if candidate.lower() not in {"pricing", "plan", "plus", "includes"}:
+                name = candidate[:40]
+        plans.append(
+            RawPricingPlan(
+                name=name,
+                price=price,
+                billing_cycle=billing_cycle,
+                features=[context[:180]],
+            )
+        )
+        if len(plans) >= 5:
+            break
+    return plans
+
+
+def _has_actionable_extraction(raw: RawCompetitorExtraction) -> bool:
+    return bool(
+        raw.positioning
+        or raw.target_users
+        or raw.features
+        or raw.pricing_summary
+        or raw.pricing_plans
+        or raw.user_feedback_summary
+        or raw.strengths
+        or raw.weaknesses
+    )
+
+
 def run(
     db: Session,
     project_id: str,
     sources: list[SourceEvidence],
     goals: list[str],
+    analysis_frameworks: list[str] | None = None,
     rework_hints: list[str] | None = None,
-    analysis_purpose: str = "market_research",
+    analysis_purpose: str = "unknown",
     custom_dimensions: list[str] | None = None,
     competitor_roles: dict[str, str] | None = None,
 ) -> list[CompetitorKnowledge]:
@@ -291,6 +538,7 @@ def run(
         project_id: Owning project id.
         sources: All source evidence collected by the collector.
         goals: Analysis goals (e.g. ``["pricing_analysis"]``).
+        analysis_frameworks: Analysis frameworks requested for the report.
         rework_hints: Optional QA hints from a previous failed run.
         analysis_purpose: Decision-support purpose string.
         custom_dimensions: Optional user-defined analysis dimensions.
@@ -309,6 +557,7 @@ def run(
         input={
             "source_count": len(sources),
             "goals": goals,
+            "analysis_frameworks": analysis_frameworks or ["swot"],
             "rework_hints": rework_hints or [],
             "analysis_purpose": analysis_purpose,
             "custom_dimensions": custom_dimensions or [],
@@ -334,12 +583,14 @@ def run(
         prompt_previews: dict[str, str] = {}
         llm_output_previews: dict[str, str] = {}
         parse_status_by_competitor: dict[str, str] = {}
+        empty_extraction_count = 0
 
         for competitor_name, comp_sources in grouped.items():
             user_message = _build_user_message(
                 competitor_name=competitor_name,
                 sources=comp_sources,
                 goals=goals,
+                analysis_frameworks=analysis_frameworks,
                 rework_hints=rework_hints,
                 analysis_purpose=analysis_purpose,
                 competitor_role=(competitor_roles or {}).get(competitor_name, "direct_competitor"),
@@ -407,12 +658,27 @@ def run(
                     )
 
             if raw_extraction is None:
-                logger.error(
-                    "AnalystAgent: raw extraction failed for '%s'; emitting "
-                    "empty knowledge so QA can route a rework.",
+                fallback_extraction = _source_fallback_extraction(
                     competitor_name,
+                    comp_sources,
                 )
-                raw_extraction = RawCompetitorExtraction(name=competitor_name)
+                if fallback_extraction is not None:
+                    raw_extraction = fallback_extraction
+                    parse_status_by_competitor[competitor_name] = (
+                        f"{parse_status_by_competitor.get(competitor_name, 'llm_error')}_source_fallback"
+                    )
+                    llm_output_previews[competitor_name] = _preview(
+                        json.dumps(raw_extraction.model_dump(mode="json"), ensure_ascii=False)
+                    )
+                else:
+                    logger.error(
+                        "AnalystAgent: raw extraction failed for '%s'; no usable source fallback.",
+                        competitor_name,
+                    )
+                    raw_extraction = RawCompetitorExtraction(name=competitor_name)
+
+            if not _has_actionable_extraction(raw_extraction):
+                empty_extraction_count += 1
 
             knowledge = normalization_service.normalize(
                 raw_extraction,
@@ -422,14 +688,29 @@ def run(
             results.append(knowledge)
 
         elapsed_ms = int((time.time() - start) * 1000)
+        all_extractions_empty = empty_extraction_count == len(results)
         trace_service.update_agent_run(
             db,
             run_id,
-            status=AgentRunStatus.success,
+            status=(
+                AgentRunStatus.failed
+                if all_extractions_empty
+                else AgentRunStatus.success
+            ),
+            error_message=(
+                "AnalystAgent could not extract actionable knowledge from LLM output or source fallback."
+                if all_extractions_empty
+                else None
+            ),
             output={
                 "knowledge_count": len(results),
                 "competitors": [k.competitor_name for k in results],
-                "decision_summary": f"Generated structured knowledge for {len(results)} competitors.",
+                "empty_extraction_count": empty_extraction_count,
+                "decision_summary": (
+                    "AnalystAgent could not extract actionable knowledge from any competitor."
+                    if all_extractions_empty
+                    else f"Generated structured knowledge for {len(results)} competitors."
+                ),
                 "prompt_preview": prompt_previews,
                 "llm_output_preview": llm_output_previews,
                 "parse_status": parse_status_by_competitor,

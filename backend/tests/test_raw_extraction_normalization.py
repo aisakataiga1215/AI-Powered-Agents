@@ -18,6 +18,10 @@ Covers:
 
 import pytest
 
+from app.agents.analyst_agent import (
+    _has_actionable_extraction,
+    _source_fallback_extraction,
+)
 from app.schemas.claim import ConfidenceLevel
 from app.schemas.raw_extraction import (
     RawCompetitorExtraction,
@@ -25,6 +29,7 @@ from app.schemas.raw_extraction import (
     RawPricingPlan,
     RawUserPersona,
 )
+from app.schemas.source import SourceEvidence, SourceType
 from app.services.normalization_service import (
     _availability,
     _make_claim,
@@ -448,3 +453,44 @@ def test_normalize_no_user_personas_when_no_target_users():
     raw = RawCompetitorExtraction(name="Cursor")
     ck = normalize(raw, ["src_1"])
     assert ck.user_personas == []
+
+
+# Analyst source fallback -----------------------------------------------------
+
+
+def test_source_fallback_extraction_builds_actionable_raw_data():
+    sources = [
+        SourceEvidence(
+            source_id="src_features",
+            competitor_name="Cursor",
+            source_type=SourceType.features_page,
+            url="https://cursor.com/features",
+            title="Cursor features",
+            snippet="AI code editor for developers with codebase chat and autocomplete.",
+            data_source="live",
+        ),
+        SourceEvidence(
+            source_id="src_pricing",
+            competitor_name="Cursor",
+            source_type=SourceType.pricing_page,
+            url="https://cursor.com/pricing",
+            title="Cursor pricing",
+            snippet="Hobby Free and Pro $20 / mo are available.",
+            data_source="live",
+        ),
+    ]
+
+    raw = _source_fallback_extraction("Cursor", sources)
+
+    assert raw is not None
+    assert _has_actionable_extraction(raw) is True
+    assert raw.positioning
+    assert raw.features
+    assert raw.pricing_summary
+    assert raw.pricing_url == "https://cursor.com/pricing"
+    assert raw.has_free_plan is True
+    assert [plan.price for plan in raw.pricing_plans] == ["free", "$20"]
+
+
+def test_empty_raw_extraction_is_not_actionable():
+    assert _has_actionable_extraction(RawCompetitorExtraction(name="Cursor")) is False

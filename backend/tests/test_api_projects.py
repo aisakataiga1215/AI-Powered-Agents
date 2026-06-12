@@ -125,6 +125,8 @@ def test_get_project_returns_project_response_shape(client):
     assert body["project_id"] == project_id
     assert body["industry"] == "AI Coding Tools"
     assert body["goals"] == ["swot"]
+    assert body["analysis_purpose"] == "unknown"
+    assert body["analysis_frameworks"] == ["swot"]
     assert body["status"] == "created"
 
 
@@ -157,6 +159,8 @@ def test_patch_report_saves_human_revision_and_trace(client):
             CompetitiveReport(
                 project_id=project_id,
                 title="Original title",
+                executive_summary=[],
+                strategic_recommendations=[],
                 markdown_content="# Original",
             ),
         )
@@ -165,17 +169,39 @@ def test_patch_report_saves_human_revision_and_trace(client):
 
     response = client.patch(
         f"/api/projects/{project_id}/report",
-        json={"title": "Corrected title", "markdown_content": "# Corrected"},
+        json={
+            "title": "Corrected title",
+            "executive_summary": [
+                {
+                    "text": "Corrected summary",
+                    "evidence": [],
+                    "is_hypothesis": True,
+                }
+            ],
+            "strategic_recommendations": [
+                {
+                    "text": "Corrected recommendation",
+                    "evidence": [],
+                    "is_hypothesis": True,
+                }
+            ],
+        },
     )
     assert response.status_code == 200
     body = response.json()
     assert body["title"] == "Corrected title"
-    assert body["markdown_content"] == "# Corrected"
+    assert body["executive_summary"][0]["text"] == "Corrected summary"
+    assert body["strategic_recommendations"][0]["text"] == "Corrected recommendation"
+    assert "Corrected summary" in body["markdown_content"]
 
     traces = client.get(f"/api/projects/{project_id}/traces").json()["traces"]
     human = [t for t in traces if t["agent_name"] == "HumanReviewer"]
     assert human
-    assert human[-1]["output"]["changed_fields"] == ["markdown_content", "title"]
+    assert human[-1]["output"]["changed_fields"] == [
+        "executive_summary",
+        "strategic_recommendations",
+        "title",
+    ]
 
 
 def test_run_project_marks_running(client):
@@ -322,11 +348,12 @@ def test_industry_type_round_trips_through_create_and_get(client):
     assert body["industry_type"] == "ecommerce"
 
 
-def test_analysis_purpose_and_custom_dimensions_round_trip(client):
-    """analysis_purpose, custom_dimensions, and competitor role persist through create→GET."""
+def test_analysis_purpose_frameworks_and_custom_dimensions_round_trip(client):
+    """analysis_purpose, analysis_frameworks, custom_dimensions, and role persist through create→GET."""
     payload = {
         "industry": "AI Tools",
-        "analysis_purpose": "build_similar_product",
+        "analysis_purpose": "build_product",
+        "analysis_frameworks": ["three_c", "swot"],
         "custom_dimensions": ["pricing transparency"],
         "competitors": [
             {"name": "Notion", "url": "https://notion.so", "role": "inspiration_product"},
@@ -340,7 +367,8 @@ def test_analysis_purpose_and_custom_dimensions_round_trip(client):
     response = client.get(f"/api/projects/{project_id}")
     assert response.status_code == 200
     body = response.json()
-    assert body["analysis_purpose"] == "build_similar_product"
+    assert body["analysis_purpose"] == "build_product"
+    assert body["analysis_frameworks"] == ["three_c", "swot"]
     assert body["custom_dimensions"] == ["pricing transparency"]
     assert body["competitors"][0]["role"] == "inspiration_product"
 
@@ -348,7 +376,7 @@ def test_analysis_purpose_and_custom_dimensions_round_trip(client):
 def test_legacy_analysis_purpose_normalizes_to_canonical(client):
     payload = {
         "industry": "AI Tools",
-        "analysis_purpose": "choose_product",
+        "analysis_purpose": "choose_product_to_use",
         "competitors": [
             {"name": "Cursor", "url": "https://cursor.com"},
         ],
@@ -360,7 +388,7 @@ def test_legacy_analysis_purpose_normalizes_to_canonical(client):
 
     response = client.get(f"/api/projects/{project_id}")
     assert response.status_code == 200
-    assert response.json()["analysis_purpose"] == "choose_product_to_use"
+    assert response.json()["analysis_purpose"] == "choose_product"
 
 
 def test_project_create_rejects_unknown_analysis_purpose(client):
@@ -540,6 +568,7 @@ def test_run_project_passes_extra_urls_to_workflow(client, workflow_calls):
     assert len(workflow_calls) == 1
     args, _ = workflow_calls[0]
     competitors_payload = args[1]
+    assert args[3] == ["swot"]
     assert competitors_payload == [
         {
             "name": "Cursor",
@@ -575,4 +604,4 @@ def test_run_project_passes_research_inputs_to_workflow(client, workflow_calls):
     assert response.status_code == 200
     assert len(workflow_calls) == 1
     args, _ = workflow_calls[0]
-    assert args[9] == research_inputs
+    assert args[10] == research_inputs

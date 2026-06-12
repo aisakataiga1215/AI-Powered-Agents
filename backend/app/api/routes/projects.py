@@ -21,6 +21,7 @@ from app.schemas.project import (
     ProjectCreate,
     ProjectResponse,
     ProjectStatus,
+    normalize_analysis_frameworks,
     normalize_analysis_purpose,
 )
 from app.services import project_service, workflow_job_service
@@ -54,6 +55,9 @@ def _to_response(project) -> ProjectResponse:
         industry=project.industry,
         industry_type=getattr(project, "industry_type", "general") or "general",
         analysis_purpose=normalize_analysis_purpose(getattr(project, "analysis_purpose", None)),
+        analysis_frameworks=normalize_analysis_frameworks(
+            json.loads(getattr(project, "analysis_frameworks", '["swot"]') or '["swot"]')
+        ),
         custom_dimensions=json.loads(getattr(project, "custom_dimensions", "[]") or "[]"),
         research_inputs=json.loads(getattr(project, "research_inputs", "[]") or "[]"),
         goals=project_service.deserialize_goals(project),
@@ -125,6 +129,9 @@ def run_project(
         for c in project_service.get_project_competitors(db, project_id)
     ]
     goals_payload = project_service.deserialize_goals(project)
+    analysis_frameworks = normalize_analysis_frameworks(
+        json.loads(getattr(project, "analysis_frameworks", '["swot"]') or '["swot"]')
+    )
     custom_dimensions = json.loads(getattr(project, "custom_dimensions", "[]") or "[]")
     research_inputs = json.loads(getattr(project, "research_inputs", "[]") or "[]")
 
@@ -132,6 +139,7 @@ def run_project(
         "project_id": project_id,
         "competitors": competitors_payload,
         "goals": goals_payload,
+        "analysis_frameworks": analysis_frameworks,
         "database_url": settings.database_url,
         "output_language": project.output_language,
         "data_mode": getattr(project, "data_mode", "demo") or "demo",
@@ -185,6 +193,7 @@ def run_workflow_job_background(job_id: str, payload: dict) -> None:
             payload["project_id"],
             payload["competitors"],
             payload["goals"],
+            payload["analysis_frameworks"],
             payload["database_url"],
             payload["output_language"],
             payload["data_mode"],

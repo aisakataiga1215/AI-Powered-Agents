@@ -32,7 +32,7 @@ from app.graph.nodes import (
 )
 from app.graph.routing import route_after_qa, route_rework
 from app.graph.state import WorkflowState
-from app.schemas.project import normalize_analysis_purpose
+from app.schemas.project import normalize_analysis_frameworks, normalize_analysis_purpose
 
 logger = get_logger(__name__)
 
@@ -91,10 +91,11 @@ def _initial_state(
     project_id: str,
     competitors: list[dict],
     goals: list[str],
+    analysis_frameworks: list[str] | None = None,
     output_language: str = "en",
     data_mode: str = "demo",
     industry_type: str = "general",
-    analysis_purpose: str = "market_research",
+    analysis_purpose: str = "unknown",
     custom_dimensions: list[str] | None = None,
     research_inputs: list[dict] | None = None,
 ) -> WorkflowState:
@@ -102,6 +103,7 @@ def _initial_state(
         "project_id": project_id,
         "competitors": competitors,
         "goals": goals,
+        "analysis_frameworks": normalize_analysis_frameworks(analysis_frameworks),
         "output_language": output_language,
         "data_mode": data_mode,
         "industry_type": industry_type,
@@ -123,11 +125,12 @@ def run_workflow_background(
     project_id: str,
     competitors: list[dict],
     goals: list[str],
+    analysis_frameworks: list[str] | None = None,
     db_url: str | None = None,
     output_language: str = "en",
     data_mode: str = "demo",
     industry_type: str = "general",
-    analysis_purpose: str = "market_research",
+    analysis_purpose: str = "unknown",
     custom_dimensions: list[str] | None = None,
     research_inputs: list[dict] | None = None,
 ) -> None:
@@ -136,7 +139,8 @@ def run_workflow_background(
     Args:
         project_id: The project to run analysis for.
         competitors: Competitor list ``[{"name": ..., "url": ...}]``.
-        goals: Analysis goals (e.g. ``["pricing_analysis"]``).
+        goals: Analysis targets (e.g. ``["pricing_analysis"]``).
+        analysis_frameworks: Analysis frameworks, e.g. ``["swot", "three_c"]``.
         db_url: Optional override (currently unused, kept for symmetry
             with the API contract documented in ``engineering_spec.md``).
         output_language: ISO language code for user-facing report text
@@ -145,9 +149,7 @@ def run_workflow_background(
             crawls competitor websites and falls back to fixtures when
             coverage is insufficient.
         industry_type: Industry context for source discovery path selection.
-        analysis_purpose: Analysis intent — ``"build_similar_product"``,
-            ``"choose_product_to_use"``, ``"market_research"``, or
-            ``"competitor_success_analysis"``. Controls purpose-specific report sections.
+        analysis_purpose: Analysis intent. Controls purpose-specific default frameworks.
         custom_dimensions: Optional list of user-defined analysis dimensions.
         research_inputs: Optional manually supplied survey/interview/questionnaire notes.
     """
@@ -171,7 +173,7 @@ def run_workflow_background(
         db.close()
 
     state = _initial_state(
-        project_id, competitors, goals,
+        project_id, competitors, goals, analysis_frameworks,
         output_language, data_mode, industry_type,
         analysis_purpose, custom_dimensions, research_inputs,
     )

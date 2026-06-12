@@ -47,7 +47,17 @@ def patch_project_report(
     current = report_service.serialize_report(record)
     editable_fields = {
         "title",
-        "markdown_content",
+        "executive_summary",
+        "competitor_overview",
+        "feature_comparison",
+        "pricing_comparison",
+        "user_persona_comparison",
+        "swot_comparison",
+        "strategic_recommendations",
+        "framework_sections",
+        "custom_dimension_sections",
+        "purpose_sections",
+        "competitor_scores",
         "analysis_objective",
         "competitor_selection_rationale",
     }

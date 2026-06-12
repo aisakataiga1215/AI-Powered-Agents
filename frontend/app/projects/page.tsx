@@ -54,10 +54,15 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
 
 const GOAL_LABELS: Record<string, string> = {
   feature_comparison: '功能对比',
-  pricing_analysis: '定价分析',
+  pricing_analysis: '定价模式',
   user_personas: '用户画像',
+  user_reviews: '用户评价',
   swot: 'SWOT',
+  three_c: '3C',
+  aarrr: 'AARRR',
 }
+
+const FRAMEWORK_KEYS = new Set(['swot', 'three_c', 'aarrr'])
 
 function StatusBadge({ status }: { status: ProjectStatus }) {
   const style = STATUS_STYLES[status] ?? STATUS_STYLES.created
@@ -195,8 +200,13 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 bg-white">
-          {projects.map((project) => (
-            <tr key={project.project_id} className="hover:bg-gray-50">
+          {projects.map((project) => {
+            const tags = uniqueStrings([
+              ...(project.goals ?? []).filter((goal) => !FRAMEWORK_KEYS.has(goal)),
+              ...(project.analysis_frameworks ?? []),
+            ])
+            return (
+              <tr key={project.project_id} className="hover:bg-gray-50">
               <td className="px-4 py-3">
                 <div className="text-sm font-medium text-gray-900">
                   {project.industry || '未命名'}
@@ -208,8 +218,8 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-1">
-                  {project.goals.length === 0 && <span className="text-xs text-gray-400">—</span>}
-                  {project.goals.map((g) => (
+                  {tags.length === 0 && <span className="text-xs text-gray-400">—</span>}
+                  {tags.map((g) => (
                     <span
                       key={g}
                       className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600"
@@ -229,9 +239,14 @@ function ProjectsTable({ projects }: { projects: ProjectResponse[] }) {
                 </Link>
               </td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>
   )
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return values.filter((value, index) => value && values.indexOf(value) === index)
 }

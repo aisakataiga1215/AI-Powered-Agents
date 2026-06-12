@@ -39,10 +39,15 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
 
 const GOAL_LABELS: Record<string, string> = {
   feature_comparison: '功能对比',
-  pricing_analysis: '定价分析',
+  pricing_analysis: '定价模式',
   user_personas: '用户画像',
+  user_reviews: '用户评价',
   swot: 'SWOT',
+  three_c: '3C',
+  aarrr: 'AARRR',
 }
+
+const FRAMEWORK_KEYS = new Set(['swot', 'three_c', 'aarrr'])
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -55,22 +60,26 @@ export default function ProjectExecutionPage({ params }: PageProps) {
   const projectQuery = useQuery({
     queryKey: ['project', id],
     queryFn: () => api.getProject(id),
-    refetchInterval: (query) => (query.state.data?.status === 'running' ? POLL_INTERVAL_MS : false),
+    refetchInterval: (query) => (query.state.data?.status !== 'created' ? POLL_INTERVAL_MS : false),
+    refetchIntervalInBackground: true,
   })
 
   const isRunning = projectQuery.data?.status === 'running'
+  const shouldRefreshWorkflow = projectQuery.data?.status !== 'created'
 
   const tracesQuery = useQuery({
     queryKey: ['traces', id],
     queryFn: () => api.getTraces(id),
-    refetchInterval: isRunning ? POLL_INTERVAL_MS : false,
+    refetchInterval: shouldRefreshWorkflow ? POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: true,
     enabled: !!projectQuery.data,
   })
 
   const jobsQuery = useQuery({
     queryKey: ['jobs', id],
     queryFn: () => api.getProjectJobs(id),
-    refetchInterval: isRunning ? POLL_INTERVAL_MS : false,
+    refetchInterval: shouldRefreshWorkflow ? POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: true,
     enabled: !!projectQuery.data,
   })
 
@@ -196,6 +205,7 @@ function ProjectHero({
   project: {
     industry: string
     goals: string[]
+    analysis_frameworks?: string[]
     status: ProjectStatus
     created_at: string
     updated_at: string
@@ -213,6 +223,10 @@ function ProjectHero({
   const completedRuns = traces.filter((run) => run.status === 'success').length
   const failedRuns = traces.filter((run) => run.status === 'failed' || run.error_message).length
   const totalTokens = traces.reduce((sum, run) => sum + (run.token_usage?.total_tokens ?? 0), 0)
+  const displayTags = uniqueStrings([
+    ...project.goals.filter((goal) => !FRAMEWORK_KEYS.has(goal)),
+    ...(project.analysis_frameworks ?? []),
+  ])
 
   return (
     <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -240,7 +254,7 @@ function ProjectHero({
             </h1>
             <p className="mt-1 font-mono text-xs text-gray-500">{id}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {project.goals.map((goal) => (
+              {displayTags.map((goal) => (
                 <span
                   key={goal}
                   className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-700"
@@ -291,7 +305,7 @@ function ProjectHero({
         <HeroMetric label="QA 分数" value={latestQA ? `${latestQA.score}/100` : '-'} />
         <HeroMetric label="Token" value={formatCompactNumber(totalTokens)} />
         <HeroMetric
-          label="更新时间"
+          label="最后更新"
           value={formatDateTime(project.updated_at)}
           compact
         />
@@ -321,7 +335,7 @@ function HeroMetric({
       <p
         className={cn(
           'mt-1 truncate font-semibold',
-          compact ? 'text-sm' : 'text-xl',
+          compact ? 'whitespace-normal text-lg leading-snug' : 'text-xl',
           tone === 'danger' ? 'text-red-700' : 'text-gray-950'
         )}
       >
@@ -339,21 +353,24 @@ function WorkflowJobPanel({ jobs }: { jobs: WorkflowJob[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
-            Workflow Job
+            Background Job
           </p>
           <h2 className="mt-1 text-lg font-semibold text-gray-950">
-            生产任务执行记录
+            任务运行记录
           </h2>
+          <p className="mt-1 text-xs text-gray-500">
+            记录后台工作流是否已排队、运行、完成或失败，用来避免重复启动并排查重试。
+          </p>
           <p className="mt-1 font-mono text-xs text-gray-400">{latest.job_id}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className={cn('rounded-full border px-2.5 py-0.5 font-medium', jobStatusStyle(latest.status))}>
-            {latest.status}
+            {jobStatusLabel(latest.status)}
           </span>
           <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-600">
-            {latest.backend}
+            {latest.backend === 'background_tasks' ? '本机后台任务' : latest.backend}
           </span>
-          <span className="text-gray-500">attempts {latest.attempts}</span>
+          <span className="text-gray-500">尝试 {latest.attempts} 次</span>
         </div>
       </div>
       <ol className="mt-4 grid gap-3 md:grid-cols-4">
@@ -370,7 +387,7 @@ function WorkflowJobPanel({ jobs }: { jobs: WorkflowJob[] }) {
                   jobStatusStyle(job.status)
                 )}
               >
-                {job.status}
+                  {jobStatusLabel(job.status)}
               </span>
             </div>
             <p className="mt-2 font-mono text-gray-500">{shortId(job.job_id)}</p>
@@ -398,6 +415,13 @@ function jobStatusStyle(status: WorkflowJob['status']): string {
     case 'failed':
       return 'border-red-200 bg-red-50 text-red-700'
   }
+}
+
+function jobStatusLabel(status: WorkflowJob['status']): string {
+  if (status === 'queued') return '排队中'
+  if (status === 'running') return '运行中'
+  if (status === 'completed') return '已完成'
+  return '失败'
 }
 
 function ProjectActions({
@@ -451,6 +475,10 @@ function runDotClass(status: AgentRun['status']): string {
 
 function formatCompactNumber(value: number): string {
   return new Intl.NumberFormat('en', { notation: 'compact' }).format(value)
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return values.filter((value, index) => value && values.indexOf(value) === index)
 }
 
 function shortId(value: string): string {

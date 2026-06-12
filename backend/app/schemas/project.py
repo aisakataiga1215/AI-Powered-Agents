@@ -23,21 +23,26 @@ IndustryType = Literal[
     "general",
 ]
 AnalysisPurpose = Literal[
-    "build_similar_product",
-    "choose_product_to_use",
-    "market_research",
-    "competitor_success_analysis",
+    "unknown",
+    "build_product",
+    "choose_product",
+    "understand_industry",
+    "analyze_growth_ops",
 ]
+AnalysisFramework = Literal["swot", "three_c", "aarrr"]
 
 LEGACY_ANALYSIS_PURPOSES: dict[str, AnalysisPurpose] = {
-    "build_product": "build_similar_product",
-    "choose_product": "choose_product_to_use",
-    "industry_landscape": "market_research",
-    "competitor_success": "competitor_success_analysis",
-    "improve_product": "build_similar_product",
-    "general": "market_research",
+    "build_similar_product": "build_product",
+    "choose_product_to_use": "choose_product",
+    "market_research": "understand_industry",
+    "competitor_success_analysis": "analyze_growth_ops",
+    "industry_landscape": "understand_industry",
+    "competitor_success": "analyze_growth_ops",
+    "improve_product": "build_product",
+    "general": "unknown",
 }
-DEFAULT_ANALYSIS_PURPOSE: AnalysisPurpose = "market_research"
+DEFAULT_ANALYSIS_PURPOSE: AnalysisPurpose = "unknown"
+DEFAULT_ANALYSIS_FRAMEWORKS: list[AnalysisFramework] = ["swot"]
 
 
 def normalize_analysis_purpose(value: str | None, *, strict: bool = False) -> AnalysisPurpose:
@@ -49,6 +54,18 @@ def normalize_analysis_purpose(value: str | None, *, strict: bool = False) -> An
     if strict:
         raise ValueError(f"Unsupported analysis_purpose: {raw}")
     return DEFAULT_ANALYSIS_PURPOSE
+
+
+def normalize_analysis_frameworks(values: list[str] | None) -> list[AnalysisFramework]:
+    allowed = set(get_args(AnalysisFramework))
+    result: list[AnalysisFramework] = []
+    for value in values or DEFAULT_ANALYSIS_FRAMEWORKS:
+        raw = str(value).strip()
+        if raw == "3c":
+            raw = "three_c"
+        if raw in allowed and raw not in result:
+            result.append(raw)  # type: ignore[arg-type]
+    return result or list(DEFAULT_ANALYSIS_FRAMEWORKS)
 
 
 class ProjectStatus(str, Enum):
@@ -77,6 +94,7 @@ class ProjectCreate(BaseModel):
     industry: str
     industry_type: IndustryType = "general"
     analysis_purpose: AnalysisPurpose = DEFAULT_ANALYSIS_PURPOSE
+    analysis_frameworks: list[AnalysisFramework] = Field(default_factory=lambda: list(DEFAULT_ANALYSIS_FRAMEWORKS))
     custom_dimensions: list[str] = Field(default_factory=list)
     competitors: list[CompetitorInput]
     goals: list[str] = Field(default_factory=list)
@@ -90,12 +108,18 @@ class ProjectCreate(BaseModel):
     def normalize_purpose(cls, value: str | None) -> AnalysisPurpose:
         return normalize_analysis_purpose(value, strict=True)
 
+    @field_validator("analysis_frameworks", mode="before")
+    @classmethod
+    def normalize_frameworks(cls, value: list[str] | None) -> list[AnalysisFramework]:
+        return normalize_analysis_frameworks(value)
+
 
 class ProjectResponse(BaseModel):
     project_id: str
     industry: str
     industry_type: str = "general"
     analysis_purpose: str = DEFAULT_ANALYSIS_PURPOSE
+    analysis_frameworks: list[str] = []
     custom_dimensions: list[str] = []
     goals: list[str]
     status: ProjectStatus

@@ -80,6 +80,7 @@ def collect_sources_node(state: WorkflowState) -> dict:
             payload={
                 "competitors": state["competitors"],
                 "goals": state["goals"],
+                "analysis_frameworks": state.get("analysis_frameworks", ["swot"]),
                 "data_mode": state.get("data_mode", "demo"),
                 "rework_hints": state.get("rework_hints", []),
             },
@@ -123,6 +124,7 @@ def analyze_competitors_node(state: WorkflowState) -> dict:
             payload={
                 "source_count": len(state["sources"]),
                 "goals": state["goals"],
+                "analysis_frameworks": state.get("analysis_frameworks", ["swot"]),
                 "rework_hints": state.get("rework_hints", []),
             },
         )
@@ -135,6 +137,7 @@ def analyze_competitors_node(state: WorkflowState) -> dict:
             project_id=state["project_id"],
             sources=state["sources"],
             goals=state["goals"],
+            analysis_frameworks=state.get("analysis_frameworks", ["swot"]),
             rework_hints=state.get("rework_hints", []),
             analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
             custom_dimensions=state.get("custom_dimensions", []),
@@ -169,6 +172,7 @@ def write_report_node(state: WorkflowState) -> dict:
             payload={
                 "competitor_count": len(state["competitor_knowledge"]),
                 "goals": state["goals"],
+                "analysis_frameworks": state.get("analysis_frameworks", ["swot"]),
                 "rework_hints": state.get("rework_hints", []),
             },
         )
@@ -178,6 +182,7 @@ def write_report_node(state: WorkflowState) -> dict:
             competitor_knowledge=state["competitor_knowledge"],
             sources=state["sources"],
             goals=state["goals"],
+            analysis_frameworks=state.get("analysis_frameworks", ["swot"]),
             rework_hints=state.get("rework_hints", []),
             output_language=state.get("output_language", "en"),
             analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
@@ -223,6 +228,7 @@ def qa_review_node(state: WorkflowState) -> dict:
             knowledge=state["competitor_knowledge"],
             sources=state["sources"],
             goals=state["goals"],
+            analysis_frameworks=state.get("analysis_frameworks", ["swot"]),
             analysis_purpose=state.get("analysis_purpose", DEFAULT_ANALYSIS_PURPOSE),
             custom_dimensions=state.get("custom_dimensions", []),
         )

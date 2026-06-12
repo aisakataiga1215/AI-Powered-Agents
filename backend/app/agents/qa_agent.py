@@ -682,6 +682,7 @@ def run(
     knowledge: list[CompetitorKnowledge],
     sources: list[SourceEvidence],
     goals: list[str],
+    analysis_frameworks: list[str] | None = None,
     analysis_purpose: str = DEFAULT_ANALYSIS_PURPOSE,
     custom_dimensions: list[str] | None = None,
 ) -> QAResult:
@@ -698,6 +699,7 @@ def run(
             "knowledge_count": len(knowledge),
             "source_count": len(sources),
             "goals": goals,
+            "analysis_frameworks": analysis_frameworks or ["swot"],
             "analysis_purpose": analysis_purpose,
             "custom_dimensions": custom_dimensions or [],
             "decision_summary": "Run deterministic QA checks and choose the repair target when needed.",

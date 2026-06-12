@@ -66,7 +66,7 @@ def test_initial_state_normalizes_legacy_analysis_purpose():
         analysis_purpose="choose_product",
     )
 
-    assert state["analysis_purpose"] == "choose_product_to_use"
+    assert state["analysis_purpose"] == "choose_product"
 
 
 # ---------------------------------------------------------------------------

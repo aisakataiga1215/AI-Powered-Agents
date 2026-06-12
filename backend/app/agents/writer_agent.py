@@ -27,6 +27,7 @@ from app.core.logging import get_logger
 from app.schemas.claim import Claim, Sentence
 from app.schemas.knowledge import CompetitorKnowledge
 from app.schemas.report import CompetitiveReport
+from app.schemas.scoring import CompetitorScore, DimensionScore
 from app.schemas.source import SourceEvidence
 from app.schemas.trace import AgentRun, AgentRunStatus, TokenUsage
 from app.services import trace_service
@@ -36,7 +37,8 @@ from app.services.normalization_service import normalize_feature_category
 logger = get_logger(__name__)
 
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "writer.md"
-_MAX_KNOWLEDGE_CHARS = 3000
+_MAX_SOURCE_TITLE_CHARS = 90
+_MAX_REWORK_HINTS = 8
 _RAW_RESPONSE_LOG_CHARS = 2000
 _TRACE_PREVIEW_CHARS = 1200
 
@@ -51,13 +53,11 @@ def _load_prompt() -> str:
 
 
 def _serialize_knowledge(knowledge: list[CompetitorKnowledge]) -> str:
-    """Compact JSON dump of competitor knowledge, capped per competitor."""
+    """Dump complete structured competitor knowledge for the writer prompt."""
     rendered: list[str] = []
     for ck in knowledge:
         payload = ck.model_dump(mode="json")
         text = json.dumps(payload, ensure_ascii=False)
-        if len(text) > _MAX_KNOWLEDGE_CHARS:
-            text = text[:_MAX_KNOWLEDGE_CHARS] + " ...(truncated)"
         rendered.append(text)
     return "\n\n".join(rendered)
 
@@ -67,7 +67,7 @@ def _render_source_index(sources: list[SourceEvidence]) -> str:
     if not sources:
         return "(no sources available)"
     lines = [
-        f"- {s.source_id} | {s.competitor_name} | {s.source_type.value} | {s.title}"
+        f"- {s.source_id} | {s.competitor_name} | {s.source_type.value} | {_preview(s.title, _MAX_SOURCE_TITLE_CHARS)}"
         for s in sources
     ]
     return "\n".join(lines)
@@ -77,14 +77,17 @@ def _build_user_message(
     competitor_knowledge: list[CompetitorKnowledge],
     sources: list[SourceEvidence],
     goals: list[str],
-    rework_hints: list[str] | None,
+    analysis_frameworks: list[str] | None = None,
+    rework_hints: list[str] | None = None,
     output_language: str = "en",
-    analysis_purpose: str = "market_research",
+    analysis_purpose: str = "unknown",
     custom_dimensions: list[str] | None = None,
 ) -> str:
     hints_section = ""
     if rework_hints:
-        rendered_hints = "\n".join(f"- {hint}" for hint in rework_hints)
+        rendered_hints = "\n".join(f"- {hint}" for hint in rework_hints[:_MAX_REWORK_HINTS])
+        if len(rework_hints) > _MAX_REWORK_HINTS:
+            rendered_hints += f"\n- ... {len(rework_hints) - _MAX_REWORK_HINTS} more hints omitted"
         hints_section = (
             "\n\nPrevious QA feedback to address in this run:\n"
             f"{rendered_hints}\n"
@@ -99,12 +102,18 @@ def _build_user_message(
     purpose_instruction = (
         "\n\nOutput these fields in addition to existing ones:\n"
         f'"analysis_purpose": "{analysis_purpose}",\n'
+        f'"analysis_frameworks": {json.dumps(analysis_frameworks or ["swot"])},\n'
+        '"selected_report_tabs": report tab keys in final display order,\n'
+        '"framework_sections": object containing only requested framework sections; use keys "three_c" and/or "aarrr" when requested,\n'
+        '"custom_dimension_sections": object keyed by requested custom dimension names,\n'
         '"analysis_objective": "one-sentence statement of what this analysis accomplishes",\n'
         '"competitor_selection_rationale": {<comp_name>: "why included based on its role"},\n'
     )
 
     return (
         f"Report goals: {', '.join(goals) if goals else '(none)'}\n"
+        f"Report frameworks: {', '.join(analysis_frameworks or ['swot'])}\n"
+        f"Custom dimensions: {', '.join(custom_dimensions or []) if custom_dimensions else '(none)'}\n"
         f"{hints_section}\n"
         f"Available source ids (use these in claim evidence):\n"
         f"{_render_source_index(sources)}\n\n"
@@ -126,7 +135,7 @@ Keep the report concise:
 - Return at most 3 executive_summary claims and 3 strategic_recommendations.
 - Keep each claim under 45 words.
 - Leave markdown_content as an empty string; markdown is rendered deterministically.
-- Do not generate optional narrative/framework/scoring sections outside CompetitiveReport.
+- Generate framework and custom-dimension sections only inside CompetitiveReport fields.
 - Do not generate pricing_comparison or feature_comparison.
 """
 
@@ -290,7 +299,19 @@ def _normalize_report_payload(data: Any) -> dict:
 
     # New purpose-analysis fields — all default gracefully on absent/invalid data.
     if not isinstance(data.get("analysis_purpose"), str):
-        data["analysis_purpose"] = "market_research"
+        data["analysis_purpose"] = "unknown"
+    if not isinstance(data.get("analysis_frameworks"), list):
+        data["analysis_frameworks"] = ["swot"]
+    if not isinstance(data.get("selected_report_tabs"), list):
+        data["selected_report_tabs"] = []
+    if not isinstance(data.get("framework_sections"), dict):
+        data["framework_sections"] = {}
+    if not isinstance(data.get("custom_dimension_sections"), dict):
+        data["custom_dimension_sections"] = {}
+    if not isinstance(data.get("purpose_sections"), dict):
+        data["purpose_sections"] = {}
+    if not isinstance(data.get("competitor_scores"), dict):
+        data["competitor_scores"] = {}
     if not isinstance(data.get("analysis_objective"), str):
         data["analysis_objective"] = ""
     if not isinstance(data.get("competitor_selection_rationale"), dict):
@@ -601,6 +622,226 @@ def _build_pricing_markdown(
     return section_heading + "\n\n" + header + "\n" + "\n".join(data_lines)
 
 
+def _selected_report_tabs(goals: list[str] | None, frameworks: list[str] | None, custom_dimensions: list[str] | None) -> list[str]:
+    tabs = ["summary"]
+    for goal in goals or []:
+        if goal not in tabs:
+            tabs.append(goal)
+    for framework in frameworks or ["swot"]:
+        if framework not in tabs:
+            tabs.append(framework)
+    for dim in custom_dimensions or []:
+        key = f"custom_dimension:{dim}"
+        if key not in tabs:
+            tabs.append(key)
+    if "recommendations" not in tabs:
+        tabs.append("recommendations")
+    tabs.append("qa")
+    return tabs
+
+
+def _build_framework_sections(
+    knowledge: list[CompetitorKnowledge],
+    frameworks: list[str] | None,
+    output_language: str,
+) -> dict:
+    requested = set(frameworks or ["swot"])
+    zh = output_language == "zh"
+    names = [ck.competitor_name for ck in knowledge if ck.competitor_name]
+    sections: dict[str, object] = {}
+    if "three_c" in requested:
+        sections["three_c"] = {
+            "Customer" if not zh else "用户": [
+                f"{ck.competitor_name}: " + (
+                    "; ".join(p.name for p in ck.user_personas if p.name)
+                    or "; ".join(c.text for c in (ck.product_profile.target_users if ck.product_profile else [])[:2])
+                    or ("暂无足够证据" if zh else "Insufficient evidence")
+                )
+                for ck in knowledge
+            ],
+            "Company" if not zh else "公司": [
+                f"{ck.competitor_name}: "
+                + (ck.product_profile.positioning.text if ck.product_profile and ck.product_profile.positioning else ("暂无足够证据" if zh else "Insufficient evidence"))
+                for ck in knowledge
+            ],
+            "Competitor" if not zh else "竞争": [
+                ("覆盖竞品：" if zh else "Covered competitors: ") + ", ".join(names)
+            ],
+        }
+    if "aarrr" in requested:
+        placeholder = "暂无足够证据" if zh else "Insufficient evidence"
+        sections["aarrr"] = {
+            stage: [
+                f"{ck.competitor_name}: {placeholder}"
+                for ck in knowledge
+            ]
+            for stage in ["Acquisition", "Activation", "Retention", "Revenue", "Referral"]
+        }
+    return sections
+
+
+def _build_custom_dimension_sections(
+    knowledge: list[CompetitorKnowledge],
+    custom_dimensions: list[str] | None,
+    output_language: str,
+) -> dict:
+    if not custom_dimensions:
+        return {}
+    placeholder = "暂无足够证据" if output_language == "zh" else "Insufficient evidence"
+    return {
+        dim: [
+            {
+                "competitor_name": ck.competitor_name,
+                "summary": placeholder,
+                "evidence": _first_evidence(ck),
+                "confidence": "low",
+            }
+            for ck in knowledge
+        ]
+        for dim in custom_dimensions
+    }
+
+
+_CHOOSE_PRODUCT_WEIGHTS: tuple[tuple[str, float], ...] = (
+    ("场景适配", 0.30),
+    ("功能覆盖", 0.25),
+    ("价格与试用", 0.20),
+    ("风险与限制", 0.15),
+    ("证据充分度", 0.10),
+)
+
+
+def _score_from_thresholds(value: int, thresholds: tuple[int, int, int, int]) -> int:
+    if value >= thresholds[3]:
+        return 5
+    if value >= thresholds[2]:
+        return 4
+    if value >= thresholds[1]:
+        return 3
+    if value >= thresholds[0]:
+        return 2
+    return 1
+
+
+def _feature_count(ck: CompetitorKnowledge) -> int:
+    return sum(
+        1
+        for category in ck.feature_tree
+        for feature in category.features
+        if feature.name and feature.availability != "unknown"
+    )
+
+
+def _weakness_count(ck: CompetitorKnowledge) -> int:
+    return len(ck.swot.weaknesses) if ck.swot else 0
+
+
+def _dimension_confidence(evidence: list[str]) -> str:
+    if len(evidence) >= 3:
+        return "high"
+    if len(evidence) >= 1:
+        return "medium"
+    return "low"
+
+
+def _build_choose_product_scores(
+    knowledge: list[CompetitorKnowledge],
+) -> tuple[dict[str, CompetitorScore], dict]:
+    scores: dict[str, CompetitorScore] = {}
+    best_for: dict[str, str] = {}
+    avoid: dict[str, str] = {}
+    ranking: list[dict] = []
+    decision_matrix: list[dict] = []
+
+    for ck in knowledge:
+        name = ck.competitor_name
+        source_ids = _first_evidence(ck, limit=5) or list(ck.sources[:5])
+        personas = [p.name for p in ck.user_personas if p.name]
+        target_users = (
+            [claim.text for claim in ck.product_profile.target_users]
+            if ck.product_profile
+            else []
+        )
+        feature_count = _feature_count(ck)
+        plan_count = len(ck.pricing_model.plans) if ck.pricing_model else 0
+        has_free = bool(ck.pricing_model and ck.pricing_model.has_free_plan)
+        weakness_count = _weakness_count(ck)
+        evidence_count = len(set(ck.sources or source_ids))
+
+        fit_score = 5 if personas else 4 if target_users else 3
+        feature_score = _score_from_thresholds(feature_count, (1, 3, 5, 8))
+        pricing_score = 5 if has_free else 4 if plan_count >= 2 else 3 if plan_count == 1 else 2
+        risk_score = 5 if weakness_count == 0 else 4 if weakness_count == 1 else 3 if weakness_count == 2 else 2
+        evidence_score = _score_from_thresholds(evidence_count, (1, 2, 4, 6))
+
+        raw_dimensions = [
+            ("场景适配", fit_score, "用户画像或目标用户越明确，越容易判断是否适合当前使用场景。"),
+            ("功能覆盖", feature_score, f"已识别 {feature_count} 个可用或受限功能。"),
+            ("价格与试用", pricing_score, "有免费方案或清晰套餐时，采购和试用风险更低。"),
+            ("风险与限制", risk_score, f"结构化 SWOT 中识别到 {weakness_count} 个主要弱点。"),
+            ("证据充分度", evidence_score, f"当前绑定 {evidence_count} 个来源，来源越多评分越稳定。"),
+        ]
+        weights = dict(_CHOOSE_PRODUCT_WEIGHTS)
+        dimensions = [
+            DimensionScore(
+                dimension_name=label,
+                score=score,
+                weight=weights[label],
+                rationale=rationale,
+                evidence=source_ids,
+                source_confidence=_dimension_confidence(source_ids),
+            )
+            for label, score, rationale in raw_dimensions
+        ]
+        overall = sum(d.score * d.weight for d in dimensions) * 20
+        scores[name] = CompetitorScore(
+            competitor_name=name,
+            overall_score=round(overall, 1),
+            dimensions=dimensions,
+        )
+
+        best_for[name] = (
+            f"适合 {', '.join(personas[:2])}。"
+            if personas
+            else (target_users[0] if target_users else "适合需要先验证核心能力的团队。")
+        )
+        avoid_reasons: list[str] = []
+        if plan_count == 0:
+            avoid_reasons.append("预算敏感或必须提前核验价格的团队")
+        if feature_count < 3:
+            avoid_reasons.append("需要成熟完整功能栈的重度用户")
+        if weakness_count >= 2:
+            avoid_reasons.append("对稳定性、限制和迁移风险敏感的团队")
+        avoid[name] = "；".join(avoid_reasons) if avoid_reasons else "暂无明显不建议人群，但仍应核验关键来源。"
+
+    ranked_names = sorted(scores, key=lambda n: scores[n].overall_score, reverse=True)
+    for index, name in enumerate(ranked_names, start=1):
+        ranking.append({
+            "rank": index,
+            "competitor_name": name,
+            "overall_score": scores[name].overall_score,
+            "summary": best_for.get(name, ""),
+        })
+
+    for label, weight in _CHOOSE_PRODUCT_WEIGHTS:
+        row: dict[str, object] = {"criterion": label, "weight": weight}
+        for name in ranked_names:
+            dim = next((d for d in scores[name].dimensions if d.dimension_name == label), None)
+            row[name] = f"{dim.score}/5" if dim else "—"
+        decision_matrix.append(row)
+
+    return scores, {
+        "recommendation_ranking": ranking,
+        "best_for": best_for,
+        "who_should_avoid": avoid,
+        "decision_matrix": decision_matrix,
+        "scoring_weights": [
+            {"dimension": label, "weight": weight}
+            for label, weight in _CHOOSE_PRODUCT_WEIGHTS
+        ],
+    }
+
+
 def _first_evidence(ck: CompetitorKnowledge, limit: int = 3) -> list[str]:
     """Return a compact list of source ids already attached to analyst claims."""
     seen: list[str] = []
@@ -698,12 +939,18 @@ def _bind_report_fields(
     sources: list[SourceEvidence],
     output_language: str = "en",
     goals: list[str] | None = None,
-    analysis_purpose: str = "market_research",
+    analysis_frameworks: list[str] | None = None,
+    analysis_purpose: str = "unknown",
     custom_dimensions: list[str] | None = None,
 ) -> CompetitiveReport:
     """Backfill fields the LLM commonly omits or fills incorrectly."""
     report.project_id = project_id
     report.analysis_purpose = analysis_purpose
+    report.analysis_frameworks = analysis_frameworks or ["swot"]
+    report.selected_report_tabs = _selected_report_tabs(goals, report.analysis_frameworks, custom_dimensions)
+    if analysis_purpose == "choose_product" and "scoring" not in report.selected_report_tabs:
+        insert_at = report.selected_report_tabs.index("recommendations") if "recommendations" in report.selected_report_tabs else len(report.selected_report_tabs)
+        report.selected_report_tabs.insert(insert_at, "scoring")
     # Always use the analyst's structured knowledge as the authoritative
     # competitor_overview so QA's pricing_consistency check compares the same
     # data source that _build_pricing_comparison uses.
@@ -725,6 +972,36 @@ def _bind_report_fields(
         report.feature_comparison = det_features
 
     _backfill_required_sections(report, competitor_knowledge, output_language)
+    generated_framework_sections = _build_framework_sections(
+        competitor_knowledge,
+        report.analysis_frameworks,
+        output_language,
+    )
+    report.framework_sections = {
+        **generated_framework_sections,
+        **(report.framework_sections or {}),
+    }
+    generated_custom_sections = _build_custom_dimension_sections(
+        competitor_knowledge,
+        custom_dimensions,
+        output_language,
+    )
+    report.custom_dimension_sections = {
+        **generated_custom_sections,
+        **(report.custom_dimension_sections or {}),
+    }
+    if analysis_purpose == "choose_product":
+        generated_scores, generated_purpose = _build_choose_product_scores(
+            competitor_knowledge
+        )
+        report.competitor_scores = {
+            **generated_scores,
+            **(report.competitor_scores or {}),
+        }
+        report.purpose_sections = {
+            **generated_purpose,
+            **(report.purpose_sections or {}),
+        }
 
     # Inject deterministic pricing table into markdown (replace or append).
     pricing_md = _build_pricing_markdown(competitor_knowledge, output_language)
@@ -752,9 +1029,10 @@ def run(
     competitor_knowledge: list[CompetitorKnowledge],
     sources: list[SourceEvidence],
     goals: list[str],
+    analysis_frameworks: list[str] | None = None,
     rework_hints: list[str] | None = None,
     output_language: str = "en",
-    analysis_purpose: str = "market_research",
+    analysis_purpose: str = "unknown",
     custom_dimensions: list[str] | None = None,
 ) -> CompetitiveReport:
     """Generate a :class:`CompetitiveReport` from competitor knowledge."""
@@ -769,6 +1047,7 @@ def run(
             "competitor_count": len(competitor_knowledge),
             "source_count": len(sources),
             "goals": goals,
+            "analysis_frameworks": analysis_frameworks or ["swot"],
             "rework_hints": rework_hints or [],
             "output_language": output_language,
             "analysis_purpose": analysis_purpose,
@@ -799,6 +1078,7 @@ def run(
             competitor_knowledge=competitor_knowledge,
             sources=sources,
             goals=goals,
+            analysis_frameworks=analysis_frameworks,
             rework_hints=rework_hints,
             output_language=output_language,
             analysis_purpose=analysis_purpose,
@@ -836,6 +1116,7 @@ def run(
             sources=sources,
             output_language=output_language,
             goals=goals,
+            analysis_frameworks=analysis_frameworks or ["swot"],
             analysis_purpose=analysis_purpose,
             custom_dimensions=custom_dimensions or [],
         )

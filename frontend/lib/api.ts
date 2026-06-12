@@ -79,7 +79,7 @@ export const api = {
 
   patchReport: (
     id: string,
-    payload: Partial<Pick<CompetitiveReport, 'title' | 'markdown_content' | 'analysis_objective' | 'competitor_selection_rationale'>>
+    payload: Partial<CompetitiveReport>
   ) =>
     request<CompetitiveReport>(`/api/projects/${id}/report`, {
       method: 'PATCH',

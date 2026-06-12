@@ -16,6 +16,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import type {
+  AnalysisFramework,
   AnalysisPurpose,
   CompetitorInput,
   CompetitorRole,
@@ -37,24 +38,24 @@ interface GoalOption {
 
 const GOAL_OPTIONS: GoalOption[] = [
   {
+    value: 'user_personas',
+    label: '用户画像',
+    description: '识别各产品的主要用户群。',
+  },
+  {
     value: 'feature_comparison',
     label: '功能对比',
     description: '对比各竞品的功能覆盖。',
   },
   {
     value: 'pricing_analysis',
-    label: '定价分析',
+    label: '定价模式',
     description: '对比套餐结构和价格点。',
   },
   {
-    value: 'user_personas',
-    label: '用户画像',
-    description: '识别各产品的主要用户群。',
-  },
-  {
-    value: 'swot',
-    label: 'SWOT 分析',
-    description: '分析优势、劣势、机会和威胁。',
+    value: 'user_reviews',
+    label: '用户评价',
+    description: '仅根据研究输入中的用户材料生成。',
   },
 ]
 
@@ -82,10 +83,17 @@ interface AnalysisPurposeOption {
 }
 
 const ANALYSIS_PURPOSE_OPTIONS: AnalysisPurposeOption[] = [
-  { value: 'build_similar_product', label: '我想做类似产品', description: '发现市场空白、差异化机会和 MVP 方向' },
-  { value: 'choose_product_to_use', label: '我想选择产品使用', description: '按适配度、价格、风险和证据排序' },
-  { value: 'market_research', label: '我想了解行业', description: '梳理市场格局、用户分层和增长驱动' },
-  { value: 'competitor_success_analysis', label: '我想分析某个竞品', description: '拆解定位、增长路径、变现和护城河' },
+  { value: 'unknown', label: '先帮我推荐', description: '暂不限定目的，先用通用 SWOT 结构快速分析' },
+  { value: 'build_product', label: '我想做类似产品', description: '发现市场空白、差异化机会和 MVP 方向' },
+  { value: 'choose_product', label: '我想选择产品使用', description: '按适配度、价格、风险和证据排序' },
+  { value: 'understand_industry', label: '我想了解行业', description: '梳理市场格局、用户分层和增长驱动' },
+  { value: 'analyze_growth_ops', label: '我想分析增长、运营、商业化', description: '拆解增长路径、运营动作和变现模式' },
+]
+
+const FRAMEWORK_OPTIONS: { value: AnalysisFramework; label: string; description: string }[] = [
+  { value: 'swot', label: 'SWOT', description: '优势、劣势、机会、威胁' },
+  { value: 'three_c', label: '3C', description: '用户、公司、竞争' },
+  { value: 'aarrr', label: 'AARRR', description: '获客、激活、留存、收入、推荐' },
 ]
 
 const CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY: Record<IndustryType, string[]> = {
@@ -99,10 +107,19 @@ const CUSTOM_DIMENSION_SUGGESTIONS_BY_INDUSTRY: Record<IndustryType, string[]> =
   general: ['用户体验', '核心功能', '价格', '渠道', '品牌信任', '风险'],
 }
 const MAX_CUSTOM_DIMENSIONS = 8
-const DEFAULT_GOALS = ['feature_comparison', 'user_personas']
+const DEFAULT_GOALS = ['user_personas', 'feature_comparison', 'pricing_analysis']
+const DEFAULT_FRAMEWORKS: AnalysisFramework[] = ['swot']
 
 function defaultGoalsForIndustryType(): string[] {
   return [...DEFAULT_GOALS]
+}
+
+function defaultFrameworksForPurpose(value: AnalysisPurpose): AnalysisFramework[] {
+  if (value === 'build_product') return ['three_c', 'swot']
+  if (value === 'choose_product') return ['swot']
+  if (value === 'understand_industry') return ['three_c', 'swot']
+  if (value === 'analyze_growth_ops') return ['aarrr', 'swot']
+  return [...DEFAULT_FRAMEWORKS]
 }
 
 const COMPETITOR_ROLE_OPTIONS: { value: CompetitorRole; label: string }[] = [
@@ -119,6 +136,14 @@ const RESEARCH_KIND_OPTIONS: { value: ResearchInputKind; label: string }[] = [
   { value: 'desk_research', label: '桌面研究' },
   { value: 'notes', label: '备注' },
 ]
+
+const RESEARCH_KIND_DESCRIPTIONS: Record<ResearchInputKind, string> = {
+  survey: '已收集到的问卷反馈，可用于总结用户满意度、偏好和主要抱怨。',
+  interview: '访谈原文或纪要，可用于提炼用户动机、痛点和典型评价。',
+  questionnaire: '还没发出的问卷题纲，可帮助 Agent 理解你想验证哪些用户问题。',
+  desk_research: '人工整理的公开资料、评论摘录或竞品观察，用于补充公开采集。',
+  notes: '其他零散观察或判断，适合记录暂时无法归类的用户反馈。',
+}
 
 const DEFAULT_COMPETITORS: CompetitorInput[] = [
   { name: 'Cursor', url: 'https://cursor.com', role: 'direct_competitor' },
@@ -180,7 +205,8 @@ export default function NewProjectPage() {
   const [creationMode, setCreationMode] = useState<CreationMode>('discover')
   const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('帮我分析一下 AI coding 的竞品')
   const [industryType, setIndustryType] = useState<IndustryType>('ai_saas')
-  const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose>('build_similar_product')
+  const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose>('unknown')
+  const [analysisFrameworks, setAnalysisFrameworks] = useState<AnalysisFramework[]>(DEFAULT_FRAMEWORKS)
   const [customDimensions, setCustomDimensions] = useState<string[]>([])
   const [dimInput, setDimInput] = useState('')
   const [competitors, setCompetitors] = useState<CompetitorInput[]>(
@@ -297,8 +323,20 @@ export default function NewProjectPage() {
   }, [])
 
   const handleToggleGoal = (value: string) => {
+    if (value === 'user_reviews') return
     setGoals((prev) =>
       prev.includes(value) ? prev.filter((g) => g !== value) : [...prev, value]
+    )
+  }
+
+  const handlePurposeChange = (value: AnalysisPurpose) => {
+    setAnalysisPurpose(value)
+    setAnalysisFrameworks(defaultFrameworksForPurpose(value))
+  }
+
+  const handleToggleFramework = (value: AnalysisFramework) => {
+    setAnalysisFrameworks((prev) =>
+      prev.includes(value) ? prev.filter((f) => f !== value) : [...prev, value]
     )
   }
 
@@ -314,11 +352,18 @@ export default function NewProjectPage() {
         competitor_name: researchDraft.competitor_name?.trim() || '',
       },
     ])
+    setGoals((prev) => (prev.includes('user_reviews') ? prev : [...prev, 'user_reviews']))
     setResearchDraft((prev) => ({ ...prev, content: '', competitor_name: '' }))
   }
 
   const handleRemoveResearchInput = (index: number) => {
-    setResearchInputs((prev) => prev.filter((_, i) => i !== index))
+    setResearchInputs((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      if (next.length === 0) {
+        setGoals((current) => current.filter((goal) => goal !== 'user_reviews'))
+      }
+      return next
+    })
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -335,9 +380,12 @@ export default function NewProjectPage() {
       industry: industry.trim(),
       industry_type: industryType,
       analysis_purpose: analysisPurpose,
+      analysis_frameworks: analysisFrameworks.length > 0 ? analysisFrameworks : DEFAULT_FRAMEWORKS,
       custom_dimensions: customDimensions,
       competitors: cleanedCompetitors,
-      goals,
+      goals: researchInputs.length > 0
+        ? Array.from(new Set([...goals, 'user_reviews']))
+        : goals.filter((goal) => goal !== 'user_reviews'),
       output_language: 'zh',
       report_depth: 'standard',
       data_mode: dataMode,
@@ -486,7 +534,7 @@ export default function NewProjectPage() {
           <select
             id="analysis-purpose"
             value={analysisPurpose}
-            onChange={(e) => setAnalysisPurpose(e.target.value as AnalysisPurpose)}
+            onChange={(e) => handlePurposeChange(e.target.value as AnalysisPurpose)}
             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           >
             {ANALYSIS_PURPOSE_OPTIONS.map((option) => (
@@ -576,7 +624,12 @@ export default function NewProjectPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-900">研究输入 <span className="font-normal text-gray-400">（可选）</span></h2>
+          <div>
+            <h2 className="text-sm font-medium text-gray-900">研究输入 <span className="font-normal text-gray-400">（可选）</span></h2>
+            <p className="mt-1 text-xs text-gray-500">
+              这里填写的内容会作为报告里的“用户评价”来源；不填写时，用户评价维度不会进入报告。
+            </p>
+          </div>
           <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_170px]">
               <input
@@ -601,6 +654,9 @@ export default function NewProjectPage() {
                 ))}
               </select>
             </div>
+            <p className="mt-1 text-xs text-gray-500">
+              {RESEARCH_KIND_DESCRIPTIONS[researchDraft.source_kind]}
+            </p>
             <select
               id="research-competitor"
               name="research-competitor"
@@ -673,19 +729,22 @@ export default function NewProjectPage() {
           <div className="flex flex-wrap gap-2">
             {GOAL_OPTIONS.map((goal) => {
               const checked = goals.includes(goal.value)
+              const disabled = goal.value === 'user_reviews'
               return (
                 <label
                   key={goal.value}
                   className={cn(
-                    'inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                    'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                     checked
                       ? 'border-blue-300 bg-blue-50'
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
+                      : 'border-gray-200 bg-white hover:bg-gray-50',
+                    disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
                   )}
                 >
                   <input
                     type="checkbox"
                     checked={checked}
+                    disabled={disabled}
                     onChange={() => handleToggleGoal(goal.value)}
                     className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
@@ -694,6 +753,41 @@ export default function NewProjectPage() {
               )
             })}
           </div>
+          <p className="text-xs text-gray-500">
+            用户评价会在添加研究输入后自动纳入报告，不能手动勾选。
+          </p>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-gray-900">分析框架</h2>
+          <div className="flex flex-wrap gap-2">
+            {FRAMEWORK_OPTIONS.map((framework) => {
+              const checked = analysisFrameworks.includes(framework.value)
+              return (
+                <label
+                  key={framework.value}
+                  className={cn(
+                    'inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                    checked
+                      ? 'border-blue-300 bg-blue-50'
+                      : 'border-gray-200 bg-white hover:bg-gray-50'
+                  )}
+                  title={framework.description}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => handleToggleFramework(framework.value)}
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-gray-900">{framework.label}</span>
+                </label>
+              )
+            })}
+          </div>
+          <p className="text-xs text-gray-500">
+            会根据分析目的自动推荐，也可以多选调整。未选择时提交会使用 SWOT。
+          </p>
         </section>
 
         <section className="space-y-3">

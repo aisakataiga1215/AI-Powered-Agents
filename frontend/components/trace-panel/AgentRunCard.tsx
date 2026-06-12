@@ -6,6 +6,8 @@ interface AgentRunCardProps {
   run: AgentRun
 }
 
+const TRACE_DETAIL_CHAR_LIMIT = 12000
+
 /**
  * AgentRunCard — renders one row of the Agent trace timeline.
  *
@@ -114,19 +116,19 @@ export function AgentRunCard({ run }: AgentRunCardProps) {
       )}
 
       {isRenderablePreview(promptPreview) && (
-        <PreviewBlock title="Prompt 预览" value={promptPreview} />
+        <PreviewBlock title="Prompt 预览（已截断）" value={promptPreview} />
       )}
 
       {isRenderablePreview(llmOutputPreview) && (
-        <PreviewBlock title="LLM 输出预览" value={llmOutputPreview} />
+        <PreviewBlock title="LLM 输出预览（已截断）" value={llmOutputPreview} />
       )}
 
       <details className="mt-3 rounded border border-gray-200 bg-gray-50">
         <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100">
           输入
         </summary>
-        <pre className="max-h-60 overflow-auto rounded-b border-t border-gray-200 bg-gray-50 p-3 text-xs leading-relaxed text-gray-700">
-          {safeStringify(run.input)}
+        <pre className="max-h-60 whitespace-pre-wrap break-words overflow-auto rounded-b border-t border-gray-200 bg-gray-50 p-3 text-xs leading-relaxed text-gray-700">
+          {safeStringify(run.input, TRACE_DETAIL_CHAR_LIMIT)}
         </pre>
       </details>
 
@@ -134,8 +136,8 @@ export function AgentRunCard({ run }: AgentRunCardProps) {
         <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100">
           输出
         </summary>
-        <pre className="max-h-60 overflow-auto rounded-b border-t border-gray-200 bg-gray-50 p-3 text-xs leading-relaxed text-gray-700">
-          {safeStringify(run.output)}
+        <pre className="max-h-60 whitespace-pre-wrap break-words overflow-auto rounded-b border-t border-gray-200 bg-gray-50 p-3 text-xs leading-relaxed text-gray-700">
+          {safeStringify(run.output, TRACE_DETAIL_CHAR_LIMIT)}
         </pre>
       </details>
     </article>
@@ -170,8 +172,8 @@ function PreviewBlock({ title, value }: { title: string; value: unknown }) {
       <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-indigo-800 hover:bg-indigo-100/70">
         {title}
       </summary>
-      <pre className="max-h-44 overflow-auto rounded-b border-t border-indigo-100 p-3 text-xs leading-relaxed text-indigo-900">
-        {typeof value === 'string' ? value : safeStringify(value)}
+      <pre className="max-h-44 whitespace-pre-wrap break-words overflow-auto rounded-b border-t border-indigo-100 p-3 text-xs leading-relaxed text-indigo-900">
+        {typeof value === 'string' ? value : safeStringify(value, TRACE_DETAIL_CHAR_LIMIT)}
       </pre>
     </details>
   )
@@ -201,9 +203,13 @@ function formatTraceValue(value: unknown): string {
   return safeStringify(value)
 }
 
-function safeStringify(value: unknown): string {
+function safeStringify(value: unknown, limit?: number): string {
   try {
-    return JSON.stringify(value, null, 2)
+    const rendered = JSON.stringify(value, null, 2)
+    if (limit && rendered.length > limit) {
+      return `${rendered.slice(0, limit)}\n... truncated in UI. Export Trace JSON for the full payload.`
+    }
+    return rendered
   } catch {
     return String(value)
   }
