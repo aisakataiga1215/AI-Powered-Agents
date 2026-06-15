@@ -200,17 +200,15 @@ function inferIndustryTypeFromTopic(topic: string): IndustryType | null {
 
 export default function NewProjectPage() {
   const router = useRouter()
-  const [industry, setIndustry] = useState('AI Coding Tools')
+  const [industry, setIndustry] = useState('')
   const [creationMode, setCreationMode] = useState<CreationMode>('discover')
-  const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('帮我分析一下 AI coding 的竞品')
-  const [industryType, setIndustryType] = useState<IndustryType>('ai_saas')
+  const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('')
+  const [industryType, setIndustryType] = useState<IndustryType>('general')
   const [analysisPurpose, setAnalysisPurpose] = useState<AnalysisPurpose | ''>('')
   const [analysisFrameworks, setAnalysisFrameworks] = useState<AnalysisFramework[]>(DEFAULT_FRAMEWORKS)
   const [customDimensions, setCustomDimensions] = useState<string[]>([])
   const [dimInput, setDimInput] = useState('')
-  const [competitors, setCompetitors] = useState<CompetitorInput[]>(
-    DEFAULT_COMPETITORS
-  )
+  const [competitors, setCompetitors] = useState<CompetitorInput[]>([])
   const [goals, setGoals] = useState<string[]>(
     DEFAULT_GOALS
   )
@@ -244,6 +242,10 @@ export default function NewProjectPage() {
       if (value === 'ai_saas' && prev.length === 0) return DEFAULT_COMPETITORS
       return prev
     })
+  }, [])
+
+  const clearDefaultCompetitors = useCallback(() => {
+    setCompetitors((prev) => (isDefaultCompetitorSet(prev) ? [] : prev))
   }, [])
 
   const handleCompetitorChange = (
@@ -317,6 +319,7 @@ export default function NewProjectPage() {
           !existingDomains.has(normDomain(nc.url)) &&
           !existingNames.has(nc.name.toLowerCase().trim())
       )
+      if (isDefaultCompetitorSet(prev)) return newComps
       return [...prev, ...unique]
     })
   }, [])
@@ -466,9 +469,14 @@ export default function NewProjectPage() {
                 const inferredType = inferIndustryTypeFromTopic(topic)
                 setNaturalLanguageQuery(value)
                 setIndustry(topic)
-                if (inferredType) applyIndustryType(inferredType)
+                if (inferredType) {
+                  applyIndustryType(inferredType)
+                } else {
+                  setIndustryType('general')
+                  clearDefaultCompetitors()
+                }
               }}
-              placeholder="例如：帮我分析一下 AI coding 的竞品"
+              placeholder="例如：帮我分析一下 aippt 的竞品"
               rows={3}
               className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-shadow focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             />

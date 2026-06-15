@@ -18,9 +18,9 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 四个业务 Agent 通过 LangGraph DAG 协作：
 
 - **CollectorAgent** — 采集竞品公开信息并归一化为 `SourceEvidence`
-- **AnalystAgent** — 抽取结构化竞品知识（功能、定价、SWOT、机会点）
-- **WriterAgent** — 生成带引用的功能对比 / 定价对比 / SWOT 矩阵与 Markdown 报告
-- **QAAgent** — 校验引用完整性、证据覆盖与来源质量，不通过则按 `target_agent` 路由打回
+- **AnalystAgent** — 抽取结构化竞品知识（用户画像、功能、用户评价、定价、SWOT/3C/AARRR、机会点）
+- **WriterAgent** — 生成带引用的结构化报告、评分矩阵、建议页签与 Markdown 报告
+- **QAAgent** — 校验引用完整性、证据覆盖、目的匹配与来源质量，不通过则按 `target_agent` 路由打回
 
 核心特性：
 
@@ -30,9 +30,10 @@ short_description: Multi-agent competitive analysis (FastAPI + LangGraph)
 - TraceTimeline 可视化每个 AgentRun 的输入 / 输出 / 耗时 / token / QA 反馈
 - Agent 间每次关键交接都会生成结构化 `AgentMessage` Trace 事件，支持查看 from/to、message_type 与 payload
 - QA 失败显式展示（不静默隐藏），最多 N 轮返工后输出当前最优结果
-- 报告页支持人工修正 Markdown / 标题，保存后生成新报告版本并记录 `HumanReviewer` Trace
+- 报告页支持按摘要、画像、功能、定价、SWOT、建议等字段做人性化修正，保存后生成新报告版本并记录 `HumanReviewer` Trace
 - 真实采集 / Demo 双数据模式共用同一 Agent 流程；真实采集不可用时显式回退到 Demo fixtures
 - **结构化输出**：AnalystAgent 和 WriterAgent 使用 OpenAI function/tool calling（`with_structured_output(method="function_calling")`）直接产出 Pydantic 对象，兼容性失败时自动回退到 `response_format={"type": "json_object"}` + Pydantic v2 校验，保证输出始终符合 CompetitorKnowledge / CompetitiveReport schema
+- CollectorAgent 可用 LLM 预检来源相关性；QAAgent 可用 LLM 做低严重度 advisory 复核，两者都写入 token 与估算成本
 - `/api/graph` 暴露后端 LangGraph DAG，前端工作流图按后端节点/边渲染；`/api/metrics` 汇总 token 和估算成本
 - `/api/projects/{id}/jobs` 暴露持久化 workflow job，运行前做项目级 active job 锁，避免同一项目重复触发
 - 访谈/问卷等人工研究输入进入 SourceEvidence 前会做 PII 脱敏，并在来源面板显示脱敏状态
@@ -62,7 +63,7 @@ LangGraph DAG：CollectorAgent → AnalystAgent → WriterAgent → QAAgent
 Volcengine Doubao（OpenAI 兼容 endpoint）+ Tavily Search + SQLite
 ```
 
-详细架构图：[`docs/system_architecture.svg`](docs/system_architecture.svg)
+`/api/graph` 会导出当前后端工作流节点和边，前端 AgentDAG 直接使用该接口渲染，避免文档图和真实编排脱节。
 
 ---
 
@@ -84,13 +85,11 @@ Volcengine Doubao（OpenAI 兼容 endpoint）+ Tavily Search + SQLite
 | 前端 | Next.js 16 + React 19 + TypeScript + Tailwind CSS 4 + TanStack Query + Zustand |
 | 后端 | Python 3.11 + FastAPI + Pydantic v2 + SQLAlchemy + Uvicorn |
 | Agent 编排 | LangGraph DAG + QA 失败循环返工 |
-| 大模型 | Volcengine Doubao（默认，OpenAI 兼容 endpoint `ep-20260514111325-xjmj7`；可切 DeepSeek / GPT-4.1-mini / GPT-4o） |
+| 大模型 | Volcengine Doubao（默认，OpenAI 兼容 endpoint `ep-20260514111325-xjmj7`；可切 OpenAI 兼容模型） |
 | 搜索与爬取 | httpx + BeautifulSoup + Tavily Python SDK（可选） |
 | 数据库 | SQLite |
 | 部署 | Docker + Hugging Face Space（后端）+ Vercel（前端） |
 | 测试 | pytest + pytest-asyncio |
-
-生产化队列/并发控制路线见 [`docs/production_hardening_plan.md`](docs/production_hardening_plan.md)。
 
 ---
 
@@ -186,14 +185,34 @@ python -m pytest --cov=app --cov-report=term-missing
 | 真实采集 | `ENABLE_LIVE_SEARCH=true` + `TAVILY_API_KEY` | 使用 Tavily 搜索补充候选 URL，并抓取公开网页作为来源 |
 | 真实采集 + Demo 兜底 | `ENABLE_LIVE_SEARCH=true`, `ENABLE_DEMO_FIXTURES=true` | 搜索或网页抓取不足时补充 fixtures，报告中会体现来源强弱 |
 | Demo | `ENABLE_LIVE_SEARCH=false`, `ENABLE_DEMO_FIXTURES=true` | 读取 `scripts/demo_fixtures/*.json`，适合离线开发和稳定演示 |
-| QA 返工演示 | `ENABLE_LIVE_SEARCH=false`, `ENABLE_DEMO_FIXTURES=true`, `DEMO_SCENARIO=missing_pricing_source` | 首轮隐藏指定竞品定价页，QA 打回 Collector 后重新采集，详见 [`docs/qa_rework_demo.md`](docs/qa_rework_demo.md) |
+| QA 返工演示 | `ENABLE_LIVE_SEARCH=false`, `ENABLE_DEMO_FIXTURES=true`, `DEMO_SCENARIO=missing_pricing_source` | 首轮隐藏指定竞品定价页，QA 打回 Collector 后重新采集，并在 Trace 中展示返工前后对比 |
+
+### 分析输入如何影响报告
+
+| 输入项 | 影响范围 |
+|------|------|
+| 行业类型 | 影响默认竞品建议、搜索查询模板、站点路径探测、来源覆盖评分和候选来源优先级 |
+| 分析目的 | 影响默认分析框架、专属报告页签、评分模型、PM 分析区块、QA purpose checks 和打印 / PDF 内容 |
+| 分析目标 | 决定报告中展示哪些业务页签：用户画像、功能对比、用户评价、定价模式等；用户评价只在“研究输入（可选）”有内容时启用 |
+| 分析框架 | 多选：`SWOT`、`3C`、`AARRR`；用户可以在分析目的推荐值基础上调整 |
+| 自定义维度 | 进入 Analyst/Writer prompt，并作为独立报告页签输出分数、证据和置信度 |
+| 竞品角色 | 影响分析口径：直接竞品、间接竞品、灵感产品、标杆产品会被 Writer 用不同方式比较 |
+
+分析目的的默认框架：
+
+| 分析目的 | 默认框架 | 专属输出 |
+|------|------|------|
+| 我想做类似产品 | `3C` + `SWOT` | OpportunityScore、市场空白、可学习功能、MVP 方向、差异化建议 |
+| 我想选择产品使用 | `SWOT` | 加权评分矩阵、推荐排序、适合人群、不建议选择的人群、决策矩阵 |
+| 我想了解行业 | `3C` + `SWOT` | 市场背景、竞争格局、趋势、桌面研究式总结 |
+| 我想分析增长、运营、商业化 | `AARRR` + `SWOT` | GTM、获客/激活/留存/变现/推荐漏斗、商业化模式 |
 
 ### 质量与鲁棒性策略
 
-- **上下文管理**：AnalystAgent 按竞品分组独立抽取，每条来源正文截断；WriterAgent 对每个竞品知识输入做长度上限，并限制输出条数。
+- **上下文管理**：AnalystAgent 按竞品分组独立抽取；当前 WriterAgent 接收完整结构化知识，不再先做二次摘要截断。
 - **错误恢复**：CollectorAgent 在真实采集覆盖不足时使用 Demo fixtures 兜底；WriterAgent 在 LLM 解析失败时生成带 fallback 标记的结构化报告；QA 失败会路由到 Collector / Analyst / Writer 之一重做。
 - **幻觉抑制**：关键 claim 必须绑定 `source_id` 或标记为假设；QAAgent 检查缺失引用、未知 source_id、价格数字不一致、弱来源和错误页面。
-- **可观测指标**：Trace 中记录每个 Agent 的输入、输出、耗时、token 和 QA 反馈；Collector 输出每个竞品的来源覆盖分，QA 输出分数、问题数、阻塞问题数和返工目标。
+- **可观测指标**：Trace 中记录每个 Agent 的输入、输出、耗时、token 和 QA 反馈；Collector 输出每个竞品的来源覆盖分，QA 输出分数、问题数、阻塞问题数、返工目标和返工前后对比指标。
 - **成本指标**：AgentRun 记录 `cost_usd`，Metrics 页面按项目、Agent 和日期聚合 token 与估算成本。
 
 ---
@@ -229,10 +248,6 @@ AI-Powered-Agents/
 │   ├── architecture.md
 │   ├── agent_protocol.md
 │   ├── schema_design.md
-│   ├── competition_submission.md
-│   ├── qa_rework_demo.md
-│   ├── quantitative_comparison.md
-│   ├── system_architecture.svg
 │   ├── changelog.md
 │   └── project_status.md
 ├── scripts/

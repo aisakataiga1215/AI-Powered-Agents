@@ -1346,3 +1346,37 @@ class TestDiscoverCompetitorsAutoIndustry:
         joined = " ".join(queries).lower()
         assert "notion competitors" in joined or "notion alternatives" in joined
         assert "ai coding" not in joined
+
+    def test_aippt_product_prompt_does_not_use_ai_coding_defaults(self):
+        """Unknown AI-looking product names must not fall back to AI coding benchmark seeds."""
+        svc, queries = self._capture_queries()
+        candidates = svc.discover_competitors("帮我分析一下 aippt 的竞品", "ai_saas")
+        joined = " ".join(queries).lower()
+        domains = {c.domain for c in candidates}
+        assert "presentation maker" in joined or "aippt alternatives" in joined
+        assert "ai coding" not in joined
+        assert {"gamma.app", "beautiful.ai", "presentations.ai", "plusai.com"} & domains
+        assert not {"cursor.com", "trae.ai", "openai.com"} & domains
+
+    def test_ima_copilot_product_prompt_does_not_use_ai_coding_defaults(self):
+        """Product names containing copilot should still be searched as that product unless the prompt says coding."""
+        svc, queries = self._capture_queries()
+        candidates = svc.discover_competitors("帮我分析一下 ima copilot 的竞品", "ai_saas")
+        joined = " ".join(queries).lower()
+        domains = {c.domain for c in candidates}
+        assert "knowledge assistant" in joined or "ima.copilot alternatives" in joined
+        assert "ai coding" not in joined
+        assert {"notebooklm.google.com", "perplexity.ai", "kimi.moonshot.cn"} & domains
+        assert not {"cursor.com", "trae.ai", "openai.com"} & domains
+
+    def test_product_target_handles_aippt_alias(self):
+        from app.services.search_service import _extract_product_discovery_target
+
+        target = _extract_product_discovery_target("帮我分析一下 aippt 的竞品")
+        assert target == ("aippt", "AiPPT", "presentation_tools")
+
+    def test_product_target_handles_ima_copilot_alias(self):
+        from app.services.search_service import _extract_product_discovery_target
+
+        target = _extract_product_discovery_target("帮我分析一下 ima copilot 的竞品")
+        assert target == ("ima copilot", "ima.copilot", "ai_search")

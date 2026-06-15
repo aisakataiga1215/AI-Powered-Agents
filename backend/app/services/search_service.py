@@ -534,6 +534,11 @@ _STATIC_DISCOVERY_QUERIES: dict[str, list[str]] = {
 }
 
 _PRODUCT_DISCOVERY_ALIASES: dict[str, tuple[str, str]] = {
+    "aippt": ("AiPPT", "presentation_tools"),
+    "ai ppt": ("AiPPT", "presentation_tools"),
+    "ai-ppt": ("AiPPT", "presentation_tools"),
+    "ima copilot": ("ima.copilot", "ai_search"),
+    "ima.copilot": ("ima.copilot", "ai_search"),
     "qq": ("QQ", "social"),
     "腾讯qq": ("QQ", "social"),
     "wechat": ("WeChat", "social"),
@@ -564,6 +569,22 @@ _PRODUCT_DISCOVERY_ALIASES: dict[str, tuple[str, str]] = {
 }
 
 _PRODUCT_COMPETITOR_SEEDS: dict[str, tuple[tuple[str, str, str, str, str], ...]] = {
+    "aippt": (
+        ("Gamma", "https://gamma.app", "gamma.app", "direct_competitor", "AI presentation and document creation product with similar slide-generation use cases."),
+        ("Beautiful.ai", "https://www.beautiful.ai", "beautiful.ai", "direct_competitor", "AI-assisted presentation creation product focused on automated slide design."),
+        ("Presentations.ai", "https://www.presentations.ai", "presentations.ai", "direct_competitor", "AI presentation generator positioned as an automated deck creation tool."),
+        ("Plus AI", "https://www.plusai.com", "plusai.com", "direct_competitor", "AI presentation maker for Google Slides and PowerPoint workflows."),
+        ("Tome", "https://tome.app", "tome.app", "indirect_competitor", "AI-native storytelling and presentation product."),
+        ("Canva", "https://www.canva.com", "canva.com", "indirect_competitor", "Design platform with AI presentation creation capabilities."),
+    ),
+    "ima copilot": (
+        ("NotebookLM", "https://notebooklm.google.com", "notebooklm.google.com", "direct_competitor", "AI notebook and source-grounded research assistant for personal knowledge workflows."),
+        ("Perplexity", "https://www.perplexity.ai", "perplexity.ai", "direct_competitor", "AI answer engine and research assistant with cited responses."),
+        ("ChatGPT", "https://chatgpt.com", "chatgpt.com", "direct_competitor", "General AI assistant with file, search, and knowledge-work use cases."),
+        ("Kimi", "https://kimi.moonshot.cn", "kimi.moonshot.cn", "direct_competitor", "Chinese AI assistant commonly used for long-context reading and knowledge work."),
+        ("Notion AI", "https://www.notion.so/product/ai", "notion.so", "indirect_competitor", "Workspace AI assistant embedded in notes and knowledge management."),
+        ("Claude", "https://claude.ai", "claude.ai", "indirect_competitor", "AI assistant for document analysis, writing, and knowledge synthesis."),
+    ),
     "qq": (
         ("WeChat", "https://www.wechat.com", "wechat.com", "direct_competitor", "IM social product with similar messaging and relationship-chain use cases."),
         ("WhatsApp", "https://www.whatsapp.com", "whatsapp.com", "direct_competitor", "Large-scale messaging product with similar communication jobs."),
@@ -629,6 +650,20 @@ def _extract_generic_product_target(text: str) -> tuple[str, str, str] | None:
 
 
 def _product_discovery_queries(display_name: str, alias_key: str) -> list[str]:
+    if alias_key == "aippt":
+        return [
+            "AI presentation maker competitors official websites",
+            "AI PPT generator alternatives official",
+            "Gamma Beautiful.ai Presentations.ai Plus AI official",
+            f"{display_name} alternatives official",
+        ]
+    if alias_key == "ima copilot":
+        return [
+            "AI knowledge assistant competitors official websites",
+            "AI research assistant alternatives official",
+            "NotebookLM Perplexity Kimi Notion AI alternatives",
+            f"{display_name} alternatives official",
+        ]
     if alias_key in {"qq", "wechat"}:
         return [
             f"{display_name} competitors official messaging apps",
