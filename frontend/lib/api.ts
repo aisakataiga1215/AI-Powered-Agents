@@ -22,6 +22,13 @@ import type {
 const BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000'
 
+export function apiAssetUrl(path: string | undefined | null): string {
+  const value = (path ?? '').trim()
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+  return `${BASE}${value.startsWith('/') ? value : `/${value}`}`
+}
+
 export class ApiError extends Error {
   status: number
   body: string
@@ -65,6 +72,12 @@ export const api = {
   runProject: (id: string) =>
     request<{ project_id: string; status: string }>(
       `/api/projects/${id}/run`,
+      { method: 'POST' }
+    ),
+
+  stopProject: (id: string) =>
+    request<{ project_id: string; status: string; job_id: string; job_status: string }>(
+      `/api/projects/${id}/stop`,
       { method: 'POST' }
     ),
 

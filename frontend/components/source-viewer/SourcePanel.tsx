@@ -11,7 +11,7 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
+import { api, apiAssetUrl } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { useSourcePanel } from '@/lib/store'
 import { formatDateTime } from '@/lib/formatDateTime'
@@ -176,6 +176,20 @@ export function SourcePanel() {
                     {sourceQuery.data.url}
                   </p>
                 </div>
+              )}
+
+              {sourceQuery.data.screenshot_url && (
+                <figure className="overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={apiAssetUrl(sourceQuery.data.screenshot_url)}
+                    alt={`${sourceQuery.data.title || sourceQuery.data.url} 页面截图`}
+                    className="max-h-64 w-full object-cover object-top"
+                  />
+                  <figcaption className="border-t border-gray-200 px-3 py-2 text-xs text-gray-500">
+                    页面截图证据
+                  </figcaption>
+                </figure>
               )}
 
               <p className="text-xs text-gray-500">

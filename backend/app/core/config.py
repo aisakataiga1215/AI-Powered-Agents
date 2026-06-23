@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Search / Data
     enable_live_search: bool = True
     enable_demo_fixtures: bool = True
+    enable_screenshot_evidence: bool = True
+    screenshot_max_per_competitor: int = 2
+    artifact_dir: str = "artifacts"
     tavily_api_key: str = ""
     # ``demo_scenario`` lets the demo deliberately exercise the QA rework
     # loop. ``happy_path`` (default) loads every fixture as-is. Set to

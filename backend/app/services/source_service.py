@@ -65,6 +65,8 @@ def save_sources(
             retrieved_at=source.retrieved_at,
             reliability=source.reliability.value,
             data_source=source.data_source,
+            screenshot_path=source.screenshot_path,
+            screenshot_url=source.screenshot_url,
         )
         db.add(record)
         records.append(record)

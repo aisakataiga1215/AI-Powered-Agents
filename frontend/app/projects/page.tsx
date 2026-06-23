@@ -27,6 +27,11 @@ const STATUS_STYLES: Record<ProjectStatus, StatusStyle> = {
     border: 'border-blue-200',
     pulse: true,
   },
+  stopped: {
+    bg: 'bg-gray-50',
+    text: 'text-gray-700',
+    border: 'border-gray-300',
+  },
   completed: {
     bg: 'bg-green-50',
     text: 'text-green-700',
@@ -47,6 +52,7 @@ const STATUS_STYLES: Record<ProjectStatus, StatusStyle> = {
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   created: '待运行',
   running: '运行中',
+  stopped: '已停止',
   completed: '已完成',
   qa_failed: 'QA 未通过',
   failed: '失败',

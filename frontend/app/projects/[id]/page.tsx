@@ -24,6 +24,7 @@ const POLL_INTERVAL_MS = 3000
 const STATUS_PILLS: Record<ProjectStatus, string> = {
   created: 'bg-gray-100 text-gray-700 border-gray-200',
   running: 'bg-blue-50 text-blue-700 border-blue-200',
+  stopped: 'bg-gray-50 text-gray-700 border-gray-300',
   completed: 'bg-green-50 text-green-700 border-green-200',
   qa_failed: 'bg-orange-50 text-orange-700 border-orange-200',
   failed: 'bg-red-50 text-red-700 border-red-200',
@@ -32,10 +33,13 @@ const STATUS_PILLS: Record<ProjectStatus, string> = {
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   created: '待运行',
   running: '运行中',
+  stopped: '已停止',
   completed: '已完成',
   qa_failed: 'QA 未通过',
   failed: '失败',
 }
+
+const STARTABLE_STATUSES = new Set<ProjectStatus>(['created', 'stopped', 'failed', 'qa_failed'])
 
 const GOAL_LABELS: Record<string, string> = {
   feature_comparison: '功能对比',
@@ -92,6 +96,15 @@ export default function ProjectExecutionPage({ params }: PageProps) {
     },
   })
 
+  const stopMutation = useMutation({
+    mutationFn: () => api.stopProject(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] })
+      queryClient.invalidateQueries({ queryKey: ['traces', id] })
+      queryClient.invalidateQueries({ queryKey: ['jobs', id] })
+    },
+  })
+
   const traces: AgentRun[] = useMemo(() => tracesQuery.data?.traces ?? [], [tracesQuery.data])
   const reportAvailable =
     projectQuery.data?.status === 'completed' || projectQuery.data?.status === 'qa_failed'
@@ -134,6 +147,7 @@ export default function ProjectExecutionPage({ params }: PageProps) {
           latestQA={latestQA}
           isRunning={isRunning}
           runMutation={runMutation}
+          stopMutation={stopMutation}
         />
       )}
 
@@ -200,6 +214,7 @@ function ProjectHero({
   latestQA,
   isRunning,
   runMutation,
+  stopMutation,
 }: {
   id: string
   project: {
@@ -219,6 +234,12 @@ function ProjectHero({
     void,
     unknown
   >
+  stopMutation: UseMutationResult<
+    { project_id: string; status: string; job_id: string; job_status: string },
+    Error,
+    void,
+    unknown
+  >
 }) {
   const completedRuns = traces.filter((run) => run.status === 'success').length
   const failedRuns = traces.filter((run) => run.status === 'failed' || run.error_message).length
@@ -227,6 +248,7 @@ function ProjectHero({
     ...project.goals.filter((goal) => !FRAMEWORK_KEYS.has(goal)),
     ...(project.analysis_frameworks ?? []),
   ])
+  const canStart = STARTABLE_STATUSES.has(project.status)
 
   return (
     <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -266,33 +288,67 @@ function ProjectHero({
           </div>
 
           <div className="flex flex-col items-start gap-2 sm:items-end">
-            <button
-              type="button"
-              onClick={() => runMutation.mutate()}
-              disabled={project.status !== 'created' || runMutation.isPending}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors',
-                project.status === 'created' && !runMutation.isPending
-                  ? 'bg-blue-600 hover:bg-blue-700'
-                  : 'cursor-not-allowed bg-gray-300'
+            <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
+              <Link
+                href={`/?from=${encodeURIComponent(id)}`}
+                className="inline-flex rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                返回修改
+              </Link>
+              {isRunning && (
+                <button
+                  type="button"
+                  onClick={() => stopMutation.mutate()}
+                  disabled={stopMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {stopMutation.isPending && (
+                    <span
+                      className="h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent"
+                      aria-hidden
+                    />
+                  )}
+                  {stopMutation.isPending ? '停止中...' : 'Stop'}
+                </button>
               )}
-            >
-              {runMutation.isPending && (
-                <span
-                  className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent"
-                  aria-hidden
-                />
-              )}
-              {runMutation.isPending ? '启动中...' : '运行工作流'}
-            </button>
-            {project.status !== 'created' && (
-              <p className="text-xs text-gray-500">该项目已触发工作流。</p>
+              <button
+                type="button"
+                onClick={() => runMutation.mutate()}
+                disabled={!canStart || runMutation.isPending || stopMutation.isPending}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors',
+                  canStart && !runMutation.isPending && !stopMutation.isPending
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : 'cursor-not-allowed bg-gray-300'
+                )}
+              >
+                {runMutation.isPending && (
+                  <span
+                    className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent"
+                    aria-hidden
+                  />
+                )}
+                {runMutation.isPending ? '启动中...' : project.status === 'stopped' ? 'Start' : '运行工作流'}
+              </button>
+            </div>
+            {project.status === 'running' && (
+              <p className="text-xs text-gray-500">停止后会在当前 Agent 节点结束时中断后续流程。</p>
+            )}
+            {project.status === 'stopped' && (
+              <p className="text-xs text-gray-500">已停止。点击 Start 会重新启动一次分析。</p>
             )}
             {runMutation.isError && (
               <p className="max-w-xs text-xs text-red-600">
                 {runMutation.error instanceof Error
                   ? runMutation.error.message
                   : '工作流启动失败。'}
+              </p>
+            )}
+            {stopMutation.isError && (
+              <p className="max-w-xs text-xs text-red-600">
+                {stopMutation.error instanceof Error
+                  ? stopMutation.error.message
+                  : '工作流停止失败。'}
               </p>
             )}
           </div>
@@ -414,6 +470,8 @@ function jobStatusStyle(status: WorkflowJob['status']): string {
       return 'border-green-200 bg-green-50 text-green-700'
     case 'failed':
       return 'border-red-200 bg-red-50 text-red-700'
+    case 'canceled':
+      return 'border-gray-300 bg-gray-50 text-gray-700'
   }
 }
 
@@ -421,6 +479,7 @@ function jobStatusLabel(status: WorkflowJob['status']): string {
   if (status === 'queued') return '排队中'
   if (status === 'running') return '运行中'
   if (status === 'completed') return '已完成'
+  if (status === 'canceled') return '已取消'
   return '失败'
 }
 

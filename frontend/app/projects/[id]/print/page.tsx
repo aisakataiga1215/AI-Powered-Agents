@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { use, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
+import { api, apiAssetUrl } from '@/lib/api'
 import { formatDateTime } from '@/lib/formatDateTime'
 import type {
   AgentRun,
@@ -360,7 +360,7 @@ export default function PrintPage({ params }: PageProps) {
                 {usedSources.map((s, i) => (
                   <li key={s.source_id} className="flex gap-3">
                     <span className="shrink-0 font-mono text-xs text-gray-500">[{i + 1}]</span>
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <div className="font-medium text-gray-900">{s.title || s.url}</div>
                       <div className="break-all text-gray-600">{s.url}</div>
                       <div className="mt-0.5 text-xs text-gray-400">
@@ -368,6 +368,16 @@ export default function PrintPage({ params }: PageProps) {
                         获取时间 {formatDateTime(s.retrieved_at)}
                       </div>
                     </div>
+                    {s.screenshot_url && (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={apiAssetUrl(s.screenshot_url)}
+                          alt={`${s.title || s.url} 页面截图`}
+                          className="h-20 w-32 shrink-0 rounded border border-gray-200 object-cover object-top"
+                        />
+                      </>
+                    )}
                   </li>
                 ))}
               </ol>
@@ -381,11 +391,21 @@ export default function PrintPage({ params }: PageProps) {
                   {unusedSources.map((s) => (
                     <li key={s.source_id} className="flex gap-2 text-gray-600">
                       <span className="shrink-0">–</span>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <div className="font-medium text-gray-800">{s.title || s.url}</div>
                         <div className="break-all">{s.url}</div>
                         <div className="text-xs text-gray-400">来源 ID：{s.source_id}</div>
                       </div>
+                      {s.screenshot_url && (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={apiAssetUrl(s.screenshot_url)}
+                            alt={`${s.title || s.url} 页面截图`}
+                            className="h-16 w-24 shrink-0 rounded border border-gray-200 object-cover object-top"
+                          />
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>

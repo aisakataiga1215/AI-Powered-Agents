@@ -120,6 +120,8 @@ class Source(Base):
     retrieved_at = Column(String, nullable=False, default="")
     reliability = Column(String, nullable=False, default="medium")
     data_source = Column(String, nullable=False, default="demo")
+    screenshot_path = Column(Text, nullable=False, default="")
+    screenshot_url = Column(Text, nullable=False, default="")
 
     project = relationship("Project", back_populates="sources")
 

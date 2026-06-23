@@ -327,7 +327,16 @@ def _source_fallback_extraction(
     ]
 
     primary = (official_sources or sources)[0]
-    positioning = _first_text(primary.snippet, primary.content, primary.title)
+    positioning_evidence = _first_text(primary.snippet, primary.content, primary.title)
+    has_official_evidence = bool(official_sources)
+    has_pricing_evidence = bool(pricing_sources)
+    has_feedback_evidence = bool(feedback_sources)
+
+    positioning = ""
+    if has_official_evidence:
+        positioning = f"{competitor_name} 有官方页面可核验产品定位，适合继续作为竞品分析对象。"
+    elif positioning_evidence:
+        positioning = f"{competitor_name} 有公开来源可用于初步判断定位，但仍需要更多直接来源复核。"
 
     feature_items: list[RawFeature] = []
     seen_features: set[str] = set()
@@ -344,11 +353,13 @@ def _source_fallback_extraction(
                 name=title,
                 category="Product",
                 availability="available",
-                description=_first_text(source.snippet, source.content, limit=220),
+                description="该能力来自采集到的官方或产品页面，具体描述需打开来源复核。",
             )
         )
         if len(feature_items) >= 6:
             break
+
+    has_feature_evidence = bool(feature_items)
 
     pricing_summary = ""
     pricing_url = ""
@@ -357,12 +368,17 @@ def _source_fallback_extraction(
     if pricing_sources:
         pricing_source = pricing_sources[0]
         pricing_url = pricing_source.url
-        pricing_summary = _first_text(
+        pricing_evidence = _first_text(
             pricing_source.snippet,
             pricing_source.content,
             pricing_source.title,
         )
-        pricing_text = f"{pricing_summary} {pricing_source.title}".lower()
+        pricing_summary = (
+            f"已采集到 {competitor_name} 的定价相关来源，具体套餐和价格需要以定价页为准。"
+            if pricing_evidence
+            else ""
+        )
+        pricing_text = f"{pricing_evidence} {pricing_source.title}".lower()
         has_free_plan = "free" in pricing_text or "免费" in pricing_text
         pricing_plans = _extract_fallback_pricing_plans(
             f"{pricing_source.title} {pricing_source.snippet} {pricing_source.content}"
@@ -381,10 +397,15 @@ def _source_fallback_extraction(
     positive_points: list[str] = []
     negative_points: list[str] = []
     if feedback_sources:
-        feedback_summary = _first_text(
+        feedback_evidence = _first_text(
             feedback_sources[0].snippet,
             feedback_sources[0].content,
             feedback_sources[0].title,
+        )
+        feedback_summary = (
+            f"已采集到 {competitor_name} 的用户评价或人工研究输入，可作为用户反馈分析依据。"
+            if feedback_evidence
+            else ""
         )
         if feedback_summary:
             positive_points.append(feedback_summary)
@@ -395,47 +416,53 @@ def _source_fallback_extraction(
         for source in sources[:5]
     )
     if any(term in combined for term in ["developer", "code", "coding", "ide", "工程师", "开发"]):
-        target_users.append("Developers and engineering teams")
+        target_users.append("开发者和工程团队")
     elif any(term in combined for term in ["marketer", "growth", "sales", "运营", "增长"]):
-        target_users.append("Growth, marketing, and operations teams")
+        target_users.append("增长、市场和运营团队")
     elif positioning:
-        target_users.append(f"Users evaluating {competitor_name}")
+        target_users.append(f"正在评估 {competitor_name} 的潜在用户")
 
     weakness = ""
     if pricing_summary:
         weakness = (
-            "Pricing and package fit need manual verification against the "
-            "pricing source before purchase or benchmark decisions."
+            "定价和套餐适配度仍需要结合定价页逐项复核，避免只依据页面摘要做采购或对标判断。"
         )
     elif positioning:
         weakness = (
-            "Public evidence is concentrated in official positioning pages, "
-            "so limitations and trade-offs require additional validation."
+            "当前公开证据偏向官方定位页面，产品限制、真实体验和取舍仍需要更多第三方或用户反馈验证。"
         )
 
     opportunity = ""
     if target_users and feature_items:
         opportunity = (
-            f"{target_users[0]} can be served through the product capabilities "
-            f"visible in collected sources, including {feature_items[0].name}."
+            f"已采集来源显示 {competitor_name} 与{target_users[0]}相关，可围绕已识别能力继续分析差异化机会。"
         )
     elif positioning:
         opportunity = (
-            "The positioning evidence suggests adjacent use cases that can be "
-            "benchmarked for product and go-to-market planning."
+            "公开定位可作为产品和市场进入策略的初步对标材料，但机会判断需要补充更直接的用户证据。"
         )
 
     threat = ""
     if feature_items or pricing_summary:
         threat = (
-            "Comparable products can compete on overlapping features, pricing, "
-            "and onboarding unless differentiation is validated with user evidence."
+            "同类产品可能在功能、价格和上手体验上形成直接竞争，差异化需要结合更多证据验证。"
         )
     elif positioning:
         threat = (
-            "The publicly visible positioning may be easy for competitors to copy "
-            "without stronger evidence of defensibility."
+            "如果只有公开定位证据而缺少壁垒证据，相关卖点可能较容易被同类产品模仿。"
         )
+
+    strengths: list[str] = []
+    if has_official_evidence:
+        strengths.append(f"{competitor_name} 有官方来源支撑产品定位，基础可信度高于只依赖第三方摘要。")
+    if has_feature_evidence:
+        strengths.append(f"已从公开来源识别到 {len(feature_items)} 项产品能力，可用于功能横向对比。")
+    if has_pricing_evidence:
+        strengths.append("已采集到定价相关来源，便于后续进行价格价值和采购风险判断。")
+    if has_feedback_evidence:
+        strengths.append("已采集到用户评价或研究输入，能够补充官网材料之外的体验视角。")
+    if not strengths and positioning:
+        strengths.append("已有公开来源可支持初步分析，但优势判断仍需补充更直接证据。")
 
     raw = RawCompetitorExtraction(
         name=competitor_name,
@@ -451,7 +478,7 @@ def _source_fallback_extraction(
         positive_points=positive_points,
         negative_points=negative_points,
         user_feedback_summary=feedback_summary,
-        strengths=[positioning] if positioning else [],
+        strengths=strengths,
         weaknesses=[weakness] if weakness else [],
         opportunities=[opportunity] if opportunity else [],
         threats=[threat] if threat else [],
@@ -508,7 +535,7 @@ def _extract_fallback_pricing_plans(text: str) -> list[RawPricingPlan]:
                 name=name,
                 price=price,
                 billing_cycle=billing_cycle,
-                features=[context[:180]],
+                features=["该价格来自采集到的定价页面片段，具体权益需打开来源复核。"],
             )
         )
         if len(plans) >= 5:

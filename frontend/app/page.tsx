@@ -9,8 +9,8 @@
  */
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState, useCallback, type FormEvent } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useState, useCallback, useEffect, useRef, type FormEvent } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
@@ -121,6 +121,18 @@ function defaultFrameworksForPurpose(value: AnalysisPurpose | ''): AnalysisFrame
   return [...DEFAULT_FRAMEWORKS]
 }
 
+function isAnalysisPurpose(value: string | undefined): value is AnalysisPurpose {
+  return Boolean(value && ANALYSIS_PURPOSE_OPTIONS.some((option) => option.value === value))
+}
+
+function isAnalysisFramework(value: string): value is AnalysisFramework {
+  return FRAMEWORK_OPTIONS.some((option) => option.value === value)
+}
+
+function isIndustryType(value: string | undefined): value is IndustryType {
+  return Boolean(value && INDUSTRY_TYPE_OPTIONS.some((option) => option.value === value))
+}
+
 const COMPETITOR_ROLE_OPTIONS: { value: CompetitorRole; label: string }[] = [
   { value: 'direct_competitor', label: '直接竞品' },
   { value: 'indirect_competitor', label: '间接竞品' },
@@ -200,6 +212,9 @@ function inferIndustryTypeFromTopic(topic: string): IndustryType | null {
 
 export default function NewProjectPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const sourceProjectId = searchParams.get('from') ?? ''
+  const appliedSourceProjectId = useRef('')
   const [industry, setIndustry] = useState('')
   const [creationMode, setCreationMode] = useState<CreationMode>('discover')
   const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('')
@@ -227,6 +242,12 @@ export default function NewProjectPage() {
     queryFn: () => api.getSearchStatus(),
     retry: false,
   })
+  const sourceProjectQuery = useQuery({
+    queryKey: ['project-draft-source', sourceProjectId],
+    queryFn: () => api.getProject(sourceProjectId),
+    enabled: sourceProjectId.length > 0,
+    retry: false,
+  })
   const createMutation = useMutation({
     mutationFn: (payload: ProjectCreate) => api.createProject(payload),
     onSuccess: (result) => {
@@ -243,6 +264,43 @@ export default function NewProjectPage() {
       return prev
     })
   }, [])
+
+  useEffect(() => {
+    const source = sourceProjectQuery.data
+    if (!source) return
+    if (appliedSourceProjectId.current === source.project_id) return
+    appliedSourceProjectId.current = source.project_id
+    const nextExtraUrls: Record<string, string[]> = {}
+    for (const competitor of source.competitors ?? []) {
+      const key = `${competitor.name}::${competitor.url}`
+      nextExtraUrls[key] = competitor.extra_urls ?? []
+    }
+    const sourceFrameworks = (source.analysis_frameworks ?? []).filter(isAnalysisFramework)
+    const sourceCompetitors = (source.competitors ?? []).map((competitor) => ({
+      name: competitor.name,
+      url: competitor.url,
+      role: competitor.role ?? 'direct_competitor',
+      extra_urls: competitor.extra_urls ?? [],
+    }))
+    queueMicrotask(() => {
+      setCreationMode('manual')
+      setNaturalLanguageQuery('')
+      setIndustry(source.industry ?? '')
+      setIndustryType(isIndustryType(source.industry_type) ? source.industry_type : 'general')
+      setAnalysisPurpose(isAnalysisPurpose(source.analysis_purpose) ? source.analysis_purpose : '')
+      setAnalysisFrameworks(sourceFrameworks.length > 0 ? sourceFrameworks : DEFAULT_FRAMEWORKS)
+      setCustomDimensions(source.custom_dimensions ?? [])
+      setCompetitors(sourceCompetitors)
+      setGoals(source.goals ?? DEFAULT_GOALS)
+      setResearchInputs(source.research_inputs ?? [])
+      setSelectedDataMode(
+        source.data_mode === 'demo' || source.data_mode === 'live_with_fallback'
+          ? source.data_mode
+          : null
+      )
+      setExtraUrlsByKey(nextExtraUrls)
+    })
+  }, [sourceProjectQuery.data])
 
   const clearDefaultCompetitors = useCallback(() => {
     setCompetitors((prev) => (isDefaultCompetitorSet(prev) ? [] : prev))

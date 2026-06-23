@@ -13,6 +13,7 @@ COPY scripts scripts
 
 WORKDIR /app/backend
 RUN pip install --no-cache-dir -e .
+RUN python -m playwright install --with-deps chromium
 
 WORKDIR /app
 EXPOSE 7860

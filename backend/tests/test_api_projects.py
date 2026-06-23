@@ -254,6 +254,60 @@ def test_run_project_rejects_duplicate_active_job(client, monkeypatch):
     assert "active workflow job" in second.json()["error"]
 
 
+def test_stop_project_cancels_active_job(client, monkeypatch):
+    import app.api.routes.projects as projects_route
+
+    monkeypatch.setattr(projects_route, "run_workflow_background", None)
+
+    create = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [{"name": "Cursor", "url": "https://cursor.com"}],
+            "goals": ["feature_comparison"],
+        },
+    )
+    project_id = create.json()["project_id"]
+
+    run = client.post(f"/api/projects/{project_id}/run")
+    assert run.status_code == 200
+
+    stop = client.post(f"/api/projects/{project_id}/stop")
+    assert stop.status_code == 200
+    assert stop.json()["status"] == "stopped"
+    assert stop.json()["job_status"] == "canceled"
+
+    project = client.get(f"/api/projects/{project_id}")
+    assert project.json()["status"] == "stopped"
+
+    jobs = client.get(f"/api/projects/{project_id}/jobs").json()
+    assert jobs[0]["status"] == "canceled"
+
+
+def test_stopped_project_can_start_again(client, monkeypatch):
+    import app.api.routes.projects as projects_route
+
+    monkeypatch.setattr(projects_route, "run_workflow_background", None)
+
+    create = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [{"name": "Cursor", "url": "https://cursor.com"}],
+            "goals": ["feature_comparison"],
+        },
+    )
+    project_id = create.json()["project_id"]
+
+    first = client.post(f"/api/projects/{project_id}/run")
+    assert first.status_code == 200
+    assert client.post(f"/api/projects/{project_id}/stop").status_code == 200
+
+    second = client.post(f"/api/projects/{project_id}/run")
+    assert second.status_code == 200
+    assert second.json()["job_id"] != first.json()["job_id"]
+
+
 def test_run_project_missing_returns_404(client):
     response = client.post("/api/projects/missing/run")
     assert response.status_code == 404
@@ -293,6 +347,44 @@ def test_report_missing_returns_404_when_no_report(client):
 def test_source_missing_returns_404(client):
     response = client.get("/api/sources/does-not-exist")
     assert response.status_code == 404
+
+
+def test_source_detail_returns_screenshot_fields(client):
+    create = client.post(
+        "/api/projects",
+        json={
+            "industry": "AI Coding Tools",
+            "competitors": [{"name": "Cursor", "url": "https://cursor.com"}],
+            "goals": ["swot"],
+        },
+    )
+    project_id = create.json()["project_id"]
+
+    from app.db.session import SessionLocal
+    from app.schemas.source import SourceEvidence, SourceType
+    from app.services import source_service
+
+    db = SessionLocal()
+    try:
+        source = SourceEvidence(
+            project_id=project_id,
+            competitor_name="Cursor",
+            source_type=SourceType.official_website,
+            url="https://cursor.com",
+            title="Cursor",
+            screenshot_path="artifacts/screenshots/proj/cursor.png",
+            screenshot_url="/artifacts/screenshots/proj/cursor.png",
+        )
+        source_service.save_sources(db, project_id, [source])
+        source_id = source.source_id
+    finally:
+        db.close()
+
+    response = client.get(f"/api/sources/{source_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["screenshot_path"] == "artifacts/screenshots/proj/cursor.png"
+    assert body["screenshot_url"] == "/artifacts/screenshots/proj/cursor.png"
 
 
 def test_patch_knowledge_validates_payload(client):

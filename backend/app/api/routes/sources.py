@@ -31,4 +31,6 @@ def get_source(
         "retrieved_at": record.retrieved_at,
         "reliability": record.reliability,
         "data_source": getattr(record, "data_source", "demo") or "demo",
+        "screenshot_path": getattr(record, "screenshot_path", "") or "",
+        "screenshot_url": getattr(record, "screenshot_url", "") or "",
     }

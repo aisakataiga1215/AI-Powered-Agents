@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { api } from '@/lib/api'
+import { api, apiAssetUrl } from '@/lib/api'
 import type { AgentRun, Claim, CompetitorInProject, CompetitiveReport, CompetitorKnowledge, CompetitorScore, DimensionScore, OpportunityScore, QAResult, QATraceOutput, SourceEvidence } from '@/lib/types'
 import { useSourcePanel } from '@/lib/store'
 import { formatDateTime } from '@/lib/formatDateTime'
@@ -1466,7 +1466,7 @@ function SourcesTab({ sourceList }: { sourceList: SourceEvidence[] }) {
       <ol className="space-y-3">
         {sourceList.map((source, index) => (
           <li key={source.source_id} className="rounded-lg border border-gray-200 p-3">
-            <div className="flex flex-wrap items-start gap-2">
+            <div className="flex flex-wrap items-start gap-3">
               <span className="mt-0.5 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-500">
                 {index + 1}
               </span>
@@ -1493,6 +1493,22 @@ function SourcesTab({ sourceList }: { sourceList: SourceEvidence[] }) {
                   </p>
                 )}
               </div>
+              {source.screenshot_url && (
+                <a
+                  href={apiAssetUrl(source.screenshot_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-28 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50"
+                  title="打开截图证据"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={apiAssetUrl(source.screenshot_url)}
+                    alt={`${source.title || source.url} 页面截图`}
+                    className="h-16 w-full object-cover object-top"
+                  />
+                </a>
+              )}
             </div>
           </li>
         ))}

@@ -22,6 +22,7 @@ class WorkflowState(TypedDict, total=False):
     """
 
     project_id: str
+    job_id: str
     competitors: list[dict]  # [{"name": str, "url": str}]
     goals: list[str]
     analysis_frameworks: list[str]

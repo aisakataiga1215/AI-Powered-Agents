@@ -22,6 +22,7 @@ from langgraph.graph import END, StateGraph
 
 from app.core.logging import get_logger
 from app.graph.nodes import (
+    WorkflowStopped,
     analyze_competitors_node,
     collect_sources_node,
     finalize_report_node,
@@ -89,6 +90,7 @@ competitive_analysis_workflow = build_workflow()
 
 def _initial_state(
     project_id: str,
+    job_id: str | None,
     competitors: list[dict],
     goals: list[str],
     analysis_frameworks: list[str] | None = None,
@@ -101,6 +103,7 @@ def _initial_state(
 ) -> WorkflowState:
     return {
         "project_id": project_id,
+        "job_id": job_id or "",
         "competitors": competitors,
         "goals": goals,
         "analysis_frameworks": normalize_analysis_frameworks(analysis_frameworks),
@@ -133,6 +136,7 @@ def run_workflow_background(
     analysis_purpose: str = "unknown",
     custom_dimensions: list[str] | None = None,
     research_inputs: list[dict] | None = None,
+    job_id: str | None = None,
 ) -> None:
     """Entry point invoked by FastAPI BackgroundTasks.
 
@@ -173,13 +177,22 @@ def run_workflow_background(
         db.close()
 
     state = _initial_state(
-        project_id, competitors, goals, analysis_frameworks,
+        project_id, job_id, competitors, goals, analysis_frameworks,
         output_language, data_mode, industry_type,
         analysis_purpose, custom_dimensions, research_inputs,
     )
     try:
         competitive_analysis_workflow.invoke(state)
         logger.info("Workflow completed for project %s", project_id)
+    except WorkflowStopped:
+        logger.info("Workflow stopped for project %s", project_id)
+        db = SessionLocal()
+        try:
+            project_service.update_project_status(
+                db, project_id, ProjectStatus.stopped
+            )
+        finally:
+            db.close()
     except Exception as exc:  # noqa: BLE001 - top-level catch-all
         logger.exception(
             "Workflow failed for project %s: %s", project_id, exc

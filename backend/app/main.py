@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     health,
@@ -26,6 +27,7 @@ from app.core.errors import AppError, NotFoundError
 from app.core.logging import get_logger, setup_logging
 from app.db import models
 from app.db.session import engine
+from app.services.screenshot_service import artifact_root
 
 logger = get_logger(__name__)
 
@@ -55,6 +57,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/artifacts", StaticFiles(directory=str(artifact_root())), name="artifacts")
 
 
 @app.exception_handler(NotFoundError)

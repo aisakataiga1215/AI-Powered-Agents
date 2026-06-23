@@ -49,3 +49,5 @@ class SourceEvidence(BaseModel):
     data_source: Literal["live", "demo", "search", "manual"] = "demo"
     contains_pii: bool = False
     desensitized: bool = False
+    screenshot_path: str = ""
+    screenshot_url: str = ""

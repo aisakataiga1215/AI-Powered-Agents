@@ -756,13 +756,14 @@ def _build_custom_dimension_sections(
     knowledge: list[CompetitorKnowledge],
     custom_dimensions: list[str] | None,
     output_language: str,
+    sources: list[SourceEvidence],
 ) -> dict:
     if not custom_dimensions:
         return {}
     placeholder = "未在已采集来源中找到该维度的直接表述" if output_language == "zh" else "No direct statement for this dimension was found in collected sources"
     return {
         dim: [
-            _build_custom_dimension_entry(ck, dim, placeholder)
+            _build_custom_dimension_entry(ck, dim, placeholder, sources)
             for ck in knowledge
         ]
         for dim in custom_dimensions
@@ -791,8 +792,67 @@ def _claim_text_and_evidence(claim: Claim | None) -> tuple[str, list[str]]:
     return claim.text or "", list(claim.evidence or [])
 
 
-def _dimension_candidate_texts(ck: CompetitorKnowledge) -> list[tuple[str, list[str]]]:
+def _source_type_value(source: SourceEvidence) -> str:
+    source_type = getattr(source, "source_type", "")
+    return getattr(source_type, "value", str(source_type))
+
+
+def _sources_for_competitor(ck: CompetitorKnowledge, sources: list[SourceEvidence]) -> list[SourceEvidence]:
+    names = {ck.competitor_name.strip().lower()} if ck.competitor_name else set()
+    ids = {ck.competitor_id} if ck.competitor_id else set()
+    return [
+        source
+        for source in sources
+        if (source.competitor_id and source.competitor_id in ids)
+        or (source.competitor_name and source.competitor_name.strip().lower() in names)
+    ]
+
+
+def _dimension_allows_feedback_sources(dimension: str) -> bool:
+    text = dimension.lower()
+    return any(term in text for term in ("评价", "口碑", "反馈", "review", "feedback", "sentiment"))
+
+
+def _dimension_direct_source_types(dimension: str) -> set[str]:
+    text = dimension.lower()
+    if any(term in text for term in ("隐私", "privacy", "数据", "data", "训练", "training", "保留", "retention")):
+        return {"privacy", "security", "docs", "official_website", "unknown"}
+    if any(term in text for term in ("安全", "合规", "security", "compliance", "sso", "权限", "audit", "审计")):
+        return {"security", "privacy", "docs", "official_website", "unknown"}
+    if any(term in text for term in ("价格", "定价", "pricing", "price", "cost", "费用")):
+        return {"pricing_page", "official_website", "unknown"}
+    return {"features_page", "docs", "official_website", "security", "privacy", "blog", "news", "unknown"}
+
+
+def _source_text(source: SourceEvidence) -> str:
+    return " ".join(part for part in [source.title, source.url, source.snippet, source.content] if part)
+
+
+def _dimension_source_matches(source: SourceEvidence, keywords: tuple[str, ...], dimension: str) -> bool:
+    source_type = _source_type_value(source)
+    if source_type in {"manual_input", "review"} and not _dimension_allows_feedback_sources(dimension):
+        return False
+    if source_type not in _dimension_direct_source_types(dimension):
+        return False
+    text = _source_text(source).lower()
+    return any(keyword in text for keyword in keywords)
+
+
+def _dimension_candidate_texts(
+    ck: CompetitorKnowledge,
+    dimension: str,
+    sources: list[SourceEvidence],
+) -> list[tuple[str, list[str]]]:
     candidates: list[tuple[str, list[str]]] = []
+    keywords = _dimension_keywords(dimension)
+    for source in _sources_for_competitor(ck, sources):
+        if _dimension_source_matches(source, keywords, dimension):
+            source_type = _source_type_value(source)
+            title = source.title or source.url
+            candidates.append((
+                f"{title}（{source_type}）提供了与“{dimension}”相关的直接来源，需要结合原文核验具体条款。",
+                [source.source_id],
+            ))
     if ck.product_profile:
         candidates.append(_claim_text_and_evidence(ck.product_profile.positioning))
         for claim in ck.product_profile.target_users:
@@ -813,24 +873,27 @@ def _dimension_candidate_texts(ck: CompetitorKnowledge) -> list[tuple[str, list[
             " ".join([persona.name, persona.description, *list(persona.needs or []), *list(persona.pain_points or [])]),
             list(persona.evidence or []),
         ))
-    if ck.user_feedback_summary:
+    if ck.user_feedback_summary and _dimension_allows_feedback_sources(dimension):
         candidates.append((ck.user_feedback_summary.summary, list(ck.sources or [])))
         for claim in ck.user_feedback_summary.positive_points + ck.user_feedback_summary.negative_points:
             candidates.append(_claim_text_and_evidence(claim))
-    if ck.swot:
-        for claim in ck.swot.strengths + ck.swot.weaknesses + ck.swot.opportunities + ck.swot.threats:
-            candidates.append(_claim_text_and_evidence(claim))
-    return [(text.strip(), evidence) for text, evidence in candidates if text and text.strip()]
+    filtered: list[tuple[str, list[str]]] = []
+    for text, evidence in candidates:
+        clean = text.strip()
+        if clean and any(keyword in clean.lower() for keyword in keywords):
+            filtered.append((clean, evidence))
+    return filtered
 
 
 def _build_custom_dimension_entry(
     ck: CompetitorKnowledge,
     dimension: str,
     placeholder: str,
+    sources: list[SourceEvidence],
 ) -> dict:
     keywords = _dimension_keywords(dimension)
     matches: list[tuple[str, list[str]]] = []
-    for text, evidence in _dimension_candidate_texts(ck):
+    for text, evidence in _dimension_candidate_texts(ck, dimension, sources):
         lower = text.lower()
         if any(keyword in lower for keyword in keywords):
             matches.append((text, evidence))
@@ -849,7 +912,7 @@ def _build_custom_dimension_entry(
         confidence = "medium" if evidence else "low"
     else:
         summary = placeholder
-        evidence = _first_evidence(ck)
+        evidence = []
         confidence = "low"
 
     return {
@@ -864,6 +927,7 @@ def _build_custom_dimension_analysis(
     knowledge: list[CompetitorKnowledge],
     custom_dimensions: list[str] | None,
     output_language: str,
+    sources: list[SourceEvidence],
 ) -> dict[str, DimensionScore]:
     if not custom_dimensions:
         return {}
@@ -876,6 +940,7 @@ def _build_custom_dimension_analysis(
                 ck,
                 dim,
                 "未在已采集来源中找到该维度的直接表述" if output_language == "zh" else "No direct statement for this dimension was found in collected sources",
+                sources,
             )
             for ck in knowledge
         ]
@@ -1014,6 +1079,7 @@ def _score_relative(value: float, values: list[float], *, higher_is_better: bool
 def _build_choose_product_scores(
     knowledge: list[CompetitorKnowledge],
     custom_dimensions: list[str] | None = None,
+    sources: list[SourceEvidence] | None = None,
 ) -> tuple[dict[str, CompetitorScore], dict]:
     scores: dict[str, CompetitorScore] = {}
     best_for: dict[str, str] = {}
@@ -1096,6 +1162,7 @@ def _build_choose_product_scores(
                 ck,
                 dim,
                 "未在已采集来源中找到该维度的直接表述",
+                sources or [],
             )
             for dim in custom_dimensions
         }
@@ -1497,12 +1564,11 @@ def _backfill_required_sections(
                 _claim("Some live sources are weak or region-limited, so low-confidence findings should be manually verified against cited sources.", evidence, hypothesis=True),
             ]
 
-    if not report.swot_comparison:
-        swot: dict[str, dict] = {}
-        for ck in knowledge:
-            if ck.swot:
-                swot[ck.competitor_name] = ck.swot.model_dump(mode="json")
-        report.swot_comparison = swot
+    swot: dict[str, dict] = {}
+    for ck in knowledge:
+        if ck.swot:
+            swot[ck.competitor_name] = ck.swot.model_dump(mode="json")
+    report.swot_comparison = swot
 
     if not report.user_persona_comparison:
         report.user_persona_comparison = {
@@ -1625,24 +1691,27 @@ def _bind_report_fields(
         competitor_knowledge,
         custom_dimensions,
         output_language,
+        sources,
     )
     report.custom_dimension_sections = {
-        **generated_custom_sections,
         **(report.custom_dimension_sections or {}),
+        **generated_custom_sections,
     }
     generated_custom_analysis = _build_custom_dimension_analysis(
         competitor_knowledge,
         custom_dimensions,
         output_language,
+        sources,
     )
     report.custom_dimension_analysis = {
-        **generated_custom_analysis,
         **(report.custom_dimension_analysis or {}),
+        **generated_custom_analysis,
     }
     if analysis_purpose == "choose_product":
         generated_scores, generated_purpose = _build_choose_product_scores(
             competitor_knowledge,
             custom_dimensions=custom_dimensions,
+            sources=sources,
         )
         report.competitor_scores = {
             **(report.competitor_scores or {}),

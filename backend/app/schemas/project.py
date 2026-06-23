@@ -71,6 +71,7 @@ def normalize_analysis_frameworks(values: list[str] | None) -> list[AnalysisFram
 class ProjectStatus(str, Enum):
     created = "created"
     running = "running"
+    stopped = "stopped"
     completed = "completed"
     qa_failed = "qa_failed"
     failed = "failed"

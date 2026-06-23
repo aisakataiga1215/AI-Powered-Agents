@@ -48,6 +48,16 @@ def _apply_migrations() -> None:
         "ALTER TABLE sources ADD COLUMN data_source TEXT DEFAULT 'demo'"
     )
     _add_column_if_missing(
+        "sources",
+        "screenshot_path",
+        "ALTER TABLE sources ADD COLUMN screenshot_path TEXT DEFAULT ''"
+    )
+    _add_column_if_missing(
+        "sources",
+        "screenshot_url",
+        "ALTER TABLE sources ADD COLUMN screenshot_url TEXT DEFAULT ''"
+    )
+    _add_column_if_missing(
         "projects",
         "industry_type",
         "ALTER TABLE projects ADD COLUMN industry_type TEXT DEFAULT 'general'"

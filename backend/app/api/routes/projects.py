@@ -25,6 +25,7 @@ from app.schemas.project import (
     normalize_analysis_purpose,
 )
 from app.services import project_service, workflow_job_service
+from app.schemas.job import WorkflowJobStatus
 
 # The graph workflow lives in a sibling package implemented by the agent
 # workflow engineer. Import lazily so this module loads even before the
@@ -178,13 +179,48 @@ def run_project(
     }
 
 
+@router.post("/projects/{project_id}/stop")
+def stop_project(
+    project_id: str,
+    db: Session = Depends(get_session),
+) -> dict:
+    """Request cancellation of the active workflow job.
+
+    FastAPI BackgroundTasks cannot be force-killed safely. The workflow
+    checks the durable job status between nodes and stops before launching
+    the next Agent.
+    """
+    project = project_service.get_project(db, project_id)
+    if project is None:
+        raise NotFoundError("Project", project_id)
+    if project.status != ProjectStatus.running.value:
+        raise ConflictError(f"Project '{project_id}' is not running")
+
+    job = workflow_job_service.cancel_active_job(db, project_id)
+    if job is None:
+        raise ConflictError(f"Project '{project_id}' has no active workflow job")
+    project_service.update_project_status(db, project_id, ProjectStatus.stopped)
+
+    return {
+        "project_id": project_id,
+        "status": ProjectStatus.stopped.value,
+        "job_id": job.id,
+        "job_status": WorkflowJobStatus.canceled.value,
+    }
+
+
 def run_workflow_job_background(job_id: str, payload: dict) -> None:
     """BackgroundTasks adapter for a durable workflow job."""
     from app.db.session import SessionLocal
 
     db = SessionLocal()
     try:
-        workflow_job_service.mark_running(db, job_id)
+        job = workflow_job_service.mark_running(db, job_id)
+        if job is not None and job.status == WorkflowJobStatus.canceled.value:
+            project_service.update_project_status(
+                db, payload["project_id"], ProjectStatus.stopped
+            )
+            return
     finally:
         db.close()
 
@@ -201,6 +237,7 @@ def run_workflow_job_background(job_id: str, payload: dict) -> None:
             payload["analysis_purpose"],
             payload["custom_dimensions"],
             payload["research_inputs"],
+            job_id=job_id,
         )
     except Exception as exc:  # noqa: BLE001
         db = SessionLocal()

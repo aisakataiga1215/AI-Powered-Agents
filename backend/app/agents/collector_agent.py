@@ -33,6 +33,7 @@ from app.schemas.trace import AgentRun, AgentRunStatus, TokenUsage
 from app.services import (
     coverage_evaluator,
     crawler_service,
+    screenshot_service,
     source_classifier,
     source_discovery,
     source_service,
@@ -246,6 +247,7 @@ class _CollectionResult:
     silent_search_urls: list = field(default_factory=list)
     custom_dimension_urls: list = field(default_factory=list)
     rejected_extra_urls: list = field(default_factory=list)
+    screenshot_count: int = 0
 
 
 def _hints_request_pricing(rework_hints: list[str] | None) -> bool:
@@ -291,6 +293,50 @@ def _is_adequately_covered(sources: list[SourceEvidence]) -> bool:
     if cov.score >= WEAK_THRESHOLD:
         return True
     return bool(cov.homepage and (cov.pricing or cov.features_or_docs))
+
+
+_SCREENSHOT_SOURCE_PRIORITY: dict[SourceType, int] = {
+    SourceType.official_website: 0,
+    SourceType.pricing_page: 1,
+    SourceType.features_page: 2,
+    SourceType.docs: 3,
+}
+
+
+def _attach_screenshot_evidence(
+    *,
+    project_id: str,
+    sources: list[SourceEvidence],
+) -> int:
+    if not sources or settings.screenshot_max_per_competitor <= 0:
+        return 0
+    candidates = [
+        source
+        for source in sources
+        if source.data_source in {"live", "search"}
+        and source.source_type in _SCREENSHOT_SOURCE_PRIORITY
+        and source.url.startswith(("http://", "https://"))
+    ]
+    candidates.sort(
+        key=lambda source: (
+            _SCREENSHOT_SOURCE_PRIORITY.get(source.source_type, 99),
+            0 if source.reliability is Reliability.high else 1,
+        )
+    )
+    captured = 0
+    for source in candidates[: settings.screenshot_max_per_competitor]:
+        result = screenshot_service.capture_source_screenshot(
+            project_id=project_id,
+            source_id=source.source_id,
+            url=source.url,
+            full_page=False,
+        )
+        if result is None:
+            continue
+        source.screenshot_path = result.path
+        source.screenshot_url = result.url
+        captured += 1
+    return captured
 
 
 def _infer_drop_reason(stats: dict, data_mode: str) -> str:
@@ -585,6 +631,11 @@ def _collect_live(
     if followup_urls:
         crawl_followup_urls(followup_urls[: _SEARCH_MAX_URLS * 2], "search")
 
+    screenshot_count = _attach_screenshot_evidence(
+        project_id=project_id,
+        sources=live_sources,
+    )
+
     cov = coverage_evaluator.evaluate(live_sources)
     fallback_attempted = cov.score < WEAK_THRESHOLD or not all_candidates
 
@@ -636,6 +687,7 @@ def _collect_live(
         silent_search_urls=search_urls,
         custom_dimension_urls=custom_dimension_urls,
         rejected_extra_urls=rejected_extra,
+        screenshot_count=screenshot_count,
     )
 
 
@@ -737,6 +789,7 @@ def run(
                     "selected_extra_url_count": len(result.selected_extra_urls),
                     "silent_search_url_count": len(result.silent_search_urls),
                     "custom_dimension_url_count": len(result.custom_dimension_urls),
+                    "screenshot_count": result.screenshot_count,
                     "selected_extra_urls": result.selected_extra_urls,
                     "silent_search_urls": result.silent_search_urls,
                     "custom_dimension_urls": result.custom_dimension_urls,

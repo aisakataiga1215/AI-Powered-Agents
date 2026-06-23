@@ -20,7 +20,7 @@ from app.graph.state import WorkflowState
 from app.schemas.project import DEFAULT_ANALYSIS_PURPOSE, ProjectStatus
 from app.schemas.qa import IssueSeverity, QAResult
 from app.schemas.agent_message import AgentMessage, MessageType
-from app.services import project_service, report_service, trace_service
+from app.services import project_service, report_service, trace_service, workflow_job_service
 
 logger = get_logger(__name__)
 
@@ -36,6 +36,15 @@ _AGENT_PRIORITY = {
 def _make_db() -> Session:
     from app.db.session import SessionLocal  # lazy import so monkeypatch works in tests
     return SessionLocal()
+
+
+class WorkflowStopped(Exception):
+    """Raised when a user stops the active workflow job."""
+
+
+def _ensure_not_stopped(db: Session, state: WorkflowState) -> None:
+    if workflow_job_service.is_job_canceled(db, state.get("job_id")):
+        raise WorkflowStopped("Workflow stopped by user")
 
 
 def _record_message(
@@ -71,6 +80,7 @@ def collect_sources_node(state: WorkflowState) -> dict:
     """Run the CollectorAgent and return the new sources."""
     db = _make_db()
     try:
+        _ensure_not_stopped(db, state)
         _record_message(
             db,
             project_id=state["project_id"],
@@ -117,6 +127,7 @@ def analyze_competitors_node(state: WorkflowState) -> dict:
     """Run the AnalystAgent on the collected sources."""
     db = _make_db()
     try:
+        _ensure_not_stopped(db, state)
         _record_message(
             db,
             project_id=state["project_id"],
@@ -165,6 +176,7 @@ def write_report_node(state: WorkflowState) -> dict:
     """Run the WriterAgent to produce a draft report."""
     db = _make_db()
     try:
+        _ensure_not_stopped(db, state)
         _record_message(
             db,
             project_id=state["project_id"],
@@ -214,6 +226,7 @@ def qa_review_node(state: WorkflowState) -> dict:
     """Run the QAAgent against the latest draft."""
     db = _make_db()
     try:
+        _ensure_not_stopped(db, state)
         _record_message(
             db,
             project_id=state["project_id"],
@@ -264,6 +277,7 @@ def finalize_report_node(state: WorkflowState) -> dict:
     """Persist the final report and mark the project completed."""
     db = _make_db()
     try:
+        _ensure_not_stopped(db, state)
         report = state.get("report")
         if report is not None:
             report_service.save_report(db, state["project_id"], report)
@@ -288,6 +302,11 @@ def finalize_report_node(state: WorkflowState) -> dict:
 
 def handle_rework_node(state: WorkflowState) -> dict:
     """Increment the rework counter and pick a target agent."""
+    db = _make_db()
+    try:
+        _ensure_not_stopped(db, state)
+    finally:
+        db.close()
     qa_result = state.get("qa_result")
     rework_count = state.get("rework_count", 0) + 1
     rework_target = _determine_rework_target(qa_result)
@@ -352,6 +371,7 @@ def mark_qa_failed_node(state: WorkflowState) -> dict:
     """Persist the partial report (if any) and mark the project qa_failed."""
     db = _make_db()
     try:
+        _ensure_not_stopped(db, state)
         report = state.get("report")
         if report is not None:
             report_service.save_report(db, state["project_id"], report)

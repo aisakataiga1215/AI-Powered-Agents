@@ -10,6 +10,7 @@ class WorkflowJobStatus(str, Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
+    canceled = "canceled"
 
 
 class WorkflowJobResponse(BaseModel):

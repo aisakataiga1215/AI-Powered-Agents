@@ -20,6 +20,7 @@
 export type ProjectStatus =
   | 'created'
   | 'running'
+  | 'stopped'
   | 'completed'
   | 'qa_failed'
   | 'failed'
@@ -164,7 +165,7 @@ export interface TracesResponse {
   traces: AgentRun[]
 }
 
-export type WorkflowJobStatus = 'queued' | 'running' | 'completed' | 'failed'
+export type WorkflowJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
 
 export interface WorkflowJob {
   job_id: string
@@ -349,6 +350,8 @@ export interface SourceEvidence {
   data_source?: 'live' | 'demo' | 'search' | 'manual'
   contains_pii?: boolean
   desensitized?: boolean
+  screenshot_path?: string
+  screenshot_url?: string
 }
 
 /**
