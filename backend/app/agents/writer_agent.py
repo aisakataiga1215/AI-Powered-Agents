@@ -759,18 +759,104 @@ def _build_custom_dimension_sections(
 ) -> dict:
     if not custom_dimensions:
         return {}
-    placeholder = "暂无足够证据" if output_language == "zh" else "Insufficient evidence"
+    placeholder = "未在已采集来源中找到该维度的直接表述" if output_language == "zh" else "No direct statement for this dimension was found in collected sources"
     return {
         dim: [
-            {
-                "competitor_name": ck.competitor_name,
-                "summary": placeholder,
-                "evidence": _first_evidence(ck),
-                "confidence": "low",
-            }
+            _build_custom_dimension_entry(ck, dim, placeholder)
             for ck in knowledge
         ]
         for dim in custom_dimensions
+    }
+
+
+def _dimension_keywords(dimension: str) -> tuple[str, ...]:
+    lower = dimension.lower()
+    keyword_map: dict[str, tuple[str, ...]] = {
+        "隐私": ("隐私", "privacy", "private", "数据", "data", "训练", "training", "保留", "retention", "隔离", "isolation"),
+        "本地部署": ("本地", "本地部署", "私有化", "私有部署", "on-prem", "on premise", "self-host", "self host", "local deployment"),
+        "安全合规": ("安全", "合规", "security", "compliance", "sso", "权限", "permission", "审计", "audit", "soc", "iso", "gdpr"),
+        "企业版": ("企业", "enterprise", "team", "团队", "sso", "权限", "审计", "admin"),
+        "价格": ("价格", "定价", "pricing", "price", "cost", "费用", "付费", "subscription"),
+    }
+    keywords: list[str] = [dimension, lower]
+    for key, values in keyword_map.items():
+        if key in dimension or key.lower() in lower:
+            keywords.extend(values)
+    return tuple(dict.fromkeys(k.lower() for k in keywords if k))
+
+
+def _claim_text_and_evidence(claim: Claim | None) -> tuple[str, list[str]]:
+    if claim is None:
+        return "", []
+    return claim.text or "", list(claim.evidence or [])
+
+
+def _dimension_candidate_texts(ck: CompetitorKnowledge) -> list[tuple[str, list[str]]]:
+    candidates: list[tuple[str, list[str]]] = []
+    if ck.product_profile:
+        candidates.append(_claim_text_and_evidence(ck.product_profile.positioning))
+        for claim in ck.product_profile.target_users:
+            candidates.append(_claim_text_and_evidence(claim))
+    if ck.pricing_model:
+        candidates.append(_claim_text_and_evidence(ck.pricing_model.summary))
+        for plan in ck.pricing_model.plans:
+            plan_text = " ".join([plan.name, plan.price, plan.billing_cycle, *list(plan.features or [])])
+            candidates.append((plan_text, list(plan.evidence or [])))
+    for category in ck.feature_tree:
+        for feature in category.features:
+            candidates.append((
+                " ".join([category.category, feature.name, feature.description, feature.availability]),
+                list(feature.evidence or []),
+            ))
+    for persona in ck.user_personas:
+        candidates.append((
+            " ".join([persona.name, persona.description, *list(persona.needs or []), *list(persona.pain_points or [])]),
+            list(persona.evidence or []),
+        ))
+    if ck.user_feedback_summary:
+        candidates.append((ck.user_feedback_summary.summary, list(ck.sources or [])))
+        for claim in ck.user_feedback_summary.positive_points + ck.user_feedback_summary.negative_points:
+            candidates.append(_claim_text_and_evidence(claim))
+    if ck.swot:
+        for claim in ck.swot.strengths + ck.swot.weaknesses + ck.swot.opportunities + ck.swot.threats:
+            candidates.append(_claim_text_and_evidence(claim))
+    return [(text.strip(), evidence) for text, evidence in candidates if text and text.strip()]
+
+
+def _build_custom_dimension_entry(
+    ck: CompetitorKnowledge,
+    dimension: str,
+    placeholder: str,
+) -> dict:
+    keywords = _dimension_keywords(dimension)
+    matches: list[tuple[str, list[str]]] = []
+    for text, evidence in _dimension_candidate_texts(ck):
+        lower = text.lower()
+        if any(keyword in lower for keyword in keywords):
+            matches.append((text, evidence))
+
+    evidence: list[str] = []
+    for _text, ids in matches:
+        for sid in ids:
+            if sid and sid not in evidence:
+                evidence.append(sid)
+        if len(evidence) >= 5:
+            break
+
+    if matches:
+        first_text = matches[0][0]
+        summary = first_text[:220].rstrip()
+        confidence = "medium" if evidence else "low"
+    else:
+        summary = placeholder
+        evidence = _first_evidence(ck)
+        confidence = "low"
+
+    return {
+        "competitor_name": ck.competitor_name,
+        "summary": summary,
+        "evidence": evidence,
+        "confidence": confidence,
     }
 
 
@@ -781,24 +867,36 @@ def _build_custom_dimension_analysis(
 ) -> dict[str, DimensionScore]:
     if not custom_dimensions:
         return {}
-    placeholder = "需要结合来源复核该维度。" if output_language == "zh" else "This dimension should be verified against the cited sources."
+    placeholder = "已根据结构化知识和引用来源生成维度判断。" if output_language == "zh" else "Generated from structured knowledge and cited sources."
     result: dict[str, DimensionScore] = {}
-    all_evidence: list[str] = []
-    for ck in knowledge:
-        for sid in _first_evidence(ck, limit=3) or list(ck.sources[:3]):
-            if sid and sid not in all_evidence:
-                all_evidence.append(sid)
-    evidence = all_evidence[:6]
-    confidence = _dimension_confidence(evidence)
-    score = 4 if confidence in {"high", "medium"} and len(knowledge) >= 2 else 3
     weight = round(1 / len(custom_dimensions), 3)
     for dim in custom_dimensions:
+        entries = [
+            _build_custom_dimension_entry(
+                ck,
+                dim,
+                "未在已采集来源中找到该维度的直接表述" if output_language == "zh" else "No direct statement for this dimension was found in collected sources",
+            )
+            for ck in knowledge
+        ]
+        evidence: list[str] = []
+        matched = 0
+        for entry in entries:
+            if entry.get("confidence") != "low":
+                matched += 1
+            for sid in entry.get("evidence", []):
+                if sid and sid not in evidence:
+                    evidence.append(sid)
+            if len(evidence) >= 6:
+                break
+        confidence = "high" if matched >= max(2, len(knowledge) // 2) else ("medium" if matched else _dimension_confidence(evidence))
+        score = 4 if matched else 2
         result[dim] = DimensionScore(
             dimension_name=dim,
             score=score,
             weight=weight,
-            rationale=placeholder,
-            evidence=evidence,
+            rationale=placeholder if matched else ("需要补充该维度的直接来源。" if output_language == "zh" else "Add direct sources for this dimension."),
+            evidence=evidence[:6],
             source_confidence=confidence,
         )
     return result
@@ -915,6 +1013,7 @@ def _score_relative(value: float, values: list[float], *, higher_is_better: bool
 
 def _build_choose_product_scores(
     knowledge: list[CompetitorKnowledge],
+    custom_dimensions: list[str] | None = None,
 ) -> tuple[dict[str, CompetitorScore], dict]:
     scores: dict[str, CompetitorScore] = {}
     best_for: dict[str, str] = {}
@@ -930,6 +1029,14 @@ def _build_choose_product_scores(
         ck.competitor_name: _weakness_count(ck) + _threat_count(ck)
         for ck in knowledge
     }
+
+    custom_dimensions = [dim for dim in (custom_dimensions or []) if str(dim).strip()]
+    if custom_dimensions:
+        base_weights = [(label, round(weight * 0.75, 3)) for label, weight in _CHOOSE_PRODUCT_WEIGHTS]
+        custom_weight = round(0.25 / len(custom_dimensions), 3)
+        scoring_weights = base_weights + [(dim, custom_weight) for dim in custom_dimensions]
+    else:
+        scoring_weights = list(_CHOOSE_PRODUCT_WEIGHTS)
 
     for ck in knowledge:
         name = ck.competitor_name
@@ -984,24 +1091,51 @@ def _build_choose_product_scores(
         if "credit" in ((ck.pricing_model.summary.text if ck.pricing_model and ck.pricing_model.summary else "")).lower():
             risk_score = max(1, risk_score - 1)
 
-        raw_dimensions = [
+        custom_entries = {
+            dim: _build_custom_dimension_entry(
+                ck,
+                dim,
+                "未在已采集来源中找到该维度的直接表述",
+            )
+            for dim in custom_dimensions
+        }
+        custom_dimension_scores = []
+        for dim, entry in custom_entries.items():
+            matched = entry.get("confidence") != "low"
+            dim_evidence = list(entry.get("evidence") or source_ids)
+            custom_dimension_scores.append((
+                dim,
+                4 if matched else 2,
+                (
+                    str(entry.get("summary") or "")[:160]
+                    if matched
+                    else "缺少该自定义维度的直接来源，建议补充官方文档或用户研究。"
+                ),
+                dim_evidence[:5],
+            ))
+
+        base_dimensions: list[tuple[str, int, str]] = [
             ("场景适配", fit_score, "用户画像、目标用户和团队/企业适配度越明确，分数越高。"),
             ("核心能力覆盖", feature_score, f"识别到 {feature_count} 个功能，覆盖 {bucket_count} 个横向能力桶。"),
             ("价格价值", pricing_score, f"首个付费档约 {paid_price if paid_price is not None else '未知'} 美元/月，{'有' if has_free else '无'}免费档。"),
             ("成熟度与可信度", maturity_score, f"绑定 {evidence_count} 个来源，并结合企业控制、定价摘要等成熟度信号。"),
             ("风险控制", risk_score, f"SWOT 中识别到 {risk_count} 个弱点/威胁；高价或复杂 credit 计费会扣分。"),
         ]
-        weights = dict(_CHOOSE_PRODUCT_WEIGHTS)
+        raw_dimensions: list[tuple[str, int, str, list[str]]] = [
+            (label, score, rationale, source_ids)
+            for label, score, rationale in base_dimensions
+        ] + custom_dimension_scores
+        weights = dict(scoring_weights)
         dimensions = [
             DimensionScore(
                 dimension_name=label,
                 score=score,
                 weight=weights[label],
                 rationale=rationale,
-                evidence=source_ids,
-                source_confidence=_dimension_confidence(source_ids),
+                evidence=evidence,
+                source_confidence=_dimension_confidence(evidence),
             )
-            for label, score, rationale in raw_dimensions
+            for label, score, rationale, evidence in raw_dimensions
         ]
         overall = sum(d.score * d.weight for d in dimensions) * 20
         scores[name] = CompetitorScore(
@@ -1010,11 +1144,23 @@ def _build_choose_product_scores(
             dimensions=dimensions,
         )
 
-        best_for[name] = (
-            f"适合 {', '.join(personas[:2])}。"
-            if personas
-            else (target_users[0] if target_users else "适合需要先验证核心能力的团队。")
-        )
+        strengths: list[str] = []
+        if fit_score >= 4:
+            strengths.append("目标用户/场景匹配较清晰")
+        if feature_score >= 4:
+            strengths.append("核心能力覆盖较完整")
+        if pricing_score >= 4:
+            strengths.append("价格价值较好")
+        if maturity_score >= 4:
+            strengths.append("来源覆盖和成熟度较高")
+        for dim, entry in custom_entries.items():
+            if entry.get("confidence") != "low":
+                strengths.append(f"{dim}维度有可引用证据")
+        audience = "、".join(personas[:2] or target_users[:2])
+        if audience:
+            best_for[name] = f"适合{audience}；主要依据：{'；'.join(strengths[:3]) if strengths else '仍需结合关键来源复核'}。"
+        else:
+            best_for[name] = f"适合已明确采购/试用场景、愿意复核关键来源的团队；主要依据：{'；'.join(strengths[:3]) if strengths else '证据仍偏弱'}。"
         avoid_reasons: list[str] = []
         if plan_count == 0:
             avoid_reasons.append("预算敏感或必须提前核验价格的团队")
@@ -1022,6 +1168,9 @@ def _build_choose_product_scores(
             avoid_reasons.append("需要成熟完整功能栈的重度用户")
         if risk_count >= 3:
             avoid_reasons.append("对稳定性、限制和迁移风险敏感的团队")
+        missing_custom = [dim for dim, entry in custom_entries.items() if entry.get("confidence") == "low"]
+        if missing_custom:
+            avoid_reasons.append(f"强依赖{', '.join(missing_custom[:2])}明确承诺的团队")
         avoid[name] = "；".join(avoid_reasons) if avoid_reasons else "暂无明显不建议人群，但仍应核验关键来源。"
 
     ranked_names = sorted(scores, key=lambda n: scores[n].overall_score, reverse=True)
@@ -1033,7 +1182,7 @@ def _build_choose_product_scores(
             "summary": best_for.get(name, ""),
         })
 
-    for label, weight in _CHOOSE_PRODUCT_WEIGHTS:
+    for label, weight in scoring_weights:
         row: dict[str, object] = {"criterion": label, "weight": weight}
         for name in ranked_names:
             dim = next((d for d in scores[name].dimensions if d.dimension_name == label), None)
@@ -1047,7 +1196,7 @@ def _build_choose_product_scores(
         "decision_matrix": decision_matrix,
         "scoring_weights": [
             {"dimension": label, "weight": weight}
-            for label, weight in _CHOOSE_PRODUCT_WEIGHTS
+            for label, weight in scoring_weights
         ],
     }
 
@@ -1492,7 +1641,8 @@ def _bind_report_fields(
     }
     if analysis_purpose == "choose_product":
         generated_scores, generated_purpose = _build_choose_product_scores(
-            competitor_knowledge
+            competitor_knowledge,
+            custom_dimensions=custom_dimensions,
         )
         report.competitor_scores = {
             **(report.competitor_scores or {}),

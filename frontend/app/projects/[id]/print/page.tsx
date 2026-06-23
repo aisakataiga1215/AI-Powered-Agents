@@ -735,23 +735,81 @@ function PrintPersonaSection({ competitors }: { competitors: CompetitorKnowledge
 }
 
 function PrintUserReviewsSection({ sourceList }: { sourceList: SourceEvidence[] }) {
-  const manualSources = sourceList.filter((source) =>
-    source.data_source === 'manual' || String(source.source_type).includes('manual')
-  )
-  if (manualSources.length === 0) {
+  const reviews = collectManualReviewSources(sourceList)
+  if (reviews.length === 0) {
     return <p className="text-sm text-gray-500">暂无研究输入。</p>
   }
   return (
     <div className="space-y-3">
-      {manualSources.map((source) => (
-        <article key={source.source_id} className="rounded border border-gray-200 p-3">
-          <div className="text-sm font-semibold text-gray-900">{source.title || '研究输入'}</div>
-          <div className="mt-1 text-xs text-gray-500">{source.competitor_name || '所有竞品'}</div>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{source.content || source.snippet}</p>
+      {reviews.map((review) => (
+        <article key={review.key} className="rounded border border-gray-200 p-3">
+          <div className="text-sm font-semibold text-gray-900">
+            {review.title || '研究输入'}
+            {review.desensitized ? <span className="ml-2 text-xs font-normal text-green-700">已脱敏</span> : null}
+          </div>
+          <div className="mt-1 text-xs text-gray-500">
+            适用竞品：{review.competitorNames.length > 0 ? review.competitorNames.join('、') : '所有竞品'}
+          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{review.content}</p>
         </article>
       ))}
     </div>
   )
+}
+
+type ManualReviewSource = {
+  key: string
+  title: string
+  content: string
+  competitorNames: string[]
+  desensitized: boolean
+}
+
+function collectManualReviewSources(sourceList: SourceEvidence[]): ManualReviewSource[] {
+  const grouped = new Map<string, ManualReviewSource>()
+  for (const source of sourceList) {
+    if (!(source.data_source === 'manual' || String(source.source_type).includes('manual'))) {
+      continue
+    }
+    const content = redactDisplayPii(stripResearchTypePrefix(source.content || source.snippet || ''))
+    if (!content.trim()) continue
+    const key = source.url?.startsWith('manual://')
+      ? source.url
+      : `${source.title || '研究输入'}::${content.replace(/\s+/g, ' ').trim().slice(0, 160)}`
+    const existing = grouped.get(key)
+    if (existing) {
+      if (source.competitor_name && !existing.competitorNames.includes(source.competitor_name)) {
+        existing.competitorNames.push(source.competitor_name)
+      }
+      existing.desensitized = existing.desensitized || Boolean(source.desensitized || source.contains_pii)
+      continue
+    }
+    grouped.set(key, {
+      key,
+      title: source.title || '研究输入',
+      content,
+      competitorNames: source.competitor_name ? [source.competitor_name] : [],
+      desensitized: Boolean(source.desensitized || source.contains_pii),
+    })
+  }
+  return Array.from(grouped.values()).map((item) => ({
+    ...item,
+    competitorNames: item.competitorNames.sort((a, b) => a.localeCompare(b)),
+  }))
+}
+
+function stripResearchTypePrefix(content: string): string {
+  return content.replace(/^Research type:\s*[^\n]+\n\n/i, '').trim()
+}
+
+function redactDisplayPii(value: string): string {
+  return value
+    .replace(/mailto:[^\s>]+/gi, '[REDACTED:mailto]')
+    .replace(/(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[REDACTED:email]')
+    .replace(/(?<!\d)(?:\d{17}[\dXx])(?!\d)/g, '[REDACTED:id]')
+    .replace(/(?:\+?86[-\s]?|0086[-\s]?)?1[3-9](?:[-\s]?\d){9}/g, '[REDACTED:phone]')
+    .replace(/(?<![\w.])\+\d{1,3}[\s.-]?\(?\d{1,4}\)?[\s.-]?\d{2,4}[\s.-]?\d{2,4}(?:[\s.-]?\d{2,4})?(?![\w.])/g, '[REDACTED:phone]')
+    .replace(/[\u4e00-\u9fa5]{2,3}(?=(?:先生|女士|小姐|总监|经理|主管|总经理|总裁|老师|博士))/g, '[REDACTED:name]')
 }
 
 function PrintStructuredSection({ data, emptyMessage }: { data: unknown; emptyMessage: string }) {

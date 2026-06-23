@@ -81,6 +81,7 @@ def collect_sources_node(state: WorkflowState) -> dict:
                 "competitors": state["competitors"],
                 "goals": state["goals"],
                 "analysis_frameworks": state.get("analysis_frameworks", ["swot"]),
+                "custom_dimensions": state.get("custom_dimensions", []),
                 "data_mode": state.get("data_mode", "demo"),
                 "rework_hints": state.get("rework_hints", []),
             },
@@ -94,6 +95,7 @@ def collect_sources_node(state: WorkflowState) -> dict:
             data_mode=state.get("data_mode", "demo"),
             industry_type=state.get("industry_type", "general"),
             research_inputs=state.get("research_inputs", []),
+            custom_dimensions=state.get("custom_dimensions", []),
         )
         _record_message(
             db,

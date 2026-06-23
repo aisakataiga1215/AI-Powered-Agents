@@ -936,6 +936,11 @@ class SearchService:
         "features": "{name} features overview capabilities",
         "docs": "{name} official documentation docs",
         "security": "{name} security privacy compliance",
+        "privacy": "{name} privacy data retention training policy",
+        "compliance": "{name} security compliance SSO audit SOC ISO",
+        "deployment": "{name} on-prem self-hosted local deployment",
+        "self-host": "{name} self-hosted on-prem deployment",
+        "on-prem": "{name} on-prem deployment enterprise",
         "enterprise": "{name} enterprise plan business pricing",
     }
 

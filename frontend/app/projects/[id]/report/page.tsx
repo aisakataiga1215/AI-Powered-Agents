@@ -324,6 +324,7 @@ export default function ReportPage({ params }: PageProps) {
               dimension={currentTab.slice('custom_dimension:'.length)}
               analysis={report.custom_dimension_analysis?.[currentTab.slice('custom_dimension:'.length)]}
               detail={report.custom_dimension_sections?.[currentTab.slice('custom_dimension:'.length)]}
+              sourceList={report.source_list ?? []}
             />
           )}
           {currentTab === 'scoring' && (
@@ -747,6 +748,16 @@ function cleanDisplayText(value: string | undefined | null): string {
     text = text.slice(0, Math.min(...markers))
   }
   return text.replace(/<\/?parameter[^>]*>/gi, '').trim()
+}
+
+function redactDisplayPii(value: string): string {
+  return value
+    .replace(/mailto:[^\s>]+/gi, '[REDACTED:mailto]')
+    .replace(/(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[REDACTED:email]')
+    .replace(/(?<!\d)(?:\d{17}[\dXx])(?!\d)/g, '[REDACTED:id]')
+    .replace(/(?:\+?86[-\s]?|0086[-\s]?)?1[3-9](?:[-\s]?\d){9}/g, '[REDACTED:phone]')
+    .replace(/(?<![\w.])\+\d{1,3}[\s.-]?\(?\d{1,4}\)?[\s.-]?\d{2,4}[\s.-]?\d{2,4}(?:[\s.-]?\d{2,4})?(?![\w.])/g, '[REDACTED:phone]')
+    .replace(/[\u4e00-\u9fa5]{2,3}(?=(?:先生|女士|小姐|总监|经理|主管|总经理|总裁|老师|博士))/g, '[REDACTED:name]')
 }
 
 function extractEmbeddedRationale(value: string | undefined | null): Record<string, string> {
@@ -1210,10 +1221,12 @@ function CustomDimensionTab({
   dimension,
   analysis,
   detail,
+  sourceList,
 }: {
   dimension: string
   analysis?: DimensionScore
   detail?: unknown
+  sourceList: SourceEvidence[]
 }) {
   if (!analysis && !detail) {
     return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">暂无足够证据。</p>
@@ -1224,16 +1237,18 @@ function CustomDimensionTab({
         <section className="rounded-lg border border-gray-200 bg-white p-4">
           <h2 className="text-base font-semibold text-gray-900">{dimension}</h2>
           <div className="mt-3">
-            <DimensionScoreCard dimension={analysis} />
+            <DimensionScoreCard dimension={analysis} sourceList={sourceList} />
           </div>
         </section>
       )}
-      <StructuredSection data={detail} emptyMessage="暂无维度明细。" />
+      <CustomDimensionDetail data={detail} sourceList={sourceList} />
     </div>
   )
 }
 
-function DimensionScoreCard({ dimension }: { dimension: DimensionScore }) {
+function DimensionScoreCard({ dimension, sourceList = [] }: { dimension: DimensionScore; sourceList?: SourceEvidence[] }) {
+  const openSource = useSourcePanel((s) => s.openSource)
+  const sourceIndex = new Map(sourceList.map((s, i) => [s.source_id, i + 1]))
   return (
     <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -1246,10 +1261,81 @@ function DimensionScoreCard({ dimension }: { dimension: DimensionScore }) {
       <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
         {dimension.weight != null && <span>权重 {Math.round(dimension.weight * 100)}%</span>}
         <span>置信度 {confidenceLabel(dimension.source_confidence)}</span>
-        {dimension.evidence?.length > 0 && <span>证据 {dimension.evidence.join(', ')}</span>}
+        {dimension.evidence?.length > 0 && (
+          <SourceBadgeList evidence={dimension.evidence} sourceIndex={sourceIndex} onOpen={openSource} />
+        )}
       </div>
     </div>
   )
+}
+
+function CustomDimensionDetail({ data, sourceList }: { data: unknown; sourceList: SourceEvidence[] }) {
+  const openSource = useSourcePanel((s) => s.openSource)
+  const sourceIndex = new Map(sourceList.map((s, i) => [s.source_id, i + 1]))
+  if (!Array.isArray(data) || data.length === 0) {
+    return <StructuredSection data={data} emptyMessage="暂无维度明细。" />
+  }
+  return (
+    <div className="space-y-3">
+      {data.map((item, index) => {
+        const record = isRecord(item) ? item : {}
+        const competitor = String(record.competitor_name ?? record.competitor ?? `条目 ${index + 1}`)
+        const summary = String(record.summary ?? record.rationale ?? record.text ?? '')
+        const confidence = typeof record.confidence === 'string' ? record.confidence : undefined
+        const evidence = Array.isArray(record.evidence)
+          ? record.evidence.map((value) => String(value)).filter(Boolean)
+          : []
+        return (
+          <article key={`${competitor}-${index}`} className="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-gray-900">{competitor}</h3>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
+              {summary || '暂无维度摘要。'}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+              {confidence && <span>置信度 {confidenceLabel(confidence)}</span>}
+              <SourceBadgeList evidence={evidence} sourceIndex={sourceIndex} onOpen={openSource} />
+            </div>
+          </article>
+        )
+      })}
+    </div>
+  )
+}
+
+function SourceBadgeList({
+  evidence,
+  sourceIndex,
+  onOpen,
+}: {
+  evidence?: string[]
+  sourceIndex: Map<string, number>
+  onOpen: (sourceId: string) => void
+}) {
+  const ids = evidence ?? []
+  if (ids.length === 0) return null
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span>证据</span>
+      {ids.map((srcId) => {
+        const num = sourceIndex.get(srcId)
+        return (
+          <button
+            key={srcId}
+            type="button"
+            onClick={() => onOpen(srcId)}
+            title={srcId}
+            className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+          >
+            {num !== undefined ? `[${num}]` : srcId}
+          </button>
+        )
+      })}
+    </span>
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function StructuredCard({ title, data }: { title: string; data?: unknown }) {
@@ -1293,23 +1379,75 @@ function PersonaTab({ competitors }: { competitors: CompetitorKnowledge[] }) {
 }
 
 function UserReviewsTab({ sourceList }: { sourceList: SourceEvidence[] }) {
-  const manualSources = sourceList.filter((source) =>
-    source.data_source === 'manual' || String(source.source_type).includes('manual')
-  )
-  if (manualSources.length === 0) {
+  const reviews = collectManualReviewSources(sourceList)
+  if (reviews.length === 0) {
     return <p className="rounded-md border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">暂无研究输入。</p>
   }
   return (
     <div className="space-y-3">
-      {manualSources.map((source) => (
-        <article key={source.source_id} className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="text-sm font-semibold text-gray-900">{source.title || '研究输入'}</div>
-          <div className="mt-1 text-xs text-gray-500">{source.competitor_name || '所有竞品'}</div>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{source.content || source.snippet}</p>
+      {reviews.map((review) => (
+        <article key={review.key} className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-semibold text-gray-900">{review.title || '研究输入'}</div>
+            {review.desensitized && (
+              <span className="rounded bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">
+                已脱敏
+              </span>
+            )}
+          </div>
+          <div className="mt-1 text-xs text-gray-500">
+            适用竞品：{review.competitorNames.length > 0 ? review.competitorNames.join('、') : '所有竞品'}
+          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{review.content}</p>
         </article>
       ))}
     </div>
   )
+}
+
+type ManualReviewSource = {
+  key: string
+  title: string
+  content: string
+  competitorNames: string[]
+  desensitized: boolean
+}
+
+function collectManualReviewSources(sourceList: SourceEvidence[]): ManualReviewSource[] {
+  const grouped = new Map<string, ManualReviewSource>()
+  for (const source of sourceList) {
+    if (!(source.data_source === 'manual' || String(source.source_type).includes('manual'))) {
+      continue
+    }
+    const content = redactDisplayPii(stripResearchTypePrefix(source.content || source.snippet || ''))
+    if (!content.trim()) continue
+    const key = source.url?.startsWith('manual://')
+      ? source.url
+      : `${source.title || '研究输入'}::${content.replace(/\s+/g, ' ').trim().slice(0, 160)}`
+    const existing = grouped.get(key)
+    if (existing) {
+      if (source.competitor_name && !existing.competitorNames.includes(source.competitor_name)) {
+        existing.competitorNames.push(source.competitor_name)
+      }
+      existing.desensitized = existing.desensitized || Boolean(source.desensitized || source.contains_pii)
+      continue
+    }
+    grouped.set(key, {
+      key,
+      title: source.title || '研究输入',
+      content,
+      competitorNames: source.competitor_name ? [source.competitor_name] : [],
+      desensitized: Boolean(source.desensitized || source.contains_pii),
+    })
+  }
+  return Array.from(grouped.values()).map((item) => ({
+    ...item,
+    competitorNames: item.competitorNames.sort((a, b) => a.localeCompare(b)),
+  }))
+}
+
+function stripResearchTypePrefix(content: string): string {
+  return content.replace(/^Research type:\s*[^\n]+\n\n/i, '').trim()
 }
 
 function SourcesTab({ sourceList }: { sourceList: SourceEvidence[] }) {

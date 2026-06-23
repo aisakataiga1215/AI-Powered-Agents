@@ -227,6 +227,67 @@ class TestCollectorAgentWithSearch:
         assert len(result) >= 1
         assert all(s.data_source in ("live", "demo") for s in result)
 
+    def test_custom_dimensions_trigger_targeted_search_urls(self):
+        from app.agents import collector_agent
+
+        home_page = _make_page("https://cursor.com", "Home", "AI IDE")
+        privacy_page = _make_page(
+            "https://cursor.com/privacy",
+            "Privacy",
+            "Cursor privacy policy covers data retention and training controls.",
+        )
+
+        def discover_urls(_name, _website, _industry_type, rework_hints=None, **_kwargs):
+            hint_text = " ".join(rework_hints or []).lower()
+            if "privacy" in hint_text:
+                return ["https://cursor.com/privacy"]
+            return []
+
+        mock_search_svc = MagicMock()
+        mock_search_svc.discover_urls.side_effect = discover_urls
+
+        with (
+            patch.object(
+                collector_agent.source_discovery,
+                "discover_pages",
+                return_value=["https://cursor.com"],
+            ),
+            patch.object(
+                collector_agent.crawler_service,
+                "crawl_page",
+                side_effect=[home_page, privacy_page],
+            ),
+            patch.object(collector_agent.crawler_service, "fixture_exists", return_value=False),
+            patch.object(collector_agent.source_service, "save_sources"),
+            patch.object(collector_agent.trace_service, "save_agent_run"),
+            patch.object(collector_agent.trace_service, "update_agent_run") as update_run,
+        ):
+            result = collector_agent.run(
+                db=_make_db(),
+                project_id="proj_1",
+                competitors=[{"name": "Cursor", "url": "https://cursor.com"}],
+                goals=[],
+                data_mode="live_with_fallback",
+                custom_dimensions=["隐私"],
+                _search_service=mock_search_svc,
+            )
+
+        assert any(s.url == "https://cursor.com/privacy" for s in result)
+        assert any("privacy" in " ".join(call.kwargs.get("rework_hints") or []).lower() for call in mock_search_svc.discover_urls.mock_calls)
+
+        output_payload = update_run.call_args.kwargs["output"]
+        stats = output_payload["collection_stats_by_competitor"]["Cursor"]
+        assert stats["custom_dimension_url_count"] == 1
+        assert stats["custom_dimension_urls"] == ["https://cursor.com/privacy"]
+
+    def test_open_ended_custom_dimension_is_used_as_search_hint(self):
+        from app.agents.collector_agent import _custom_dimension_search_hints
+
+        hints = _custom_dimension_search_hints(["multi-agent"])
+
+        assert "multi-agent" in hints
+        assert "multi-agent capabilities documentation" in hints
+
 
 # ---------------------------------------------------------------------------
 # TestSearchSources (M15A)

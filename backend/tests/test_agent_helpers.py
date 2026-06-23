@@ -10,6 +10,7 @@ from app.schemas.claim import Claim
 from app.schemas.knowledge import (
     CompetitorKnowledge,
     ProductProfile,
+    UserFeedbackSummary,
 )
 from app.schemas.source import Reliability, SourceEvidence, SourceType
 
@@ -128,3 +129,37 @@ def test_writer_bind_report_fields_overwrites_project_and_source_list():
     assert [s.source_id for s in bound.source_list] == ["src_a"]
     # Competitor overview was empty; the writer backfilled it.
     assert [ck.competitor_name for ck in bound.competitor_overview] == ["Cursor"]
+
+
+def test_writer_custom_dimension_sections_extract_relevant_evidence():
+    knowledge = [
+        CompetitorKnowledge(
+            competitor_id="comp_1",
+            competitor_name="Cursor",
+            user_feedback_summary=UserFeedbackSummary(
+                summary=(
+                    "企业研发团队最关注隐私、SSO、审计日志、数据不用于训练、"
+                    "本地部署或私有化能力。"
+                ),
+                positive_points=[
+                    Claim(
+                        text="公司采购场景关注隐私、企业权限和是否支持本地部署。",
+                        evidence=["src_manual"],
+                    )
+                ],
+            ),
+            sources=["src_manual"],
+        )
+    ]
+
+    sections = writer_agent._build_custom_dimension_sections(
+        knowledge,
+        ["隐私", "本地部署", "安全合规"],
+        "zh",
+    )
+
+    assert sections["隐私"][0]["summary"] != "暂无足够证据"
+    assert sections["隐私"][0]["confidence"] == "medium"
+    assert "src_manual" in sections["隐私"][0]["evidence"]
+    assert "本地部署" in sections["本地部署"][0]["summary"]
+    assert sections["安全合规"][0]["summary"] != "暂无足够证据"

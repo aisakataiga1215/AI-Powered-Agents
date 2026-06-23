@@ -144,6 +144,40 @@ def test_collector_applies_global_research_input_to_each_competitor(db_session):
     assert manual_competitors == {"Cursor", "Trae"}
 
 
+def test_collector_sanitizes_all_research_input_kinds(db_session):
+    sources = collector_agent.run(
+        db=db_session,
+        project_id="proj_test",
+        competitors=[{"name": "Cursor", "url": "https://cursor.com"}],
+        goals=["user_personas"],
+        research_inputs=[
+            {
+                "title": "Desk research notes",
+                "source_kind": "desk_research",
+                "competitor_name": "Cursor",
+                "content": "回访电话 138 1234 5678,用户希望改进团队权限。",
+            },
+            {
+                "title": "Internal note",
+                "source_kind": "notes",
+                "competitor_name": "Cursor",
+                "content": "Contact alice@example.com,反馈是希望增强导出能力。",
+            },
+        ],
+    )
+    manual_sources = [s for s in sources if s.source_type is SourceType.manual_input]
+    assert len(manual_sources) == 2
+    assert all(s.desensitized for s in manual_sources)
+    assert all(s.contains_pii for s in manual_sources)
+    combined = "\n".join(s.content for s in manual_sources)
+    assert "138 1234 5678" not in combined
+    assert "alice@example.com" not in combined
+    assert "[REDACTED:phone]" in combined
+    assert "[REDACTED:email]" in combined
+    assert "团队权限" in combined
+    assert "导出能力" in combined
+
+
 def test_collector_handles_repeat_runs_with_distinct_projects(db_session):
     """Fixture source_ids are static (e.g. src_cursor_001); ensure that
     running the workflow for two different projects against the shared

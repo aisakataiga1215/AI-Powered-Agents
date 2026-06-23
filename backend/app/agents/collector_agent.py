@@ -44,9 +44,9 @@ from app.services.search_service import SearchService, _SEARCH_MAX_URLS
 from app.services.source_discovery import get_industry_max_pages
 from app.utils.sanitizer import sanitize_text
 
-# Research kinds that may contain PII (interview transcripts, free-text
-# survey answers). Other kinds (``notes``, etc.) are passed through as-is.
-_PII_RESEARCH_KINDS = {"survey", "interview"}
+# All user-supplied research inputs are free-form enough to contain contact
+# details, names, or identifiers, so sanitize them before they become evidence.
+_PII_RESEARCH_KINDS = {"survey", "interview", "questionnaire", "desk_research", "notes"}
 _RELEVANCE_REVIEW_MAX_SOURCES = 30
 _RELEVANCE_SOURCE_PREVIEW_CHARS = 900
 
@@ -65,6 +65,19 @@ _TRACKING_PARAMS: frozenset[str] = frozenset({
     "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
     "fbclid", "gclid",
 })
+
+_KNOWN_FOLLOWUP_URLS: dict[str, tuple[str, ...]] = {
+    "claude code": (
+        "https://code.claude.com/docs/en/overview",
+        "https://docs.anthropic.com/en/docs/claude-code/overview",
+        "https://www.anthropic.com/pricing",
+    ),
+    "codex": (
+        "https://developers.openai.com/codex",
+        "https://platform.openai.com/docs/pricing",
+        "https://openai.com/chatgpt/pricing",
+    ),
+}
 
 
 def _normalize_url(url: str) -> str:
@@ -231,6 +244,7 @@ class _CollectionResult:
     # M15A URL observability fields
     selected_extra_urls: list = field(default_factory=list)
     silent_search_urls: list = field(default_factory=list)
+    custom_dimension_urls: list = field(default_factory=list)
     rejected_extra_urls: list = field(default_factory=list)
 
 
@@ -298,6 +312,33 @@ def _slug(value: str) -> str:
     return value.strip().lower().replace(" ", "_")
 
 
+def _custom_dimension_search_hints(custom_dimensions: list[str] | None) -> list[str]:
+    if not custom_dimensions:
+        return []
+    hints: list[str] = []
+    for dim in custom_dimensions:
+        text = str(dim or "").strip()
+        if not text:
+            continue
+        lower = text.lower()
+        mapped: list[str] = []
+        if "隐私" in text or "privacy" in lower:
+            mapped.append("privacy data retention training policy")
+        if "安全" in text or "合规" in text or "security" in lower or "compliance" in lower:
+            mapped.append("security compliance SSO audit SOC ISO")
+        if "本地" in text or "私有" in text or "部署" in text or "on-prem" in lower or "self-host" in lower:
+            mapped.append("on-prem self-hosted local deployment enterprise")
+        if "企业" in text or "enterprise" in lower:
+            mapped.append("enterprise SSO admin audit security")
+        # Always keep the user's original dimension. Custom dimensions can be
+        # open-ended (for example "multi-agent"), so preset mappings are only
+        # query expansion, not a closed taxonomy.
+        hints.append(text)
+        hints.append(f"{text} capabilities documentation")
+        hints.extend(mapped)
+    return list(dict.fromkeys(hints))
+
+
 def _build_manual_sources(
     project_id: str,
     competitors: list[dict],
@@ -335,7 +376,7 @@ def _build_manual_sources(
             else competitor_names
         )
 
-        # Survey/interview inputs may contain PII (names, contact info, ID
+        # User research inputs may contain PII (names, contact info, ID
         # numbers). Mask before persisting so the original is never stored.
         if source_kind in _PII_RESEARCH_KINDS:
             effective_content, contains_pii = sanitize_text(content)
@@ -376,6 +417,7 @@ def _collect_live(
     search_service: SearchService | None = None,
     extra_urls: list[str] | None = None,
     rework_hints: list[str] | None = None,
+    custom_dimensions: list[str] | None = None,
 ) -> _CollectionResult:
     """Crawl a competitor's website using industry-specific paths.
 
@@ -387,6 +429,7 @@ def _collect_live(
     candidate_urls = source_discovery.discover_pages(website, industry_type=industry_type)
 
     search_urls: list[str] = []
+    custom_dimension_urls: list[str] = []
     if search_service is not None:
         try:
             search_urls = search_service.discover_urls(
@@ -398,6 +441,24 @@ def _collect_live(
                 competitor_name,
                 exc,
             )
+        for hint in _custom_dimension_search_hints(custom_dimensions):
+            try:
+                found = search_service.discover_urls(
+                    competitor_name,
+                    website,
+                    industry_type,
+                    rework_hints=[hint],
+                )
+                for url in found:
+                    if _normalize_url(url) not in {_normalize_url(u) for u in custom_dimension_urls}:
+                        custom_dimension_urls.append(url)
+            except Exception as exc:
+                logger.warning(
+                    "CollectorAgent: custom dimension search failed for '%s' (%s): %s",
+                    competitor_name,
+                    hint,
+                    exc,
+                )
 
     # Normalize + filter user-selected URLs (untrusted — same pipeline as M14)
     from app.services.search_service import _normalize_url as _svc_normalize, _is_crawlable
@@ -410,7 +471,7 @@ def _collect_live(
         elif norm not in {_svc_normalize(u) for u in cleaned_extra}:
             cleaned_extra.append(raw_url)
 
-    combined_extra = cleaned_extra + search_urls
+    combined_extra = cleaned_extra + search_urls + custom_dimension_urls
     combined_extra_norms = {_normalize_url(u) for u in combined_extra}
 
     industry_max = get_industry_max_pages(industry_type)
@@ -419,11 +480,15 @@ def _collect_live(
 
     live_sources: list[SourceEvidence] = []
     failed_urls: list[str] = []
+    attempted_norms: set[str] = set()
+    attempted_urls: list[str] = []
 
     if not all_candidates:
         failed_urls.append(website)
     else:
         for url in all_candidates:
+            attempted_norms.add(_normalize_url(url))
+            attempted_urls.append(url)
             page = crawler_service.crawl_page(url)
             if page is None:
                 failed_urls.append(url)
@@ -448,6 +513,77 @@ def _collect_live(
                     data_source=data_source,  # type: ignore[arg-type]
                 )
             )
+
+    def crawl_followup_urls(urls: list[str], reason: str) -> None:
+        for url in _deduplicate_urls(urls):
+            norm = _normalize_url(url)
+            if norm in attempted_norms:
+                continue
+            attempted_norms.add(norm)
+            attempted_urls.append(url)
+            page = crawler_service.crawl_page(url)
+            if page is None:
+                failed_urls.append(url)
+                continue
+            source_domain = urlparse(page.url).netloc
+            s_type = source_classifier.classify(page.url, page.title, page.content)
+            reliability = _assign_reliability(s_type, source_domain, competitor_domain)
+            live_sources.append(
+                SourceEvidence(
+                    project_id=project_id,
+                    competitor_id=competitor_id,
+                    competitor_name=competitor_name,
+                    source_type=s_type,
+                    url=page.url,
+                    title=page.title,
+                    snippet=page.snippet,
+                    content=page.content,
+                    reliability=reliability,
+                    data_source="search" if reason == "search" else "live",  # type: ignore[arg-type]
+                )
+            )
+
+    initial_cov = coverage_evaluator.evaluate(live_sources)
+    followup_urls: list[str] = []
+    known_urls = _KNOWN_FOLLOWUP_URLS.get(competitor_name.strip().lower(), ())
+    if not initial_cov.pricing:
+        followup_urls.extend([url for url in known_urls if any(part in url.lower() for part in ("pricing", "price", "billing"))])
+        if search_service is not None:
+            try:
+                followup_urls.extend(
+                    search_service.discover_urls(
+                        competitor_name,
+                        website,
+                        industry_type,
+                        rework_hints=[f"{competitor_name} pricing"],
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    "CollectorAgent: pricing follow-up search failed for '%s': %s",
+                    competitor_name,
+                    exc,
+                )
+    if not initial_cov.features_or_docs:
+        followup_urls.extend([url for url in known_urls if any(part in url.lower() for part in ("docs", "documentation", "developers", "code"))])
+        if search_service is not None:
+            try:
+                followup_urls.extend(
+                    search_service.discover_urls(
+                        competitor_name,
+                        website,
+                        industry_type,
+                        rework_hints=[f"{competitor_name} features docs"],
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    "CollectorAgent: features follow-up search failed for '%s': %s",
+                    competitor_name,
+                    exc,
+                )
+    if followup_urls:
+        crawl_followup_urls(followup_urls[: _SEARCH_MAX_URLS * 2], "search")
 
     cov = coverage_evaluator.evaluate(live_sources)
     fallback_attempted = cov.score < WEAK_THRESHOLD or not all_candidates
@@ -490,7 +626,7 @@ def _collect_live(
     return _CollectionResult(
         sources=all_sources,
         failed_urls=failed_urls,
-        attempted_urls=all_candidates,
+        attempted_urls=attempted_urls,
         live_source_count=len(live_sources),
         fallback_attempted=fallback_attempted,
         fallback_used=fallback_used,
@@ -498,6 +634,7 @@ def _collect_live(
         fallback_source_count=len(fixture_sources),
         selected_extra_urls=cleaned_extra,
         silent_search_urls=search_urls,
+        custom_dimension_urls=custom_dimension_urls,
         rejected_extra_urls=rejected_extra,
     )
 
@@ -511,6 +648,7 @@ def run(
     data_mode: str = "demo",
     industry_type: str = "general",
     research_inputs: list[dict] | None = None,
+    custom_dimensions: list[str] | None = None,
     _search_service: SearchService | None = None,
 ) -> list[SourceEvidence]:
     """Load source evidence for all competitors and persist them.
@@ -524,6 +662,7 @@ def run(
         data_mode: ``"demo"`` or ``"live_with_fallback"``.
         industry_type: Industry context for source discovery path selection.
         research_inputs: Optional user-supplied survey/interview/questionnaire notes.
+        custom_dimensions: Optional user-defined dimensions that should trigger targeted source search.
         _search_service: Optional SearchService for test injection; created
             from config when None and conditions are met.
 
@@ -544,6 +683,7 @@ def run(
             "demo_scenario": settings.demo_scenario,
             "data_mode": data_mode,
             "industry_type": industry_type,
+            "custom_dimensions": custom_dimensions or [],
             "research_input_count": len(research_inputs or []),
             "decision_summary": (
                 "Collect public source evidence for each competitor; "
@@ -583,6 +723,7 @@ def run(
                     search_service=search_svc,
                     extra_urls=comp.get("extra_urls", []) if isinstance(comp, dict) else [],
                     rework_hints=rework_hints or None,
+                    custom_dimensions=custom_dimensions or [],
                 )
                 all_failed_urls.extend(result.failed_urls)
                 attempted_urls_by_competitor[name] = result.attempted_urls
@@ -595,8 +736,10 @@ def run(
                     "fallback_source_count": result.fallback_source_count,
                     "selected_extra_url_count": len(result.selected_extra_urls),
                     "silent_search_url_count": len(result.silent_search_urls),
+                    "custom_dimension_url_count": len(result.custom_dimension_urls),
                     "selected_extra_urls": result.selected_extra_urls,
                     "silent_search_urls": result.silent_search_urls,
+                    "custom_dimension_urls": result.custom_dimension_urls,
                     "rejected_extra_urls": result.rejected_extra_urls,
                 }
                 sources = result.sources

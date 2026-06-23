@@ -29,7 +29,7 @@ _EMAIL_RE = re.compile(
 _MAILTO_RE = re.compile(r"mailto:[^\s>]+", re.IGNORECASE)
 
 # Chinese mainland mobile numbers: 1 + [3-9] + 9 digits, with optional +86/0086.
-_CN_MOBILE_RE = re.compile(r"(?:\+?86[-\s]?|0086[-\s]?)?1[3-9]\d{9}")
+_CN_MOBILE_RE = re.compile(r"(?:\+?86[-\s]?|0086[-\s]?)?1[3-9](?:[-\s]?\d){9}")
 
 # International phones: optional +country, then 7-14 digits with separators.
 # Anchored to digit boundaries so we don't mash version strings or IDs.

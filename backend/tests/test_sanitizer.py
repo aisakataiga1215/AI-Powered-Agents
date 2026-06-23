@@ -52,6 +52,13 @@ def test_cn_mobile_with_country_code_is_redacted():
     assert contains_pii is True
 
 
+def test_cn_mobile_with_internal_spaces_is_redacted():
+    masked, contains_pii = sanitize_text("电话 138 1234 5678,方便回访。")
+    assert "138" not in masked.replace("[REDACTED:phone]", "")
+    assert "[REDACTED:phone]" in masked
+    assert contains_pii is True
+
+
 def test_cn_mobile_with_zero_prefix_is_redacted():
     masked, contains_pii = sanitize_text("Phone: 008613812345678")
     assert "13812345678" not in masked

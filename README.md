@@ -294,10 +294,11 @@ AI-Powered-Agents/
 
 ## 7. 相关文档
 
-- [架构设计](docs/architecture.md)
-- [Agent 通信协议](docs/agent_protocol.md)
-- [Schema 设计](docs/schema_design.md)
-- [Changelog](docs/changelog.md)
-- [项目状态](docs/project_status.md)
+- [架构设计](docs/architecture.md) / [中文版](docs/architecture.zh.md)
+- [Agent 通信协议](docs/agent_protocol.md) / [中文版](docs/agent_protocol.zh.md)
+- [Schema 设计](docs/schema_design.md) / [中文版](docs/schema_design.zh.md)
+- [Changelog](docs/changelog.md) / [中文版](docs/changelog.zh.md)
+- [项目状态](docs/project_status.md) / [中文版](docs/project_status.zh.md)
+- [竞赛提交材料](docs/submission.md) / [中文版](docs/submission.zh.md)
 - [产品规格](product_spec.md)
 - [工程规格](engineering_spec.md)
