@@ -1,5 +1,7 @@
 'use client'
 
+import { Suspense } from 'react'
+
 /**
  * Project creation page.
  *
@@ -210,7 +212,15 @@ function inferIndustryTypeFromTopic(topic: string): IndustryType | null {
   return null
 }
 
-export default function NewProjectPage() {
+export default function NewProjectPageWrapper() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><p className="text-neutral-500">加载中...</p></div>}>
+      <NewProjectPage />
+    </Suspense>
+  )
+}
+
+function NewProjectPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const sourceProjectId = searchParams.get('from') ?? ''
